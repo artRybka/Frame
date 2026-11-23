@@ -25,6 +25,10 @@ struct GalleryView: View {
     @State private var path: [String] = []
     /// Double taps given, for the corner heart's flash.
     @State private var flashes = 0
+    /// The works ahead being cut down to the work, one at a time.
+    @State private var cutting: Task<Void, Never>?
+    /// Works looked at for a cut here since the app started.
+    @MainActor private static var looked: Set<String> = []
 
     /// Works asked for at once, and how near the end the next are asked for.
     private static let batch = 12
@@ -60,6 +64,7 @@ struct GalleryView: View {
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
             Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
+            cutAhead()
         }
         // Hearts given here change what comes next: a fresh batch is asked
         // for when the library changes, after the works not seen yet.
@@ -69,25 +74,22 @@ struct GalleryView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(works) { work in
-                    GalleryPage(work: work, current: work.id == shown?.id, whole: whole == work.id) { open(work) }
+                    GalleryPage(
+                        work: work, current: work.id == shown?.id, whole: whole == work.id,
+                        flip: { flip(work) }, open: { open(work) }
+                    )
                         .containerRelativeFrame([.horizontal, .vertical])
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
-                        .onTapGesture {
-                            // The page melts one into the other with its own
-                            // timings (`GalleryPage`); this is the rest's.
-                            withAnimation(GalleryPage.toWhole) {
-                                whole = whole == work.id ? nil : work.id
-                            }
+                        .onTapGesture { flip(work) }
+                        // A hold shows the whole work too, no menu (Mateusz
+                        // 2026-11-23 21:41: "Do ekranu całego dzieła wchodzi
+                        // także przytrzymanie. Nie ma już menu po przytrzymaniu").
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            guard whole != work.id else { return }
+                            flip(work)
                         }
-                        .contextMenu { menu(work) } preview: {
-                            // Drawn apart from the page: `ArtImage` needs the
-                            // model (without it the hold crashed the app,
-                            // Mateusz 2026-11-23 16:41).
-                            ArtImage(ref: .thumb(work.id), contentMode: .fit)
-                                .frame(width: 280)
-                                .environment(model)
-                        }
+                        .sensoryFeedback(.impact(weight: .light), trigger: whole == work.id)
                         .id(work.id)
                 }
             }
@@ -123,6 +125,8 @@ struct GalleryView: View {
             Task { await model.like(work.summary, !on) }
         } label: {
             GalleryHeart(on: on, flashes: flashes)
+                // Seen on the light paper too.
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
                 .padding(10)
                 .contentShape(Rectangle())
         }
@@ -133,20 +137,13 @@ struct GalleryView: View {
         .padding(.top, 2)
     }
 
-    @ViewBuilder
-    private func menu(_ work: RemoteItem) -> some View {
-        Button("Otwórz kartę dzieła", systemImage: "info.circle") { open(work) }
-        let on = model.liked(work.summary)
-        Button(on ? "Usuń z ulubionych" : "Dodaj do ulubionych", systemImage: on ? "heart.slash" : "heart") {
-            Task { await model.like(work.summary, !on) }
-        }
-        if !model.isGuest {  // a guest sends nothing to the frame
-            Button("Pokaż na ramce", systemImage: "photo") {
-                Task { _ = await model.show(itemID: work.id, hold: .untilNextChange) }
-            }
-            Button("Dodaj do kolejki", systemImage: "text.line.first.and.arrowtriangle.forward") {
-                Task { await model.queueNext(itemID: work.id) }
-            }
+    /// The work whole, or cut to the screen again: a tap on it or on its
+    /// title, a hold to see it whole (Mateusz 2026-11-23 21:41).
+    private func flip(_ work: RemoteItem) {
+        // The page melts one into the other with its own timings
+        // (`GalleryPage`); this is the rest's.
+        withAnimation(GalleryPage.toWhole) {
+            whole = whole == work.id ? nil : work.id
         }
     }
 
@@ -191,9 +188,42 @@ struct GalleryView: View {
             if position == nil { position = works.first?.id }
             let at = works.firstIndex { $0.id == position } ?? 0
             Self.remember(Array(works.dropFirst(at + 1)))
+            cutAhead()
         } catch {
             failed = works.isEmpty
         }
+    }
+
+    /// The works coming next cut down to the work in the background, as the
+    /// card does when it opens (Mateusz 2026-11-23 21:41: "Dzieła idące na
+    /// Galerię kadruj w tle (usuwaj zbędne tło)"): the server looks first,
+    /// then, on the owner's phone, its own model. Not the one shown nor the
+    /// next, whose pictures are on their way already.
+    private func cutAhead() {
+        guard cutting == nil else { return }
+        cutting = Task {
+            defer { cutting = nil }
+            while !Task.isCancelled {
+                let at = works.firstIndex { $0.id == position } ?? 0
+                guard let next = works.dropFirst(at + 2).first(where: { !Self.looked.contains($0.id) }) else { return }
+                Self.looked.insert(next.id)
+                guard let cut = await cutDown(next.item) else { continue }
+                if let index = works.firstIndex(where: { $0.id == next.id }) { works[index].item = cut }
+            }
+        }
+    }
+
+    /// The work as it is once cut, nil when nothing was cut.
+    private func cutDown(_ item: Item) async -> Item? {
+        guard item.kind == .artwork, ItemDetailView.canCut(item) else { return nil }
+        if let view = try? await model.backend.checkCut(itemID: item.id, wait: 30), view.changed {
+            return view.item
+        }
+        guard model.isOwner, !item.isOwnWork,
+              let found = try? await MuseumCrop.look(itemID: item.id, backend: model.backend),
+              found.cut
+        else { return nil }
+        return found.item
     }
 }
 
@@ -206,12 +236,15 @@ struct GalleryView: View {
 private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     let work: RemoteItem
     /// On screen now: it draws back and drifts a little.
     var current = false
     /// Tapped: drawn back to the whole of it, the caption right under it.
     var whole = false
-    /// The caption tapped: the work's card.
+    /// The title tapped: the work whole, or cut again.
+    var flip: () -> Void = {}
+    /// "Karta dzieła" under the whole work's caption.
     var open: () -> Void = {}
 
     @State private var thumb: UIImage?
@@ -265,7 +298,12 @@ private struct GalleryPage: View {
                     .animation(whole ? .easeIn(duration: 0.26) : .easeOut(duration: 0.3).delay(0.08), value: whole)
                     .allowsHitTesting(!whole)
                     ZStack {
-                        if let glow { Glow(edges: glow, size: place.size, offset: place.offset) }
+                        if let glow {
+                            Glow(edges: glow, size: place.size, offset: place.offset)
+                                // On paper, paler (21:43: "Podkład jasny w
+                                // trybie jasnym i ciemny w trybie ciemnym").
+                                .opacity(scheme == .light ? 0.62 : 1)
+                        }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .opacity(whole ? 1 : 0)
@@ -275,7 +313,8 @@ private struct GalleryPage: View {
                             if let thumb { picture(thumb, size: place.size, offset: place.offset) }
                             if let full { picture(full, size: place.size, offset: place.offset).opacity(fullShown) }
                         }
-                        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+                        // Faint (21:41: "cień za dziełem znacznie słabszy").
+                        .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
                         if current { caption(place, geo) }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
@@ -307,7 +346,7 @@ private struct GalleryPage: View {
     private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
         let box = geo.size
         let under = place.map { box.height / 2 + $0.offset.height + $0.size.height / 2 + Whole.gap }
-        return GalleryCaption(work: work, polish: polish, whole: place != nil, open: open)
+        return GalleryCaption(work: work, polish: polish, whole: place != nil, flip: flip, open: open)
             .padding(.top, under ?? 0)
             .padding(.bottom, under == nil ? max(geo.safeAreaInsets.bottom, 34) : 0)
             .frame(width: box.width, height: box.height, alignment: under == nil ? .bottom : .top)
@@ -316,14 +355,18 @@ private struct GalleryPage: View {
     /// Behind the whole work: its own main colour, quiet and dark
     /// (Mateusz 2026-11-23 17:42: "Tło za dziełem nie czarne, tylko
     /// wypełnione stonowaną barwą dzieła").
+    /// In light mode a paper in the work's colour, light and nearly grey
+    /// (Mateusz 2026-11-23 21:43: "Podkład jasny w trybie jasnym i ciemny w
+    /// trybie ciemnym").
     private var behind: Color {
         let hex = work.item.colors.first?.hex ?? ""
-        return Self.toned(UIColor(Color(hexString: hex) ?? .black))
+        return Self.toned(UIColor(Color(hexString: hex) ?? .black), light: scheme == .light)
     }
 
-    static func toned(_ color: UIColor) -> Color {
+    static func toned(_ color: UIColor, light: Bool = false) -> Color {
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
         color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        if light { return Color(hue: hue, saturation: min(saturation * 0.25, 0.1), brightness: 0.93) }
         return Color(hue: hue, saturation: min(saturation * 0.7, 0.4), brightness: 0.2)
     }
 
@@ -445,7 +488,7 @@ private struct Whole {
     let offset: CGSize
 
     /// The caption's share of the screen's height, and the margins.
-    static let caption: CGFloat = 0.3
+    static let caption: CGFloat = 0.36
     static let side: CGFloat = 20
     static let gap: CGFloat = 12
 
@@ -641,12 +684,54 @@ private struct GalleryCaption: View {
     /// Under the whole work: with the museum and the artist's years, on
     /// the glow; over the cut one only the title and the artist, on a shade.
     var whole = false
+    /// The title tapped: the work whole, or cut again (Mateusz 2026-11-23
+    /// 21:41: "kliknięcie w tytuł także przenosi do całego dzieła … wraca
+    /// na pełny ekran").
+    let flip: () -> Void
+    /// "Karta dzieła", under the whole work's caption (21:41).
     let open: () -> Void
+
+    @Environment(\.colorScheme) private var scheme
 
     private var item: Item { work.item }
 
     var body: some View {
-        Button(action: open) {
+        VStack(alignment: .leading, spacing: 18) {
+            Button(action: flip) { words }
+                .buttonStyle(.plain)
+            if whole {
+                // As the app's black buttons (21:43: "jak czarne guziki w
+                // aplikacji").
+                Button(action: open) {
+                    Label("Karta dzieła".bound, systemImage: "text.below.photo")
+                }
+                .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
+                .transition(.opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, Theme.gutter + 2)
+        .padding(.top, whole ? 0 : 70)
+        .padding(.bottom, 12)
+        .background(alignment: .bottom) {
+            LinearGradient(
+                stops: [
+                    .init(color: .black.opacity(0), location: 0),
+                    .init(color: .black.opacity(0.55), location: 0.45),
+                    .init(color: .black.opacity(0.8), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .padding(.bottom, -140)  // to the screen's foot
+            .opacity(whole ? 0 : 1)
+            .allowsHitTesting(false)
+        }
+        // Light text on the cut work's shade in both modes; under the whole
+        // one, on its light or dark ground, as the phone is set.
+        .environment(\.colorScheme, whole ? scheme : .dark)
+    }
+
+    private var words: some View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     let held = item.kind == .artwork ? item.heldBy ?? Names.source(item.source) : Names.source(item.source)
@@ -673,27 +758,8 @@ private struct GalleryCaption: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, Theme.gutter + 2)
-            .padding(.top, whole ? 0 : 70)
-            .padding(.bottom, 12)
-            .shadow(color: .black.opacity(whole ? 0.45 : 0), radius: 6, y: 1)
-            .background(alignment: .bottom) {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0), location: 0),
-                        .init(color: .black.opacity(0.55), location: 0.45),
-                        .init(color: .black.opacity(0.8), location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .padding(.bottom, -140)  // to the screen's foot
-                .opacity(whole ? 0 : 1)
-                .allowsHitTesting(false)
-            }
-        }
-        .buttonStyle(.plain)
-        // Light text on the shade in both modes.
-        .environment(\.colorScheme, .dark)
+            .shadow(color: .black.opacity(whole && scheme == .dark ? 0.45 : 0), radius: 6, y: 1)
+            .contentShape(Rectangle())
     }
 
     private var title: String {
