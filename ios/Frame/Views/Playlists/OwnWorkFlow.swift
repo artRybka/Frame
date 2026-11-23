@@ -48,6 +48,9 @@ struct OwnWorkFlow: View {
     @State private var found: [[Double]]?
     /// They are the rectangle the camera followed, not the server's answer.
     @State private var foundByCamera = false
+    /// The outer edge of the work's frame found with it (on the
+    /// photograph shown); nil when none was.
+    @State private var frameFound: [[Double]]?
     /// The corners he went on with; nil, the photograph whole. On the
     /// photograph as taken, which the server, the merge and the LiDAR's
     /// depth go by.
@@ -272,6 +275,7 @@ struct OwnWorkFlow: View {
                 let seen = sent.corners == nil && (sent.shape.isEmpty || sent.shape == "rectangle") ? shots.outline : nil
                 found = Self.shown(sent.corners ?? seen, of: sent)
                 foundByCamera = seen != nil
+                frameFound = seen == nil ? Self.shown(sent.surround, of: sent) : nil
                 if scanned {
                     let token = sent.token
                     // Within the corners the server's merge would go by:
@@ -449,7 +453,10 @@ struct OwnWorkFlow: View {
         let glare = chart + (cleaned ? "Odblaski usunięte z trzech zdjęć. "
             : merged == nil && merging != nil && !mergeEnded ? "W tle łączę trzy zdjęcia i usuwam odblaski. " : "")
         if foundByCamera { return glare + "Zaznaczyłem to, co widział aparat. Popraw narożniki, jeśli trzeba." }
-        if found != nil { return glare + "Rama wycięta. Popraw narożniki, jeśli trzeba." }
+        if found != nil, frameFound != nil {
+            return glare + "Zaznaczyłem dzieło i jego ramę. Popraw narożniki, jeśli trzeba."
+        }
+        if found != nil { return glare + "Zaznaczyłem dzieło. Ramę dodasz w „Rama”, jeśli trzeba." }
         return glare + "Nie znalazłem dzieła na zdjęciu. Ustaw narożniki sam."
     }
 
@@ -457,23 +464,32 @@ struct OwnWorkFlow: View {
     private var cutStep: some View {
         if let photo, let incoming {
             CutEditor(
-                photo: .local(photo), aspect: incoming.aspect, corners: found,
+                photo: .local(photo), aspect: incoming.aspect, corners: found, frame: frameFound,
                 saveTitle: retaking == nil ? "Dalej" : "Zapisz", savesUnchanged: true,
                 note: cutNote,
                 cancel: again
-            ) { chosen in
-                await cutChosen(chosen)
+            ) { chosen, frame, frameMoved in
+                await cutChosen(chosen, frame: frame, frameMoved: frameMoved)
             }
         }
     }
 
-    private func cutChosen(_ chosen: [[Double]]) async -> Bool {
+    private func cutChosen(_ chosen: [[Double]], frame: [[Double]]?, frameMoved: Bool) async -> Bool {
         let whole = chosen == [[0, 0], [1, 0], [1, 1], [0, 1]]
         // Set on the photograph shown; said as on the one taken.
         cutShown = whole ? nil : chosen
         corners = whole ? nil : incoming.flatMap { Self.taken(chosen, of: $0) } ?? chosen
         cutBy = chosen == found ? "auto" : "owner"
-        guard incoming != nil else { return false }
+        guard let waiting = incoming else { return false }
+        // The frame he set, or took away ("Rama", "Bez ramy"): kept by
+        // the server for the work added (its `_surround`), as on the
+        // photograph taken.
+        if frameMoved, let corners {
+            frameFound = frame
+            try? await model.backend.ownFound(
+                token: waiting.token, corners: corners, surround: Self.taken(frame, of: waiting), owner: true
+            )
+        }
         // The scan is made while he sets the corners; what is left of
         // that is waited for here, under a word of it.
         if let merging {
@@ -658,7 +674,7 @@ struct OwnWorkFlow: View {
         guard LaunchRoute.screen != "own-cut" else { return }
         for _ in 0 ..< 50 where step != .cut { try? await Task.sleep(for: .milliseconds(200)) }
         guard step == .cut else { return }
-        _ = await cutChosen(DemoOwn.work)
+        _ = await cutChosen(DemoOwn.work, frame: nil, frameMoved: false)
         // The page with the white balance (the demo has no colour chart),
         // as set by `-scanBalance`; the later screens go on from it.
         balance = OwnBalance.launched
@@ -766,8 +782,9 @@ final class OwnSending {
             if seen.phoneCuts == true, seen.corners == nil,
                let found = await OwnLocalCut.find(file: file, picture: OwnWorkFlow.upright(picture)) {
                 seen.corners = found.work
+                seen.surround = found.surround
                 seen.shape = "rectangle"
-                try? await backend.ownFound(token: token, corners: found.work, surround: found.surround)
+                try? await backend.ownFound(token: token, corners: found.work, surround: found.surround, owner: false)
             }
             return seen
         }

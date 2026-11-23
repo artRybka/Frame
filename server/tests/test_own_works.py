@@ -166,6 +166,42 @@ def test_the_phone_finds_the_work_and_opus_is_asked_nothing(
         assert all(p["model"] != OPUS for p in fake.asked)
 
 
+def test_the_frame_he_sets_in_kadr_is_kept_over_what_was_found(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-22: „Dlaczego gdy dodaję własne dzieło to kadrowane
+    # jest tylko dzieło a rama obrazu nie?” — "Dzieło / Rama / Bez ramy"
+    # in the own work's "Kadr": what he set goes, over Opus's answer too.
+    fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
+    frame = [[0.05, 0.05], [0.95, 0.05], [0.95, 0.95], [0.05, 0.95]]
+    with _client(service) as client:
+        for his, kept in ((frame, True), (None, False)):
+            token = client.post(
+                "/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))}
+            ).json()["token"]
+            found = client.post(f"/api/own/photos/{token}/find").json()
+            assert found["looked"] and found["surround"] is not None
+            corners = found["corners"]
+            # Without his word Opus's answer stands; with it, his.
+            client.post(f"/api/own/photos/{token}/found", json={"corners": corners})
+            assert client.post(f"/api/own/photos/{token}/find").json()["surround"] is not None
+            body: dict[str, object] = {"corners": corners, "owner": True}
+            if his is not None:
+                body["surround"] = his
+            assert client.post(f"/api/own/photos/{token}/found", json=body).status_code == 200
+            added = client.post(
+                "/api/own/works", json={"token": token, "corners": corners, "text": TEXT}
+            )
+            assert added.status_code == 200, added.text
+            surround = added.json()["cut"]["surround"]
+            if kept:
+                assert surround is not None
+                assert abs(surround[0][0] - 0.05) < 0.01 and abs(surround[2][1] - 0.95) < 0.01
+            else:
+                assert surround is None
+
+
 def test_the_frame_about_a_work_of_his_own_holds_it_in_the_shape_of_his_size(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811

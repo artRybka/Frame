@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.332
+
+- Własne dzieło w ramie: iPhone sam znajduje ramę wokół dzieła, a w
+  kroku „Kadr” można wybrać „Dzieło”, „Rama” albo „Bez ramy”, jak przy
+  dziełach z muzeów. Ustawiona rama trafia do widoku „W ramie”.
+
 ## 1.145.331
 
 - Restaurator najpierw nakłada zdjęcie muzeum dokładnie na rysunek

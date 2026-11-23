@@ -40,6 +40,9 @@ struct OwnIncoming: Codable, Hashable, Sendable {
     /// na iPhone, bez Opus”): the server asked no one. nil from a server
     /// that asks Opus (to 1.145.300).
     var phoneCuts: Bool? = nil
+    /// The outer edge of the work's frame (or passe-partout), as found
+    /// with it; nil when none was (the card's "W ramie", `Cut.surround`).
+    var surround: [[Double]]? = nil
 
     var aspect: Double { height > 0 ? Double(width) / Double(height) : 0.75 }
 }
