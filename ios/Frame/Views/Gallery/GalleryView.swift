@@ -200,13 +200,13 @@ struct GalleryView: View {
 /// The thumbnail comes first; the full picture fades in over it, cut around
 /// the same point so nothing moves (Mateusz 2026-11-23: "mignięcie/
 /// przesunięcie"; a focus pull "wygląda źle, zróbmy jednak delikatne
-/// przejście"). A work much wider than the screen moves across very slowly
-/// as the phone is turned (`Pan`).
+/// przejście"). It starts a little closer and draws back, drifting a
+/// little sideways.
 private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let work: RemoteItem
-    /// On screen now: a wide work follows the phone's turn.
+    /// On screen now: it draws back and drifts a little.
     var current = false
     /// Tapped: drawn back to the whole of it, above the caption.
     var whole = false
@@ -216,11 +216,13 @@ private struct GalleryPage: View {
     @State private var focus: UnitPoint?
     /// The full picture over the thumbnail, 1 once it is in.
     @State private var fullShown: Double = 1
-    /// How far a wide work has moved from where it was cut (points).
+    /// How far the work has drifted from where it was cut (points).
     @State private var pan: CGFloat = 0
     /// Each work comes a little closer and slowly draws back while it is
     /// shown (Mateusz 2026-11-23 14:55 UTC: "zawsze zaczynaj od przybliżenia
-    /// i oddalaj"); the move sideways is the turn's alone (`follow`).
+    /// i oddalaj"), drifting a little to one side or the other as it does
+    /// (17:01: "Jednak bez ruchu pod wpływem żyroskopu. Tylko oddalenie po
+    /// startowym zoomie i bardzo delikatny ruch w bok (kierunek zmienny)").
     @State private var zoom: CGFloat = GalleryPage.closer
     static let closer: CGFloat = 1.06
     /// Seconds to draw back from `closer` to the whole picture.
@@ -240,15 +242,14 @@ private struct GalleryPage: View {
                         if let full { picture(full, layout, place).opacity(fullShown) }
                     }
                     .scaleEffect(reduceMotion || whole ? 1 : zoom, anchor: layout.anchor)
-                    .offset(x: layout.wide && !whole ? pan : 0)
+                    .offset(x: whole ? 0 : pan)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
                     .transition(.opacity)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .task(id: geo.size.width > 0 && current && !reduceMotion) { await follow(geo.size) }
-            .task(id: current) { await drawBack() }
+            .task(id: current && geo.size.width > 0) { await drawBack(geo.size) }
         }
         .background(whole ? Color(white: 0.055) : placeholder)
         .task(id: work.id) { await load() }
@@ -311,43 +312,36 @@ private struct GalleryPage: View {
         focus = await SubjectFocus.shared.point(in: image, key: key, subject: true)
     }
 
-    /// A wide work moves only once the phone is turned, the way it was
-    /// turned, and on very slowly after (Mateusz 2026-11-23: "zdecydowanie
-    /// zbyt szybka. to musi być minimalny ruch. Ruch niech startuje pod
-    /// żyroskopem - to on nadaje kierunek i ew przyspiesza animację").
-    private func drawBack() async {
+    private func drawBack(_ box: CGSize) async {
         guard current else {
             // Off the screen by then: closer again for the next time.
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
             var quiet = Transaction()
             quiet.disablesAnimations = true
-            withTransaction(quiet) { zoom = Self.closer }
+            withTransaction(quiet) {
+                zoom = Self.closer
+                pan = 0
+            }
             return
         }
+        guard !reduceMotion else { return }
         withAnimation(.easeOut(duration: Self.drawBack)) { zoom = 1 }
+        // The picture comes a moment after the page: the drift once it can
+        // be cut, as far as its edges allow.
+        while !Task.isCancelled, full ?? thumb == nil || focus == nil {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard !Task.isCancelled, let shown = full ?? thumb, let focus else { return }
+        let layout = Fill(picture: shown.size, box: box, focus: focus)
+        let low = -layout.room.width - layout.offset.width, high = layout.room.width - layout.offset.width
+        let way: CGFloat = Bool.random() ? 1 : -1
+        let to = min(max(way * Self.drift, low), high)
+        withAnimation(.easeInOut(duration: Self.drawBack)) { pan = to }
     }
 
-    private func follow(_ box: CGSize) async {
-        guard current, !reduceMotion, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
-        let tilt = Tilt.shared
-        tilt.start()
-        defer { tilt.stop() }
-        var pace = Pan()
-        let step = 1.0 / 30
-        while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(step))
-            guard let shown = full ?? thumb, let focus else { continue }
-            let layout = Fill(picture: shown.size, box: box, focus: focus)
-            guard layout.wide else { continue }
-            // Where the picture may lie: +room shows its left edge.
-            let room = layout.room.width
-            let low = -room - layout.offset.width, high = room - layout.offset.width
-            let next = min(max(pan + pace.advance(tilt: tilt.x, by: step), low), high)
-            if next != pan { pan = next }
-            if next == low || next == high { pace.stopped() }
-        }
-    }
+    /// How far a work drifts sideways while it draws back (points), at most.
+    static let drift: CGFloat = 22
 }
 
 /// A tapped work drawn back to the whole of it (Mateusz 2026-11-23 16:32:
@@ -452,37 +446,6 @@ private struct Fill {
 
     /// Much wider than the box: a good part of it is cut off.
     var wide: Bool { room.width * 2 > size.width * 0.3 }
-}
-
-/// How a wide work moves with the phone's turn: still until it is turned;
-/// then the way it was turned (turned right, the right part comes in), a
-/// little faster while it is turned, and on very slowly after, until its
-/// edge. Points a second.
-private struct Pan {
-    /// After a turn, the slow way on.
-    static let creep: Double = 2.5
-    /// The most a turn adds: still a slow move.
-    static let turned: Double = 16
-    /// A turn smaller than this is the hand's shake (`Tilt.x`, -1…1).
-    static let still: Double = 0.12
-
-    private var way: Double = 0
-    private var speed: Double = 0
-
-    mutating func advance(tilt: Double, by step: Double) -> CGFloat {
-        if abs(tilt) > Self.still { way = tilt > 0 ? -1 : 1 }
-        let along = way == 0 ? 0 : max(0, -tilt * way)
-        let goal = way == 0 ? 0 : Self.creep + Self.turned * min(along, 1)
-        // Speeds up within a second, slows down over a couple (Mateusz
-        // 2026-11-23 15:50: "Trochę większa dynamika po przechyleniu").
-        let ease = goal > speed ? 1.6 : 0.8
-        speed += (goal - speed) * min(step * ease, 1)
-        return CGFloat(way * speed * step)
-    }
-
-    mutating func stopped() {
-        speed = 0
-    }
 }
 
 /// The work's caption laid on its lower part (Mateusz 2026-11-23, variant 2:
