@@ -3,8 +3,8 @@
 ## 1.145.352
 
 - Galeria: przytrzymanie i dotknięcie tytułu pokazują całe dzieło,
-  pod podpisem guzik „Karta dzieła”, słabszy cień; kolejne dzieła
-  kadrowane w tle.
+  pod podpisem guzik „Karta dzieła”, słabszy cień, jasny podkład
+  w trybie jasnym; kolejne dzieła kadrowane w tle.
 
 ## 1.145.351
 

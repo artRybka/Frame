@@ -125,6 +125,8 @@ struct GalleryView: View {
             Task { await model.like(work.summary, !on) }
         } label: {
             GalleryHeart(on: on, flashes: flashes)
+                // Seen on the light paper too.
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
                 .padding(10)
                 .contentShape(Rectangle())
         }
@@ -234,6 +236,7 @@ struct GalleryView: View {
 private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     let work: RemoteItem
     /// On screen now: it draws back and drifts a little.
     var current = false
@@ -295,7 +298,12 @@ private struct GalleryPage: View {
                     .animation(whole ? .easeIn(duration: 0.26) : .easeOut(duration: 0.3).delay(0.08), value: whole)
                     .allowsHitTesting(!whole)
                     ZStack {
-                        if let glow { Glow(edges: glow, size: place.size, offset: place.offset) }
+                        if let glow {
+                            Glow(edges: glow, size: place.size, offset: place.offset)
+                                // On paper, paler (21:43: "Podkład jasny w
+                                // trybie jasnym i ciemny w trybie ciemnym").
+                                .opacity(scheme == .light ? 0.62 : 1)
+                        }
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .opacity(whole ? 1 : 0)
@@ -347,14 +355,18 @@ private struct GalleryPage: View {
     /// Behind the whole work: its own main colour, quiet and dark
     /// (Mateusz 2026-11-23 17:42: "Tło za dziełem nie czarne, tylko
     /// wypełnione stonowaną barwą dzieła").
+    /// In light mode a paper in the work's colour, light and nearly grey
+    /// (Mateusz 2026-11-23 21:43: "Podkład jasny w trybie jasnym i ciemny w
+    /// trybie ciemnym").
     private var behind: Color {
         let hex = work.item.colors.first?.hex ?? ""
-        return Self.toned(UIColor(Color(hexString: hex) ?? .black))
+        return Self.toned(UIColor(Color(hexString: hex) ?? .black), light: scheme == .light)
     }
 
-    static func toned(_ color: UIColor) -> Color {
+    static func toned(_ color: UIColor, light: Bool = false) -> Color {
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
         color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        if light { return Color(hue: hue, saturation: min(saturation * 0.25, 0.1), brightness: 0.93) }
         return Color(hue: hue, saturation: min(saturation * 0.7, 0.4), brightness: 0.2)
     }
 
@@ -679,6 +691,8 @@ private struct GalleryCaption: View {
     /// "Karta dzieła", under the whole work's caption (21:41).
     let open: () -> Void
 
+    @Environment(\.colorScheme) private var scheme
+
     private var item: Item { work.item }
 
     var body: some View {
@@ -686,11 +700,12 @@ private struct GalleryCaption: View {
             Button(action: flip) { words }
                 .buttonStyle(.plain)
             if whole {
+                // As the app's black buttons (21:43: "jak czarne guziki w
+                // aplikacji").
                 Button(action: open) {
                     Label("Karta dzieła".bound, systemImage: "text.below.photo")
-                        .font(.subheadline.weight(.medium))
                 }
-                .buttonStyle(.glass)
+                .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
                 .transition(.opacity)
             }
         }
@@ -711,8 +726,9 @@ private struct GalleryCaption: View {
             .opacity(whole ? 0 : 1)
             .allowsHitTesting(false)
         }
-        // Light text on the shade in both modes.
-        .environment(\.colorScheme, .dark)
+        // Light text on the cut work's shade in both modes; under the whole
+        // one, on its light or dark ground, as the phone is set.
+        .environment(\.colorScheme, whole ? scheme : .dark)
     }
 
     private var words: some View {
@@ -742,7 +758,7 @@ private struct GalleryCaption: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .shadow(color: .black.opacity(whole ? 0.45 : 0), radius: 6, y: 1)
+            .shadow(color: .black.opacity(whole && scheme == .dark ? 0.45 : 0), radius: 6, y: 1)
             .contentShape(Rectangle())
     }
 
