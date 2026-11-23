@@ -25,14 +25,11 @@ enum LookPhoto {
         return small.jpegData(compressionQuality: 0.85)
     }
 
-    /// The server's 409 (no key, switched off, nothing ready yet, the
-    /// month's limit) and 502 (Google did not answer) in Polish.
+    /// The server's 409 (the works' numbers not ready yet) in Polish.
     static func why(_ error: Error) -> String {
         switch error {
         case BackendError.http(409, _):
-            return "Szukanie wyglądem jest teraz niedostępne. Sprawdź Konfiguracja → Gemini."
-        case BackendError.http(502, _):
-            return "Google teraz nie odpowiada. Spróbuj za chwilę."
+            return "Szukanie wyglądem jeszcze się przygotowuje. Postęp jest w Konfiguracja → Diagnostyka."
         default:
             return error.localizedDescription
         }

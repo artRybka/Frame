@@ -78,7 +78,10 @@ final class TasksTests: XCTestCase {
         let uses = try XCTUnwrap(settings.leftoverState?.uses)
         XCTAssertEqual(TasksSection.discover(settings).map(\.title), ["Studium dnia", "Propozycje kuratora"])
         XCTAssertEqual(TasksSection.groups.map(\.title), ["Katalog", "Obraz", "Opisy i fakty", "Odkrywaj"])
-        XCTAssertEqual(TasksSection.switches("Obraz", settings).map(\.title), ["Odciski wyglądu"])
+        // The looks are SigLIP's on the server since 2026-11-23: no switch.
+        XCTAssertEqual(TasksSection.switches("Obraz", settings).map(\.title), [])
+        // Nor are the museum photographs cut by Claude: the phone does it.
+        XCTAssertNil(uses.first { $0.key == "crops" })
         let grouped = Set(TasksSection.groups.flatMap(\.keys))
         XCTAssertTrue(uses.allSatisfy { grouped.contains($0.key) })
         // every when a task can have: "when asked" only for what can run now
@@ -90,9 +93,6 @@ final class TasksTests: XCTestCase {
         XCTAssertFalse(audit.isCheck)
         XCTAssertEqual(audit.nightTasks, ["audit"])
         XCTAssertEqual(uses.first { $0.key == "studies" }?.whens, [.rest, .night, .off])
-        let crops = try XCTUnwrap(uses.first { $0.key == "crops" })
-        XCTAssertEqual(TasksSection.chips(crops), ["Co noc", "Batch ½", "+ koniec okresu"])
-        XCTAssertEqual(TasksSection.costLine(crops, settings: settings), "7 dni: " + AiSection.usd(0.43))
         let texts = try XCTUnwrap(uses.first { $0.key == "pl_text" })
         XCTAssertEqual(TasksSection.chips(texts), ["Koniec okresu", "Batch ½"])
         XCTAssertEqual(TasksSection.costLine(texts, settings: settings), "7 dni: " + AiSection.usd(0.21))

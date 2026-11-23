@@ -207,13 +207,11 @@ def memory_parts(service: FrameService) -> dict[str, object]:
     """What :class:`memory.MemoryLog` writes beside the process's numbers:
     the parts that grow with the catalogue."""
     seen = service.seen
-    looks = service.looks
     return {
         "works": service.library.count(),
         "seen_rows": len(seen.index),
         "seen_mb": seen.index._rows.nbytes >> 20,
         "seen_model": seen.model.loaded(),
-        "looks_mb": (looks.index._rows.nbytes + looks.three._rows.nbytes) >> 20,
         "threads": threading.active_count(),
     }
 
@@ -293,7 +291,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # are answered (they read and send thousands of thumbnails; the
             # server answered in 30-70 s for minutes after 1.145.99 began).
             for later in (
-                threading.Timer(LOOKS_DELAY, service.looks.start),
+                threading.Timer(LOOKS_DELAY, service.looks.forget_google),
                 threading.Timer(LOOKS_DELAY, service.seen.start),
                 # The catalogue's palettes for "Barwy", before anyone asks.
                 threading.Timer(LOOKS_DELAY, service.looks.palettes.warm),

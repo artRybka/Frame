@@ -36,13 +36,12 @@ from typing import TYPE_CHECKING, Any
 import anthropic
 
 from .ai.client import AiUnavailable
-from .leftover import CROP_JUDGE_USD, CROP_USD, CROPS, LABELS, NEVER, TEXTS, task
+from .leftover import LABELS, NEVER, TEXTS, task
 
 if TYPE_CHECKING:
     from .ai import AiWorker
     from .ai.client import Claude
     from .ai.config import AiConfigStore
-    from .ai.crops import Crops
     from .leftover import Leftover
     from .library import Library
 
@@ -50,10 +49,9 @@ log = logging.getLogger(__name__)
 
 STATE_KEY = "on_demand_runs"
 #: What may be run on demand, in Konfiguracja's words (``leftover.LABELS``).
-USES = (*TEXTS, CROPS)
-#: The questions asked at once: Haiku's texts are short, Opus's corners long
-#: (and the crops' own pool of two answers the cards meanwhile).
-THREADS = {**dict.fromkeys(TEXTS, 4), CROPS: 2}
+USES = TEXTS
+#: The questions asked at once.
+THREADS = dict.fromkeys(TEXTS, 4)
 #: What one run may be given (USD).
 MIN_USD, MAX_USD = 1.0, 500.0
 #: The normal price over the Batch API's.
@@ -126,7 +124,6 @@ class OnDemand:
         config: AiConfigStore,
         ai: AiWorker,
         leftover: Leftover,
-        crops: Crops | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self.library = library
@@ -134,7 +131,6 @@ class OnDemand:
         self.config = config
         self.ai = ai
         self.leftover = leftover
-        self.crops = crops
         self.now = now or (lambda: datetime.now(UTC))
         self._runs: dict[str, _Run] = {}
         self._lock = threading.Lock()
@@ -172,32 +168,6 @@ class OnDemand:
         for kind in TEXTS:
             if kind in ai.jobs:
                 plans[kind] = text_plan(kind)
-        crops = self.crops
-        if crops is not None:
-
-            def crops_one(item_id: str) -> bool | None:
-                claimed = crops.claim_now(item_id)
-                if claimed is not None:
-                    return claimed
-                item = self.library.get(item_id)
-                if item is None or item_id in (crops.state().get("claims") or {}):
-                    return None
-                return crops.now(item)
-
-            def crops_waiting() -> list[str]:
-                order = crops.state().get("order") or {}
-                ordered = set((order.get("ids") or {}).values())
-                looks = [i.id for i in crops.candidates(crops.asked()) if i.id not in ordered]
-                return list(dict.fromkeys([*crops.claims_waiting(), *looks]))
-
-            plans[CROPS] = Plan(
-                # Opus's corners at the full price (the judge's look a
-                # hundredth of it): reckoned high
-                each=lambda: FULL_PRICE * (CROP_USD + CROP_JUDGE_USD),
-                waiting=crops_waiting,
-                one=crops_one,
-                able=lambda: config.enabled("crops"),
-            )
         return plans
 
     def each_usd(self, key: str) -> float | None:

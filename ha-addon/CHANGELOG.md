@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.353
+
+- Porządki: zdjęć z muzeów nie kadruje już Opus (robi to iPhone),
+  a odciski wyglądu robi tylko SigLIP na serwerze, bez Google; stare
+  odciski Gemini skasowane. W Konfiguracji bez zadania „Kadrowanie”
+  i przełącznika „Szukanie wyglądem”, postęp odcisków w Diagnostyce.
+  W „Do sprawdzenia” „Popraw kadr” zamiast „Przytnij”.
+
 ## 1.145.352
 
 - Galeria: przytrzymanie i dotknięcie tytułu pokazują całe dzieło,

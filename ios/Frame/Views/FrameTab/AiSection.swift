@@ -50,7 +50,7 @@ struct AiSection: View {
 
     private var geminiBody: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, szukanie wyglądem, restauracja dzieł")
+            SectionHeader(title: "Gemini (Google)", subtitle: "Arkusze kompozycji, restauracja dzieł")
             Card {
                 if let limit = settings.geminiMonthlyLimitUsd {
                     if settings.geminiKeySet != true {
@@ -72,7 +72,7 @@ struct AiSection: View {
             if let rows = settings.geminiCosts {
                 costSection(rows, since: Self.monthStart())
             }
-            if settings.geminiMonthlyLimitUsd != nil, settings.drawn != nil || settings.looks != nil {
+            if settings.geminiMonthlyLimitUsd != nil, settings.drawn != nil {
                 SectionHeader(title: "Co robi Gemini")
                 Card {
                     if let drawn = settings.drawn {
@@ -83,20 +83,6 @@ struct AiSection: View {
                             cost: "drawn"
                         ) { AiSettingsUpdate(drawn: $0) }
                         if settings.geminiKeySet == true, let note = Self.drawnNote(settings, on: drawn) {
-                            Label(note.text, systemImage: note.icon)
-                                .font(.caption)
-                                .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
-                        }
-                    }
-                    if let looks = settings.looks {
-                        if settings.drawn != nil { Divider() }
-                        toggle(
-                            "Szukanie wyglądem",
-                            hint: "Szukaj opisem wyglądu, zdjęciem i „Podobne wyglądem”. Twoje zdjęcia nie trafiają do Google.",
-                            value: looks,
-                            cost: "looks"
-                        ) { AiSettingsUpdate(looks: $0) }
-                        if settings.geminiKeySet == true, let note = Self.looksNote(settings, on: looks) {
                             Label(note.text, systemImage: note.icon)
                                 .font(.caption)
                                 .foregroundStyle(note.bad ? Theme.bad : Theme.inkSoft)
@@ -357,18 +343,6 @@ struct AiSection: View {
             "Zapisane studia bez arkusza: \(waiting + batch), w tym w Batch: \(batch). Razem ok. \(cost).",
             "clock", false
         )
-    }
-
-    /// Under Szukanie wyglądem: how many of the museums' works can be found
-    /// so, or why none get their numbers now.
-    static func looksNote(_ settings: AiSettings, on: Bool) -> (text: String, icon: String, bad: Bool)? {
-        guard on else { return nil }
-        if settings.looksError != nil {
-            return ("Google teraz nie odpowiada, serwer spróbuje ponownie za pół godziny.", "pause.circle", true)
-        }
-        guard let done = settings.looksDone, let total = settings.looksTotal, total > 0 else { return nil }
-        if done >= total { return ("Gotowe: \(Names.works(total)) z muzeów.", "checkmark.circle", false) }
-        return ("Gotowe \(done) z \(total) dzieł z muzeów, reszta w tle.", "clock", false)
     }
 
     // MARK: Switches and money

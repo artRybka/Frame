@@ -579,13 +579,6 @@ struct PaperWork: Equatable {
     }
 }
 
-/// The work after its card asked whether its photograph is cut down to
-/// the work: `changed` when it was just now.
-struct CutView: Codable, Hashable, Sendable {
-    var changed: Bool
-    var item: Item
-}
-
 /// The owner's cut ("Popraw kadr") or the paper switch.
 struct CutUpdate: Codable, Hashable, Sendable {
     var corners: [[Double]]? = nil
@@ -2040,21 +2033,15 @@ struct AiSettings: Codable, Hashable, Sendable {
     var gatekeeper: Bool? = nil
     /// The night audit of 30 works ("Do sprawdzenia"); nil from older servers.
     var audit: Bool? = nil
-    /// Szukaj wyglądem (Google's embedding model): the switch, how many
-    /// of the museums' works have their numbers, and why none are made now.
-    /// Nil from older servers.
-    var looks: Bool? = nil
+    /// Szukaj wyglądem (SigLIP on the server): how many works have their
+    /// numbers (Konfiguracja → Diagnostyka). Nil from older servers.
     var looksDone: Int? = nil
     var looksTotal: Int? = nil
-    var looksError: String? = nil
     /// The study's "Droga dzieła" (Haiku); nil from older servers.
     var journey: Bool? = nil
     /// Facts from the web woven into new studies (Sonnet with the web
     /// search); nil from older servers.
     var webFacts: Bool? = nil
-    /// Museum photographs cut down to the work ("Kadrowanie zdjęć dzieł");
-    /// nil from older servers.
-    var crops: Bool? = nil
     /// The study's "Jak powstawał" drawn by the image model; nil from
     /// older servers.
     var stages: Bool? = nil
@@ -2290,11 +2277,9 @@ struct AiSettingsUpdate: Encodable, Sendable {
     var twinsJudge: Bool?
     var gatekeeper: Bool?
     var audit: Bool?
-    var looks: Bool?
     var journey: Bool?
     var webFacts: Bool?
     var stages: Bool?
-    var crops: Bool?
     var varnishBlue: Bool?
     var monthlyLimitUsd: Double?
     var drawn: Bool?

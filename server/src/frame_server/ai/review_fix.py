@@ -11,9 +11,9 @@ mended in the app at all. Each finding now carries its own remedy:
   owner opens a finding written before (:meth:`ReviewFixes.suggest`); the
   owner's "Popraw" puts it on the work (:meth:`ReviewFixes.apply`), the
   Polish title at once, the Polish text written anew from the new facts;
-- a picture with a ruler, a colour chart or a cut edge: "Przytnij" asks
-  Opus for the work's corners at once, told what the audit saw
-  (:meth:`ReviewFixes.cut`), and the cut is kept as the owner's;
+- a picture with a ruler, a colour chart or a cut edge: "Popraw kadr"
+  opens the app's own cut (Opus was asked for the corners until
+  2026-11-23), after which the finding is let go (:meth:`ReviewFixes.drop`);
 - a picture to be had better elsewhere: the app's copies sheet, after which
   the finding is let go (:meth:`ReviewFixes.drop`);
 - anything: "Ukryj" takes the work out of the catalogue (:meth:`ReviewFixes.hide`).
@@ -41,7 +41,6 @@ if TYPE_CHECKING:
     from ..library import ImageCache, Item, Library
     from .audit import Audit
     from .client import Claude
-    from .crops import Crops
     from .gatekeeper import Gatekeeper
     from .pl_text import PlTextJob
 
@@ -116,7 +115,6 @@ class ReviewFixes:
         claude: Claude,
         gatekeeper: Gatekeeper,
         audit: Audit,
-        crops: Crops,
         pl_text: PlTextJob,
     ) -> None:
         self.library = library
@@ -124,7 +122,6 @@ class ReviewFixes:
         self.claude = claude
         self.gatekeeper = gatekeeper
         self.audit = audit
-        self.crops = crops
         self.pl_text = pl_text
         self._lock = threading.Lock()
         self._translating = False
@@ -228,24 +225,6 @@ class ReviewFixes:
             return
         self.library.save_note(note.model_copy(update={"data": {**note.data, "title": title}}))
         self.pl_text.forget_title(item.id)
-
-    def cut(self, item_id: str) -> Item:
-        """ "Przytnij": Opus finds the work in its photograph now, told what
-        the audit saw around it, and the cut is kept as the owner's."""
-        item = self._work(item_id)
-        if not self.crops.wanted(item):
-            raise ReviewError("Tego zdjęcia nie da się przyciąć")
-        found = self.finding(item_id) or {}
-        hint = " ".join(
-            str(p.get("problem") or "")
-            for p in found.get("problems") or []
-            if isinstance(p, dict) and p.get("field") == "picture"
-        )
-        updated = self.crops.cut_now(item, hint)
-        if updated is None:
-            raise ReviewError("Nie znalazłem, co wyciąć. Popraw kadr ręcznie na karcie dzieła.")
-        self.drop(item_id, "picture")
-        return updated
 
     # -- the Polish text ------------------------------------------------------------------
 

@@ -55,8 +55,6 @@ class AiView(BaseModel):
     web_facts: bool = True
     #: The study's "Jak powstawał", told from a technical study ("G2").
     stages: bool = True
-    #: Museum photographs cut down to the work ("Kadrowanie zdjęć dzieł").
-    crops: bool = True
     #: Haiku asked whether a green under yellowed varnish is a blue
     #: ("Błękit pod werniksem").
     varnish_blue: bool = True
@@ -94,13 +92,10 @@ class AiView(BaseModel):
     drawn_waiting: int = 0
     drawn_in_batch: int = 0
     drawn_batch_usd: float = SHEET_USD / 2
-    #: Szukanie wyglądem ("G1"): the switch, the museums' works with their
-    #: numbers so far and all that would have them, and why none are made
-    #: now (Google's trouble, the limit).
-    looks: bool = True
+    #: Szukanie wyglądem ("G1"): the works with SigLIP's numbers so far and
+    #: all that would have them (Konfiguracja → Diagnostyka).
     looks_done: int = 0
     looks_total: int = 0
-    looks_error: str | None = None
     study_refresh: StudyRefreshView | None = None
     text_review: TextReviewView | None = None
     #: The day of the month Claude's period begins on, and the period now
@@ -338,7 +333,6 @@ def _view(svc: FrameService) -> AiView:
         journey=True,
         web_facts=True,
         stages=True,
-        crops=config.crops,
         varnish_blue=config.varnish_blue,
         review_count=_review_count(svc),
         monthly_limit_usd=config.monthly_limit_usd,
@@ -358,10 +352,8 @@ def _view(svc: FrameService) -> AiView:
         gemini_monthly_limit_usd=config.gemini_monthly_limit_usd,
         gemini_spent_usd=round(sum(painted.values()), 4),
         gemini_spent_by_kind={k: round(v, 4) for k, v in painted.items()},
-        looks=config.looks,
         looks_done=looks_done,
         looks_total=looks_total,
-        looks_error=svc.looks.trouble if config.looks else None,
         study_refresh=StudyRefreshView(**svc.study_refresh.view()),
         text_review=TextReviewView(**svc.text_review.view()),
         period_day=config.period_day,
@@ -386,7 +378,6 @@ async def put_ai(update: AiConfigUpdate, svc: Svc) -> AiView:
     svc.ai_config.update(update)
     svc.ai.wake()
     svc.drawn.again()  # the limit raised, the sheets switched on
-    svc.looks.nudge()
     return await run_in_threadpool(_view, svc)
 
 
@@ -498,7 +489,6 @@ async def put_gemini_key(update: KeyUpdate, svc: Svc) -> AiView:
     except ValueError as err:
         raise HTTPException(400, str(err)) from err
     svc.drawn.again()
-    svc.looks.nudge()
     return await run_in_threadpool(_view, svc)
 
 
@@ -820,13 +810,6 @@ async def save_polish(item_id: str, draft: PolishDraft, svc: Svc) -> Review:
     return await run_in_threadpool(
         _review_call, svc, svc.review_fixes.save_polish, item_id, draft.frame, draft.full
     )
-
-
-@router.post("/review/{item_id:item}/cut", response_model=Review)
-async def cut_finding(item_id: str, svc: Svc) -> Review:
-    """ "Przytnij": Opus finds the work in its photograph now (about 2
-    cents), told what the audit saw; the cut is the owner's."""
-    return await run_in_threadpool(_review_call, svc, svc.review_fixes.cut, item_id)
 
 
 @router.delete("/review/{item_id:item}/problems/{field}", response_model=Review)

@@ -17,8 +17,9 @@ Step one, this module: the model fetched once from the repository's release
 in ``data/seen``), and every work :meth:`Looks.wanted <frame_server.looks.Looks.wanted>`
 numbered from its kept thumbnail in the background, a few at a time, while
 the app is not in use; a work whose thumbnail changed is numbered again.
-Nothing is asked of them yet but the owner's debug questions: Szukaj and
-"Podobne do" stay with Gemini until most works have their numbers here.
+Szukaj and "Podobne do" are answered by them once most works have their
+numbers here (:meth:`Seen.answers`); Google's numbers, which answered
+before, were taken out on 2026-11-23.
 """
 
 from __future__ import annotations
@@ -494,9 +495,9 @@ class Seen:
         self._answers = (root / ANSWERS).exists()
 
     def answers(self) -> bool:
-        """Whether SigLIP's numbers answer Szukaj in Google's place: once
+        """Whether SigLIP's numbers answer Szukaj: once
         :data:`READY_SHARE` of the works have them and the layers are taught
-        (``seen/answers``; without it Google answers again)."""
+        (``seen/answers``)."""
         return self._answers and self.heads is not None
 
     def settle(self) -> bool:

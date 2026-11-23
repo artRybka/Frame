@@ -490,6 +490,7 @@ struct SettingsPageView: View {
             NotificationsSection(parts: [.test])
             MuseumCropSection()
                 .id("crop")
+            LooksSection()
             if !model.demoMode {
                 ScanTrialSection()
             }

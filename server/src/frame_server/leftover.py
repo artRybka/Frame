@@ -70,7 +70,6 @@ if TYPE_CHECKING:
     from .ai.audit import Audit
     from .ai.client import Claude
     from .ai.config import AiConfig, AiConfigStore, TaskUpdate
-    from .ai.crops import Crops
     from .ai.refresh import StudyRefresh
     from .ai.text_review import TextReview
     from .daily import Daily
@@ -116,12 +115,16 @@ REFRESH, CROPS, REVIEW, STUDIES, KEYWORDS, POLISH, AUDIT = (
 #: "Przegląd zapisanych opisów - czy to nie powielenie nocnego przeglądu i
 #: częściowo zaszłość?"): the works without a text first, then the older
 #: texts written anew.
-USES = (REFRESH, CROPS, STUDIES, KEYWORDS, POLISH, AUDIT)
+USES = (REFRESH, STUDIES, KEYWORDS, POLISH, AUDIT)
+#: The crops (Haiku and Opus) were one of them until 2026-11-23, when the
+#: phone's model took their place (Mateusz: „Kadrowanie dzieła robi teraz
+#: iPhone … wyłączyć poprzednie funkcje”); their key stays for the spending
+#: kept under it and the settings saved with it, which are passed over.
 #: Tasks that are also the night's own portion, its switch in ``AiConfig``
 #: (Mateusz 2026-11-17: "„Nocny przegląd” chyba trzeba połączyć z „Większy
 #: nocny przegląd”"): every night the switch's portion, and in the period's
 #: last days more from the rest when the owner wants it (``more_at_end``).
-BASE = {CROPS: "crops", AUDIT: "audit"}
+BASE = {AUDIT: "audit"}
 #: The catalogue's tidying (Mateusz 2026-11-17, "Porządki katalogu"): the
 #: gatekeeper and the judge of copies, each its switch in ``AiConfig``, run
 #: every night, only when the owner asks, or not at all; nothing of the
@@ -142,11 +145,6 @@ LABELS = {
     REFRESH: (
         "Uzupełnienie studiów",
         "Fakty z sieci do studiów sprzed nich; tekst przepisany tam, gdzie wnoszą dużo.",
-    ),
-    CROPS: (
-        "Kadrowanie",
-        "Zdjęcia z muzeów przycięte do samego dzieła, bez ramy, sztalugi i tektury wokół, "
-        "najpierw Ulubione i playlisty.",
     ),
     REVIEW: (
         "Przegląd zapisanych opisów",
@@ -179,7 +177,6 @@ LABELS = {
 #: How the night's summary names them.
 SHORT = {
     REFRESH: "uzupełnione studia",
-    CROPS: "kadrowanie",
     REVIEW: "przegląd opisów",
     STUDIES: "nowe studia",
     KEYWORDS: "słowa kluczowe katalogu",
@@ -195,11 +192,6 @@ OTHER_KINDS = (
     "audit",
     *DESCRIPTIONS,
 )
-#: The crops: Opus's corners (about a cent a work through the Batch API)
-#: and Haiku's look around the work (a hundredth of a cent), more a night
-#: at most, from the month's rest.
-CROP_USD, CROP_JUDGE_USD = 0.01, 0.0002
-CROPS_A_NIGHT, CROP_LOOKS_A_NIGHT = 540, 2400
 #: How long the count of the catalogue's texts waiting is kept (s).
 TEXTS_FRESH = 600.0
 #: The audit: Haiku and its critic about a work (a fifth of a cent).
@@ -219,7 +211,6 @@ WHENS = (IN_REST, EVERY_NIGHT, ONLY_ASKED, NEVER)
 A_NIGHT_CHOICES: dict[str, tuple[int, ...]] = {
     KEYWORDS: TEXTS_A_NIGHT_OPTIONS,
     POLISH: TEXTS_A_NIGHT_OPTIONS,
-    CROPS: (100, 270, 540, 1000, 2000),
     STUDIES: (5, 10, 25, 50),
     AUDIT: (100, 270, 500, 1000),
 }
@@ -227,7 +218,7 @@ A_NIGHT_CHOICES: dict[str, tuple[int, ...]] = {
 NIGHT_USD_CHOICES = (1.0, 2.0, 5.0, 10.0, 20.0, 50.0)
 PERIOD_USD_CHOICES = (5.0, 10.0, 20.0, 50.0, 100.0, 200.0)
 #: What may ask now instead of through the Batch API (``on_demand.USES``).
-NORMAL = (*TEXTS, CROPS)
+NORMAL = TEXTS
 
 
 def task(config: AiConfig, key: str) -> TaskSettings:
@@ -424,7 +415,6 @@ class Leftover:
         now: Callable[[], datetime] | None = None,
         refresh: StudyRefresh | None = None,
         review: TextReview | None = None,
-        crops: Crops | None = None,
         audit: Audit | None = None,
     ) -> None:
         self.library = library
@@ -439,7 +429,6 @@ class Leftover:
         self.now = now or (lambda: datetime.now(UTC))
         self.refresh = refresh
         self.review = review
-        self.crops = crops
         self.audit = audit
         self._lock = threading.Lock()
         #: The catalogue's texts waiting, as last worked out (when, count, USD).
@@ -729,7 +718,7 @@ class Leftover:
     def _made_uses(self) -> list[Use]:
         config = self.config
         found: list[Use] = []
-        refresh, review, crops, audit = self.refresh, self.review, self.crops, self.audit
+        refresh, review, audit = self.refresh, self.review, self.audit
         if refresh is not None:
 
             def refresh_run(usd: float) -> tuple[int, float, bool]:
@@ -744,31 +733,6 @@ class Leftover:
                     lambda: len(refresh.waiting()),
                     lambda: config.enabled("web_facts") and self.study.job.enabled(),
                     refresh_run,
-                )
-            )
-        if crops is not None:
-
-            def crops_run(usd: float) -> tuple[int, float, bool]:
-                waiting = crops.waiting_claims()
-                corners = min(waiting, self._cap(CROPS, CROPS_A_NIGHT), math.floor(usd / CROP_USD))
-                # Haiku's look around the works, for the next nights' corners
-                # (those the night's own share does not reach)
-                unseen = len(crops.candidates(crops.asked())) - crops.base_limit(False)
-                rest = usd - corners * CROP_USD
-                looks = min(CROP_LOOKS_A_NIGHT, unseen, math.floor(rest / CROP_JUDGE_USD))
-                looks = max(looks, 0)
-                crops.give_extra(looks, corners, self._period_end())
-                usd = corners * CROP_USD + looks * CROP_JUDGE_USD
-                return corners + looks, usd, waiting > corners
-
-            found.append(
-                Use(
-                    CROPS,
-                    CROP_USD,
-                    crops.waiting_claims,
-                    lambda: config.enabled("crops") and not crops.on_phone(),
-                    crops_run,
-                    cap=self._cap(CROPS, CROPS_A_NIGHT),
                 )
             )
         found.append(

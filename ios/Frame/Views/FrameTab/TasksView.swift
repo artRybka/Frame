@@ -105,7 +105,7 @@ struct TasksSection: View {
             ServerWork(names: ["tidy"]),
             ServerWork(package: "indexes", label: "Spisy muzeów"),
         ]),
-        TaskGroup(title: "Obraz", keys: ["crops"], server: [
+        TaskGroup(title: "Obraz", keys: [], server: [
             ServerWork(names: ["sharper"]),
             ServerWork(names: ["tile sets"]),
             ServerWork(names: ["kept originals"]),
@@ -278,17 +278,11 @@ struct TasksSection: View {
     /// from the web, how it was painted and its way to the museum are the
     /// study's own, always on (`ai.config.STUDY_PARTS` on the server).
     /// A group's switches, above its tasks: the study of the day and the
-    /// curator's picks; the looks, which Gemini works out in the background
-    /// as works come (no night, no rest: a switch).
+    /// curator's picks.
     static func switches(_ group: String, _ s: AiSettings) -> [SwitchTask] {
         switch group {
         case "Odkrywaj":
             return discover(s)
-        case "Obraz":
-            let looks = s.looks.map {
-                SwitchTask(title: "Odciski wyglądu", value: $0, cost: "looks") { AiSettingsUpdate(looks: $0) }
-            }
-            return [looks].compactMap { $0 }
         default:
             return []
         }
@@ -383,7 +377,6 @@ struct TasksSection: View {
     static let costRows: [String: [String]] = [
         "pl_text": ["pl_text"],
         "keywords": ["keywords", "varnish_blue", "search_words"],
-        "crops": ["crops"],
         "tidy": ["gatekeeper", "twins_judge"],
         "audit": ["audit"],
     ]

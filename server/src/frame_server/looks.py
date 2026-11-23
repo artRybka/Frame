@@ -2,55 +2,29 @@
 photograph of one, and the works that look like a work (Mateusz
 2026-11-13, "G1": "wdrażamy G1").
 
-Google's embedding model (``ai.gemini``: :meth:`Painter.embed`) turns a
-work's thumbnail into :data:`~frame_server.ai.gemini.EMBED_SIZE` numbers
-once, and words or a photograph the same way when they are asked about:
-works that look alike, and the words for how they look, lie close. The
-numbers are kept here (:class:`LookIndex`, some 75 MB for 100 000 works)
-and every question after the first is answered on the server, in a few
-milliseconds, without asking Google again. A trial on 2000 works of the
-Cleveland Museum of Art (2026-11-13): "Zwiastowanie" eight Annunciations,
-"melancholijny nastrój, ciemne barwy" Munch and Dürer, a van Gogh from
-elsewhere three van Goghs of Cleveland; 0.23 USD.
+SigLIP 2, on the server itself (:mod:`.seen`, Mateusz 2026-11-20:
+"Przesiadamy."), turns every work's thumbnail into numbers once, in the
+background, and words or a photograph the same way when they are asked
+about: works that look alike, and the words for how they look, lie close.
+The numbers are kept (:class:`LookIndex`) and every question is answered on
+the server, in a few milliseconds. Google's embedding model gave them
+before (from 2026-11-13); it was taken out on 2026-11-23 (Mateusz:
+„Odciski SIGLip … wyłączyć poprzednie funkcje”), its numbers deleted
+(:meth:`Looks.forget_google`).
 
-Its subject and its style apart (Mateusz 2026-11-17: "chciałbym mieć styl
-i tematykę osobno"; "Ok, wdrażajmy"): a work now has three sets of
-numbers (:data:`PART` each, :attr:`Looks.three`), of its thumbnail asked
-for its style alone (:data:`STYLE_ASK`), of its thumbnail asked for what
-it depicts (:data:`SUBJECT_ASK`), and of a sentence on what it depicts
-that Gemini Flash-Lite writes from the thumbnail (:data:`DESCRIBE`). Its
-style is the first with the third's direction taken out, its subject the
-second and the third together, both their mean (:func:`shapes`; trial on
-1104 works: of the ten nearest by style 38% by the same artist and 71% in
-the same technique, by subject an Annunciation finds 81% Annunciations, a
-Crucifixion 94% Crucifixions; the one look of before 33%, 58%, 67%, 79%).
-Szukaj's "Podobne do" asks one of the three (``PlaylistRules.like_by``),
-the card both. The numbers of before (the whole thumbnail,
-:attr:`Looks.index`) answer until :data:`READY_SHARE` of the works have
-their three, and are then dropped.
-
-The museums' works and the owner's own works are sent (Mateusz
+The museums' works and the owner's own works are numbered (Mateusz
 2026-11-17: "własne dzieła niech normalnie idą do wykonania odcisku.
-Zawsze."), never his photos. A work gets its numbers in the background
-(:meth:`Looks.start`), through Google's Batch at half the price (Mateusz
-2026-11-13: "Rozumiem że ta praca G1 pójdzie przez batch?"): first its
-sentence (:data:`PER_TOLD` works a batch), then its numbers
-(:data:`PER_BATCH` works a batch), some 0.02 cent a work in all; those
-cared about first and :data:`OPEN` batches at a time, while the Gemini
-page's switch is on and the image model's month's limit allows; a work
-whose picture changed (a sharper copy, the creative restorer) gets them
-anew. Only words and photographs asked about are sent at once.
+Zawsze."), never his photos.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
-import json
 import logging
 import os
+import shutil
 import threading
-import time
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -59,95 +33,47 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-import httpx
 import numpy as np
 from PIL import Image
 
 from .ai.client import AiUnavailable
-from .ai.gemini import EMBED_MAX, EMBED_SIZE, Embedded, NotDrawn, TooHeavy
 from .library import palettes as palettes_
 from .library.models import Item, ItemKind
 from .library.verdict import Place, against
 from .library.wording import Wording
 
 if TYPE_CHECKING:
-    from .ai.config import AiConfigStore
-    from .ai.gemini import Painter
     from .library import Library
     from .library.images import ImageCache
     from .seen import Seen
 
 log = logging.getLogger(__name__)
 
-#: What the numbers' cost is counted as, in the image model's month.
-KIND = "looks"
-#: Works sent in one round of the background, and the pause between rounds
-#: while some are left; when none is, it looks again after :data:`IDLE`.
-#: (300 thumbnails weighed 30 MB, over Google's 19; 150 at a time, some
-#: 15 MB, still timed out on the NAS's upload once: 100.)
-PER_BATCH = 40
-#: Batches out at a time. 24 kept the catalogue's three at some 7300 works
-#: an hour on 2026-11-18 (Google answers in minutes, the server waited):
-#: more out, and looked at sooner (Mateusz 2026-11-18: "Czy można jakoś
-#: przyspieszyć tworzenie odcisków?"), under Google's 100 at a time.
-OPEN = 80
-#: Works whose sentence (:data:`DESCRIBE`) is asked in one batch.
-PER_TOLD = 100
-#: Seconds between looks at the batches out (a small one is back in minutes;
-#: sending a round takes minutes of its own).
-POLL = 30.0
-IDLE = 600.0
-#: The batches out, kept across restarts (the works in each, and their stamps).
+#: SigLIP's numbers of a picture (``seen.SIZE``).
+SIZE = 768
+#: Google's numbers of before, under ``data/looks`` (deleted at start).
+GOOGLES = ("three", "vectors.i8", "ids.txt", "telling.json")
 BATCHES = "batches.json"
-#: After Google's trouble (busy, a refusal, the limit): a longer rest.
-REST = 1800.0
-#: Words are asked as a search (Google's own advice for gemini-embedding-2);
-#: pictures go as they are.
-QUERY = "task: search result | query: "
 #: Words remembered with their numbers: the same words cost nothing again.
 REMEMBERED = 500
-#: A search's answer: at most this many works, and only those near the best:
-#: words in the trial lay at 0.60-0.67 from the works they fit and at about
-#: 0.56 from those they did not, so a work further than :data:`NEAR_BEST`
-#: below the best, or under :data:`FLOOR`, is left out.
+#: A search's answer: at most this many works.
 MOST = 60
-NEAR_BEST = 0.07
-FLOOR = 0.52
-#: A picture (a photograph, a work) is closer to works than words are.
-PICTURE_FLOOR = 0.60
-#: Szukaj's own list (Mateusz 2026-11-13: "strumień dzieł „szukaj wyglądem”
-#: musiałby trafiać w tę samą listę co zwykłe wyszukiwanie"): the works
-#: looked through for words narrowed by the groups, and at most this many
-#: shown, nearest first.
+#: Szukaj's own list (Mateusz 2026-11-13): the works looked through for
+#: words narrowed by the groups, and at most this many shown, nearest first.
 AMONG_NEAR = 3000
-#: Szukaj's "Podobne do" shows the works at least this near the work asked
-#: about, by what is asked (both, the subject, the style): not a fixed
-#: number (Mateusz 2026-11-18: "limitem ilości nie powinien być stopień
-#: podobieństwa?"). From 20 works of the whole catalogue, 1000 nearest each
-#: (sheets of 2026-11-19, `/mnt/project-files/podobne-przelacznik/bliskosc`):
-#: he chose 0.50 for both ("Do żółtego"); the subject's and the style's are
-#: those giving as many works on the median (some 53: from 18 for Mucha to
-#: 300 for Hiroshige).
-ALIKE_FLOOR: dict[str, float] = {"": 0.50, "subject": 0.58, "style": 0.57}
 #: However far the nearest are (his own works, photographed, are all under
-#: 0.50), this many are shown, and no more (Mateusz 2026-11-19: "Minimum -
-#: ustawmy 8, żeby nie pokazywać dzieł niezwiązanych").
+#: the floor), this many are shown, and no more (Mateusz 2026-11-19:
+#: "Minimum - ustawmy 8, żeby nie pokazywać dzieł niezwiązanych").
 ALIKE_LEAST = 8
 #: ... and at most this many, however many are near.
 ALIKE_MOST = 1000
 #: Szukaj's list scrolled to its end asks for the less near (``further``
-#: of :meth:`Looks.alike`): each step this much under the floor, at most
-#: :data:`ALIKE_FURTHER` steps (0.50, then 0.45, 0.40, 0.35 for both).
-ALIKE_STEP = 0.05
+#: of :meth:`Looks.alike`), at most this many steps (``seen.Floors.step``).
 ALIKE_FURTHER = 3
-#: With the numbers of before (no style nor subject), the fixed most.
-ALIKE_OLD_MOST = 120
 AMONG_MOST = 240
-#: Szukaj's "Słowa" (Mateusz 2026-11-19: the words, the works' keywords
-#: and how works look in one): how long a search waits for Google's numbers
-#: of its words before it answers with the words alone. The words are
-#: mostly asked while typing (:meth:`Looks.prefetch`), so this is seldom
-#: waited for.
+#: Szukaj's "Słowa": how long a search waits for its words' numbers before
+#: it answers with the words alone (mostly made while typing,
+#: :meth:`Looks.prefetch`).
 WORDS_WAIT = 1.5
 #: How long a museum search waits for its works' numbers (made on the NAS
 #: by SigLIP, their thumbnails fetched first: 10-19 s a page, Mateusz
@@ -164,69 +90,22 @@ PHOTO_NEAR = 24
 PHOTO_SUBJECT = 4
 PHOTO_SEARCHES = 3
 #: "Podobne do" a photograph: the works no further than ``PHOTO_BELOW``
-#: below its nearest (``ALIKE_STEP``… more for each step of the list
-#: scrolled on, ``seen.Floors.step``), and never under ``PHOTO_LOWEST``,
-#: though :data:`ALIKE_LEAST` however far. A photograph lies further from
-#: every painting than paintings from each other: the floors set on works
-#: left one work for his self-portrait photographed (Mateusz 2026-11-22:
-#: „spodziewałem się wielu autoportretów i portretów”; measured on the Mac:
-#: his selfie to 25 painted self-portraits nearest 0.68, median 0.61; a
-#: portrait to a portrait median 0.81-0.83; a photograph of a painting to
-#: it some 0.9). The museums' works shown with it: as near (``judge_photo``).
+#: below its nearest (a step more for each step of the list scrolled on,
+#: ``seen.Floors.step``), and never under ``PHOTO_LOWEST``, though
+#: :data:`ALIKE_LEAST` however far. A photograph lies further from every
+#: painting than paintings from each other (Mateusz 2026-11-22: „spodziewałem
+#: się wielu autoportretów i portretów”; his selfie to 25 painted
+#: self-portraits nearest 0.68, median 0.61). The museums' works shown with
+#: it: as near (``judge_photo``).
 PHOTO_BELOW = 0.08
 PHOTO_LOWEST = 0.50
-#: A work whose thumbnail is not here is looked at again after this long.
-NO_THUMB_AGAIN = 86_400.0
 #: Rows of the numbers worked through at once (some 12 MB as floats).
 CHUNK = 16_384
 #: Rows no longer used (a work's picture changed, the work gone) as a share
 #: of all, from which the file is written anew.
 DEAD_SHARE = 0.2
-
-#: Numbers kept of each of a work's three: the first of Google's
-#: :data:`EMBED_SIZE` (they come ordered, the first 512 lose next to
-#: nothing: trial of 2026-11-17).
-PART = 512
-#: What the thumbnail is asked with for its style, and for its subject.
-STYLE_ASK = (
-    "Represent only the artistic style of this artwork: medium and technique, "
-    "brushwork or line, surface and texture, treatment of light, palette, degree "
-    "of finish, stylistic tradition. Ignore what is depicted."
-)
-SUBJECT_ASK = (
-    "Represent only what this artwork depicts: figures, objects, place, scene, "
-    "story or theme. Ignore medium, technique, style and colours."
-)
-#: What Gemini Flash-Lite is asked of a thumbnail: what it depicts, no word
-#: of how; its answer, before :data:`TOLD`, becomes the third numbers.
-DESCRIBE = (
-    "In 25-45 words, in English, say only WHAT this artwork depicts: figures and "
-    "their actions, objects, place, scene, story or religious/mythological theme, "
-    "genre. Do not mention medium, technique, style, colours, brushwork, period or "
-    "artist. Plain text, no preamble."
-)
-TOLD = "task: clustering | query: "
-#: The thumbnail's longer side for the sentence (Google reads it at its low
-#: resolution anyway).
-TOLD_SIDE = 384
-#: What Szukaj's "Podobne do" asks of the three: both, the subject, the style.
+#: What Szukaj's "Podobne do" asks: both, the subject, the form.
 By = Literal["", "subject", "style"]
-#: Works with their three as a share of those that would have them, from
-#: which questions are answered by the three and the numbers of before are
-#: dropped (until then those answer, with "Temat" and "Styl" as both).
-READY_SHARE = 0.95
-#: A work's three are centred on the works' mean: one under this is less
-#: like the work asked about than an average work, and is not shown.
-THREE_FLOOR = 0.0
-#: The same as :data:`PICTURE_FLOOR` for the mean of a work's raw style
-#: and subject (both at the 27th hundredth of all pairs in the trial).
-RAW_FLOOR = 0.75
-#: The file saying that the three answer (``three/ready``).
-READY = "ready"
-#: Words each work's sentence is kept with (``three/told.jsonl``: also for
-#: later uses of what Gemini saw), and the three's batches out.
-TOLD_FILE = "told.jsonl"
-TELLING = "telling.json"
 
 
 def _unit(x: np.ndarray) -> np.ndarray:
@@ -234,18 +113,6 @@ def _unit(x: np.ndarray) -> np.ndarray:
     nothing, not a direction of rounding's noise."""
     length = np.linalg.norm(x, axis=-1, keepdims=True)
     return np.where(length > 1e-5, x / np.maximum(length, 1e-5), 0.0).astype(np.float32)
-
-
-def shapes(rows: np.ndarray, means: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """The style and the subject of works' three (rows of ``3 * PART``
-    numbers, at any scale), each a unit row: each of the three centred on
-    the works' mean (``means``, :meth:`LookIndex.means`; what all works
-    share says nothing of one), the style the first with the third's
-    direction taken out, the subject the second and the third together."""
-    g, h, c = (_unit(_unit(rows[:, k * PART : (k + 1) * PART]) - means[k]) for k in range(3))
-    style = _unit(g - (g * c).sum(axis=1, keepdims=True) * c)
-    subject = _unit(c + h)
-    return style, subject
 
 
 @dataclass(frozen=True)
@@ -265,7 +132,7 @@ class LookIndex:
     each with a direction of its own."""
 
     def __init__(
-        self, root: Path, size: int = EMBED_SIZE, parts: int = 1, load: bool = True
+        self, root: Path, size: int = SIZE, parts: int = 1, load: bool = True
     ) -> None:
         self.root = root
         self.size = size
@@ -480,185 +347,73 @@ class LookIndex:
             take = min(len(scores), take * 4)
 
 
-@dataclass(frozen=True)
-class ShapedRows:
-    """The works' style and subject (:func:`shapes`), a row each as bytes
-    with its length, in the rows' order of their :class:`LookIndex`."""
-
-    means: np.ndarray
-    style: np.ndarray
-    style_norms: np.ndarray
-    subject: np.ndarray
-    subject_norms: np.ndarray
-    ids: Sequence[str]
-    live: dict[str, int]
-
-    @staticmethod
-    def score(rows: np.ndarray, norms: np.ndarray, query: np.ndarray) -> np.ndarray:
-        """Each row's cosine with ``query`` (a unit row)."""
-        found = np.empty(len(rows), dtype=np.float32)
-        for start in range(0, len(rows), CHUNK * 4):
-            part = rows[start : start + CHUNK * 4].astype(np.float32)
-            found[start : start + len(part)] = part @ query
-        return found / np.maximum(norms, 1e-9)
-
-
-class Shaped:
-    """The works' style and subject worked out from their three once and
-    kept (some 80 MB each for 160 000 works): rows added since are worked
-    out when asked; all of them again when the rows were written anew or
-    the works' mean moved (:meth:`LookIndex.means`). The background keeps
-    them ready (:meth:`Looks.round`), so a question seldom waits."""
-
-    def __init__(self, index: LookIndex) -> None:
-        self.index = index
-        self._lock = threading.Lock()
-        self._kept: ShapedRows | None = None
-        self._key: tuple[int, int] | None = None
-
-    def get(self) -> ShapedRows:
-        with self.index._lock:
-            rows, ids, live = self.index._rows, list(self.index._ids), dict(self.index._row)
-            generation = self.index.generation
-        means = self.index.means()
-        key = (generation, id(means))
-        with self._lock:
-            kept = self._kept if self._key == key else None
-            if kept is not None and len(kept.ids) > len(rows):
-                kept = None
-            start = len(kept.ids) if kept is not None else 0
-            if kept is not None and start == len(rows):
-                return kept
-            style, subject = [], []
-            for at in range(start, len(rows), CHUNK):
-                s, t = shapes(rows[at : at + CHUNK].astype(np.float32), means)
-                style.append(LookIndex.quantised(s))
-                subject.append(LookIndex.quantised(t))
-            new_style, new_subject = np.concatenate(style), np.concatenate(subject)
-
-            def lengths(packed: np.ndarray) -> np.ndarray:
-                return np.linalg.norm(packed.astype(np.float32), axis=1).astype(np.float32)
-
-            if kept is None:
-                self._kept = ShapedRows(
-                    means,
-                    new_style,
-                    lengths(new_style),
-                    new_subject,
-                    lengths(new_subject),
-                    ids,
-                    live,
-                )
-            else:
-                self._kept = ShapedRows(
-                    means,
-                    np.concatenate([kept.style, new_style]),
-                    np.concatenate([kept.style_norms, lengths(new_style)]),
-                    np.concatenate([kept.subject, new_subject]),
-                    np.concatenate([kept.subject_norms, lengths(new_subject)]),
-                    ids,
-                    live,
-                )
-            self._key = key
-            return self._kept
-
-
 class Looks:
-    """The works' numbers made in the background, and the questions asked
-    of them: words, a photograph, a work."""
+    """The questions asked of the works' numbers (SigLIP's, :mod:`.seen`):
+    words, a photograph, a work."""
 
     def __init__(
         self,
         library: Library,
         images: ImageCache,
-        painter: Painter,
-        config: AiConfigStore,
+        seen: Seen,
         root: Path,
-        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.library = library
         self.images = images
-        self.painter = painter
-        self.config = config
-        #: A work's three: its style, its subject, its sentence (:data:`PART` each).
-        self.three = LookIndex(root / "three", size=3 * PART, parts=3)
-        #: Their style and subject, worked out once.
-        self.shaped = Shaped(self.three)
-        settled = (self.three.root / READY).exists()
-        #: The numbers of before: the whole thumbnail, one set a work (left
-        #: on disk, not read, once the three answer).
-        self.index = LookIndex(root, load=not settled)
+        self.seen = seen
         self.root = root
-        self.clock = clock
-        #: Whether questions are still answered by the numbers of before.
-        self._old = len(self.index) > 0 and not settled
-        #: The works cared about, by id (``cared.Cared.ranks``): sent first.
-        self.cared: Callable[[], dict[str, int]] = dict
         self._words: OrderedDict[str, list[float]] = OrderedDict()
         self._words_lock = threading.Lock()
-        #: Words' numbers being asked of Google (:meth:`prefetch`), by key.
+        #: Words' numbers being made (:meth:`prefetch`), by key.
         self._asking: dict[str, Future[list[float]]] = {}
         self._askers = ThreadPoolExecutor(max_workers=2, thread_name_prefix="looks-words")
         self._numberers = ThreadPoolExecutor(max_workers=1, thread_name_prefix="looks-judge")
         self._numbering: set[str] = set()
-        self._stop = threading.Event()
-        self._wake = threading.Event()
-        self._thread: threading.Thread | None = None
-        #: Why the last round stopped short, for Konfiguracja.
-        self.trouble: str | None = None
-        #: Works whose thumbnail was not here, and when that was seen.
-        self._no_thumb: dict[str, float] = {}
-        self._counts: tuple[float, int, int] | None = None
-        #: The sentences of works waiting for their three (stamp, words).
-        self._told: dict[str, tuple[int, str]] = {}
-        self._told_lock = threading.Lock()
-        self._load_told()
-        #: SigLIP's numbers made on the server (``seen.Seen``): they answer
-        #: in Google's place once most works have them (Mateusz 2026-11-20:
-        #: "Przesiadamy."; :meth:`local`).
-        self.seen: Seen | None = None
         #: The English of Szukaj's words, as known (the phone's translation,
         #: Haiku's): SigLIP reads English best.
         self.english: Callable[[str], str] = lambda text: text
         #: The catalogue's palettes, for "Barwy" (:mod:`.library.palettes`).
         self.palettes = palettes_.Palettes(library.all_items, library.stamp)
 
+    def forget_google(self) -> int:
+        """Google's numbers of before taken off the disk (Mateusz
+        2026-11-23: „Zgadzam się z Twoimi rekomendacjami”, their files
+        deleted): the whole thumbnail's, the three, the sentences, the
+        batches, and those of the photographs searched. How many files."""
+        gone = 0
+        for name in (*GOOGLES, BATCHES):
+            path = self.root / name
+            if path.is_dir():
+                gone += sum(1 for p in path.rglob("*") if p.is_file())
+                shutil.rmtree(path, ignore_errors=True)
+            elif path.exists():
+                path.unlink(missing_ok=True)
+                gone += 1
+        photos = self.root / "photos"
+        if photos.is_dir():
+            for path in photos.glob("*.f32"):
+                if not path.name.endswith((".seen.f32", ".palette.f32")):
+                    path.unlink(missing_ok=True)
+                    gone += 1
+        if gone:
+            log.info("looks: Google's numbers of before deleted (%d files)", gone)
+        return gone
+
     # -- what may be asked -----------------------------------------------------------
 
     def enabled(self) -> bool:
-        """Google's key, and the Gemini page's switch on (SigLIP's numbers
-        need no key)."""
-        if self.local():
-            return self.config.config.looks
-        return self.painter.enabled() and self.config.config.looks
+        """Whether SigLIP's numbers answer (:meth:`Seen.answers`): once most
+        works have them. No key, no switch (Google's numbers until
+        2026-11-23)."""
+        return self.seen.answers()
 
     def local(self) -> bool:
-        """Whether SigLIP's numbers made here answer, not Google's."""
-        return self.seen is not None and self.seen.answers()
-
-    def _before(self) -> bool:
-        """Whether Google's numbers of before (the whole thumbnail) answer."""
-        return self._old and not self.local()
-
-    def old(self) -> bool:
-        """Whether questions are answered by the numbers of before (until
-        :data:`READY_SHARE` of the works have their three)."""
-        return self._old
-
-    def _asked(self) -> LookIndex:
-        if self.seen is not None and self.local():
-            return self.seen.index
-        return self.index if self._old else self.three
-
-    def _word_floor(self) -> float:
-        return seen_floors().words if self.local() else FLOOR
-
-    def _near_best(self) -> float:
-        return seen_floors().near_best if self.local() else NEAR_BEST
+        """The same, as the app asks it (``LooksSeen.answers``)."""
+        return self.enabled()
 
     def ready(self) -> bool:
         """Whether a question can be answered: some works have numbers."""
-        return self.enabled() and len(self._asked()) > 0
+        return self.enabled() and len(self.seen.index) > 0
 
     @staticmethod
     def wanted(item: Item) -> bool:
@@ -670,16 +425,8 @@ class Looks:
         return item.kind == ItemKind.ARTWORK and bool(item.thumb_url)
 
     def counts(self) -> tuple[int, int]:
-        """Works with their three, and works that would have them (worked
-        out at most once a minute)."""
-        kept = self._counts
-        if kept is not None and self.clock() - kept[0] < 60:
-            return kept[1], kept[2]
-        items = self.library.all_items()
-        wanted = {i.id for i in items if self.wanted(i)}
-        done = len(wanted & self.three.ids())
-        self._counts = (self.clock(), done, len(wanted))
-        return done, len(wanted)
+        """Works with their numbers, and works that would have them."""
+        return self.seen.counts()
 
     # -- questions -------------------------------------------------------------------
 
@@ -690,7 +437,7 @@ class Looks:
         if not text:
             return []
         vector = self._words_vector(text)
-        return self._answer(self._words_near(vector, limit * 3), limit, self._word_floor())
+        return self._answer(self._words_near(vector, limit * 3), limit, seen_floors().words)
 
     def among(self, text: str, allowed: Sequence[Item], limit: int = AMONG_MOST) -> list[Found]:
         """Works of ``allowed`` (what Szukaj's other choices found: a
@@ -727,7 +474,7 @@ class Looks:
             if item is None or item.id in seen:
                 continue
             if bar is None:
-                bar = max(self._word_floor(), score - self._near_best())
+                bar = max(seen_floors().words, score - seen_floors().near_best)
             if score < bar:
                 break
             seen.add(item.id)
@@ -735,7 +482,7 @@ class Looks:
         return found
 
     def prefetch(self, texts: Iterable[str]) -> None:
-        """Google's numbers of words asked ahead, while Szukaj's
+        """the numbers of words asked ahead, while Szukaj's
         suggestions show them (Mateusz 2026-11-19: "wyniki chciałbym od
         razu"): the search that follows finds them here. Some 0.0002 cent
         a time; nothing when they cannot be asked."""
@@ -772,7 +519,7 @@ class Looks:
         return asking
 
     def asking(self, text: str) -> bool:
-        """Whether Google's numbers of ``text`` are on their way (asked,
+        """Whether the numbers of ``text`` are on their way (asked,
         not here yet): a search answered without them can be asked again
         in a moment."""
         key = " ".join(text.split())[:300].lower()
@@ -783,7 +530,7 @@ class Looks:
         """The works nearest what the words say (:data:`AMONG_NEAR` of
         them), each with how near, nearest first: Szukaj's "Słowa"
         (``PlaylistRules.seen``). None when they cannot be asked, or when
-        Google's numbers of the words are not here within ``wait`` (they
+        the numbers of the words are not here within ``wait`` (they
         are kept once they come)."""
         try:
             self._check()
@@ -800,9 +547,6 @@ class Looks:
             return None
         except AiUnavailable:
             return None
-        except (NotDrawn, httpx.HTTPError) as err:
-            log.warning("Słowa: Google did not answer (%s)", err)
-            return None
         return self._words_near(vector, AMONG_NEAR)
 
     def near(self, text: str) -> list[str] | None:
@@ -817,9 +561,6 @@ class Looks:
             vector = self._words_vector(text)
         except AiUnavailable:
             return None
-        except (NotDrawn, httpx.HTTPError) as err:
-            log.warning("Szukanie wyglądem: Google did not answer (%s)", err)
-            return None
         return [item_id for item_id, _ in self._words_near(vector, AMONG_NEAR)]
 
     def judge(self, text: str, items: Sequence[Item]) -> list[Item]:
@@ -833,16 +574,16 @@ class Looks:
         None when it cannot be asked now."""
         try:
             vector = np.asarray(self._words_vector(" ".join(text.split())[:300]))
-        except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+        except AiUnavailable as err:
             log.info("judging museum works by look: %s", err)
             return []
         if not items:
             return []
-        asked = self._asked()
+        asked = self.seen.index
         self._number_within([i for i in items if i.id not in asked])
         best = self._words_near(vector, 1)
-        floor = self._word_floor()
-        bar = max(floor, (best[0][1] if best else floor) - self._near_best())
+        floor = seen_floors().words
+        bar = max(floor, (best[0][1] if best else floor) - seen_floors().near_best)
         scored: list[tuple[float, Item]] = []
         for item in items:
             row = asked.vector(item.id)
@@ -866,7 +607,7 @@ class Looks:
         def number() -> None:
             try:
                 self._number(fresh)
-            except (AiUnavailable, NotDrawn, httpx.HTTPError) as err:
+            except AiUnavailable as err:
                 log.info("numbers for museum works: %s", err)
             except Exception:
                 log.exception("numbers for museum works")
@@ -882,8 +623,7 @@ class Looks:
 
     def _number(self, items: Sequence[Item]) -> None:
         """Numbers for museum works' thumbnails (downloaded and kept, as the
-        app shows them), asked of Google at once, :data:`EMBED_MAX` at a
-        time (their three: their sentences first); a work whose thumbnail
+        app shows them), made at once by SigLIP; a work whose thumbnail
         cannot be had is left without."""
         if not items:
             return
@@ -903,39 +643,7 @@ class Looks:
             got = [p for p in pool.map(picture, items) if p is not None]
         if not got:
             return
-        if self.seen is not None and self.local():
-            self.seen.add([(item.id, stamp, img) for item, img, stamp in got])
-            return
-        if self._old:
-            for start in range(0, len(got), EMBED_MAX):
-                part = got[start : start + EMBED_MAX]
-                vectors = self.painter.embed(KIND, [img for _, img, _ in part])
-                self.index.add(
-                    [(item.id, stamp, v) for (item, _, stamp), v in zip(part, vectors, strict=True)]
-                )
-            return
-        with ThreadPoolExecutor(min(len(got), 8)) as pool:
-            told = list(pool.map(lambda p: self._tell(p[1]), got))
-        for (item, _, stamp), words in zip(got, told, strict=True):
-            self._keep_told(item.id, stamp, words)
-        each = EMBED_MAX // 3
-        for start in range(0, len(got), each):
-            part = got[start : start + each]
-            asked: list[Embedded] = []
-            for (_, img, _), words in zip(part, told[start : start + each], strict=True):
-                asked += self._asks(img, words)
-            vectors = self.painter.embed(KIND, asked)
-            rows, at = [], 0
-            for (item, _, stamp), words in zip(part, told[start : start + each], strict=True):
-                g, h = vectors[at], vectors[at + 1]
-                c = vectors[at + 2] if words else h
-                at += 3 if words else 2
-                rows.append((item.id, stamp, self._joined(g, h, c)))
-            self.three.add(rows)
-            with self._told_lock:
-                for item_id, stamp, _ in rows:
-                    if self._told.get(item_id, (None,))[0] == stamp:
-                        del self._told[item_id]
+        self.seen.add([(item.id, stamp, img) for item, img, stamp in got])
 
     def looking(self, text: str, allowed: list[Item]) -> list[Item] | None:
         """:meth:`among` for the library (``Library.looking``): the works
@@ -944,25 +652,15 @@ class Looks:
             return [f.item for f in self.among(text, allowed)]
         except AiUnavailable:
             return None
-        except (NotDrawn, httpx.HTTPError) as err:
-            log.warning("Szukanie wyglądem: Google did not answer (%s)", err)
-            return None
 
     def picture(self, img: Image.Image, limit: int = MOST) -> list[Found]:
         """Works that look like ``img`` (a photograph of a work, a postcard)."""
         self._check()
         small = img.convert("RGB")
         small.thumbnail((640, 640))
-        if self.seen is not None and self.local():
-            vector = self.seen.model.pictures([small])[0]
-            near = self.seen.alike_near(vector, limit * 3 + 8)
-            return self._answer(near, limit, seen_floors().picture, relative=False)
-        if self._old:
-            vector = np.asarray(self.painter.embed(KIND, [small])[0], dtype=np.float32)
-            return self._answer(self.index.nearest(vector, limit * 3), limit, PICTURE_FLOOR)
-        vector = self._three_of(small)
-        near = self._alike_near(vector, limit * 3 + 8)
-        return self._answer(near, limit, THREE_FLOOR, relative=False)
+        vector = self.seen.model.pictures([small])[0]
+        near = self.seen.alike_near(vector, limit * 3 + 8)
+        return self._answer(near, limit, seen_floors().picture, relative=False)
 
     def photo(self, data: bytes, img: Image.Image) -> str:
         """Szukaj's "Szukaj zdjęciem" (Mateusz 2026-11-15: "mogłoby się
@@ -970,7 +668,7 @@ class Looks:
         tworzenia playlisty"): the photograph's numbers kept under a key
         (``photo:…``) that Szukaj then asks as ``PlaylistRules.like``, the
         groups narrowing it and a smart playlist keeping it. The photograph
-        itself is not kept; the same photograph again asks Google nothing."""
+        itself is not kept."""
         key = PHOTO + hashlib.sha256(data).hexdigest()[:20]
         if self.photo_vector(key) is not None:
             return key
@@ -978,14 +676,8 @@ class Looks:
         self._keep_photo(self._photo_path(key, "palette"), palettes_.of_picture(img))
         small = img.convert("RGB")
         small.thumbnail((640, 640))
-        if self.seen is not None and self.local():
-            vector = self.seen.model.pictures([small])[0]
-            self._keep_photo(self._photo_path(key, "seen"), vector)
-            return key
-        if self._old:
-            vector = np.asarray(self.painter.embed(KIND, [small])[0], dtype=np.float32)
-            self._keep_photo(self._photo_path(key), vector)
-        self._keep_photo(self._photo_path(key, "three"), self._three_of(small))
+        vector = self.seen.model.pictures([small])[0]
+        self._keep_photo(self._photo_path(key, "seen"), vector)
         return key
 
     def photo_numbers(self, vector: np.ndarray, palette: np.ndarray | None = None) -> str:
@@ -995,11 +687,11 @@ class Looks:
         answers (:class:`AiUnavailable` otherwise: the app sends the
         photograph then). ``palette``: its colours as the phone found them
         (``palettes.colours_of``'s rows), for "Barwy"."""
-        if not self.local():
+        if not self.enabled():
             raise AiUnavailable("SigLIP does not answer yet")
         vector = np.asarray(vector, dtype=np.float32).reshape(-1)
         norm = float(np.linalg.norm(vector))
-        if len(vector) != self._asked().size or not np.isfinite(norm) or norm < 1e-6:
+        if len(vector) != self.seen.index.size or not np.isfinite(norm) or norm < 1e-6:
             raise ValueError("not a photograph's numbers")
         vector = vector / norm
         key = PHOTO + hashlib.sha256(vector.astype("<f4").tobytes()).hexdigest()[:20]
@@ -1053,7 +745,7 @@ class Looks:
         if not near:
             return PHOTO_LOWEST
         steps = min(max(further, 0), ALIKE_FURTHER)
-        step = seen_floors().step if self.local() else ALIKE_STEP
+        step = seen_floors().step
         return max(PHOTO_LOWEST, near[0][1] - PHOTO_BELOW - step * steps)
 
     def alike_colours(self, item_id: str, further: int = 0) -> list[str]:
@@ -1086,12 +778,11 @@ class Looks:
         2026-11-21: "Tak, zróbmy proszę w ten sposób", no Claude asked): the
         subjects most of the catalogue's :data:`PHOTO_NEAR` nearest works
         have, at least :data:`PHOTO_SUBJECT` of them, :data:`PHOTO_SEARCHES`
-        at most, each by its museum word with its Polish name. None but with
-        SigLIP's numbers (Google's would be asked for each museum work)."""
+        at most, each by its museum word with its Polish name."""
         from .library.vocabulary import term
 
         vector = self.photo_vector(key)
-        if vector is None or self.seen is None or not self.local():
+        if vector is None or not self.enabled():
             return []
         near = self.seen.alike_near(vector, PHOTO_NEAR * 3)
         counted: dict[str, int] = {}
@@ -1121,9 +812,9 @@ class Looks:
         (:meth:`_photo_floor`, or :attr:`Floors.picture`), nearest first;
         their thumbnails numbered here now and kept."""
         vector = self.photo_vector(key)
-        if vector is None or not items or self.seen is None or not self.local():
+        if vector is None or not items or not self.enabled():
             return []
-        asked = self._asked()
+        asked = self.seen.index
         self._number_within([i for i in items if i.id not in asked])
         query = vector / max(float(np.linalg.norm(vector)), 1e-9)
         # As near as the catalogue's works shown for it.
@@ -1152,25 +843,16 @@ class Looks:
         if not key.startswith(PHOTO):
             return None
         try:
-            kind = "seen" if self.local() else ("" if self._old else "three")
-            vector = np.fromfile(self._photo_path(key, kind), dtype=np.float32)
+            vector = np.fromfile(self._photo_path(key, "seen"), dtype=np.float32)
         except (OSError, ValueError):
             return None
-        return vector if len(vector) == self._asked().size else None
+        return vector if len(vector) == self.seen.index.size else None
 
     def _photo_path(self, key: str, kind: str = "") -> Path:
-        """Where a photograph's numbers are kept: Google's of before
-        (``kind`` empty), Google's three ("three"), SigLIP's ("seen")."""
+        """Where a photograph's numbers are kept: SigLIP's ("seen"), its
+        palette ("palette")."""
         name = "".join(c for c in key.removeprefix(PHOTO) if c in "0123456789abcdef")
         return self.root / "photos" / f"{name or '0'}{'.' + kind if kind else ''}.f32"
-
-    def _three_of(self, img: Image.Image) -> np.ndarray:
-        """A picture's three, asked of Google at once: its sentence, then
-        its numbers."""
-        words = self._tell(img)
-        vectors = self.painter.embed(KIND, self._asks(img, words))
-        g, h = vectors[0], vectors[1]
-        return np.asarray(self._joined(g, h, vectors[2] if words else h), dtype=np.float32)
 
     def similar(
         self,
@@ -1194,7 +876,7 @@ class Looks:
         copies = [item.id] + (
             [c.id for c in works.groups[own] if c.id != item.id] if own is not None else []
         )
-        asked = self._asked()
+        asked = self.seen.index
         vector = next((v for c in copies if (v := asked.vector(c)) is not None), None)
         if vector is None:
             return []
@@ -1211,9 +893,7 @@ class Looks:
         """Of ``found`` (nearest first), those Szukaj's "Podobne do" shows:
         at least :data:`ALIKE_FLOOR` near (``further`` steps less near,
         :data:`ALIKE_STEP` each), though :data:`ALIKE_LEAST` of them
-        however far. The numbers of before keep their own floor."""
-        if self._before():
-            return found[:ALIKE_OLD_MOST]
+        however far."""
         floor = self._floor(by, further)
         near = sum(1 for f in found if f.score >= floor)
         return found[: max(near, ALIKE_LEAST)]
@@ -1221,16 +901,12 @@ class Looks:
     def _floor(self, by: str, further: int = 0) -> float:
         """How near a work must be for "Podobne do", ``further`` steps on."""
         steps = min(max(further, 0), ALIKE_FURTHER)
-        if self.local():
-            floors = seen_floors()
-            return floors.alike.get(by, floors.alike[""]) - floors.step * steps
-        return ALIKE_FLOOR.get(by, ALIKE_FLOOR[""]) - ALIKE_STEP * steps
+        floors = seen_floors()
+        return floors.alike.get(by, floors.alike[""]) - floors.step * steps
 
     def _alike_base(self) -> float:
         """How near a work must be to be shown as like another at all."""
-        if self.local():
-            return seen_floors().base
-        return PICTURE_FLOOR if self._old else THREE_FLOOR
+        return seen_floors().base
 
     def _near_enough(
         self, near: list[tuple[str, float]], by: str, further: int = 0
@@ -1239,8 +915,6 @@ class Looks:
         never keeps, so that they are not looked up: past the floor, only
         enough for :data:`ALIKE_LEAST` works should some nearer be hidden
         or copies of one."""
-        if self._before():
-            return near
         floor = self._floor(by, further)
         under = next((k for k, (_, score) in enumerate(near) if score < floor), len(near))
         return near[: max(under, ALIKE_LEAST * 3 + 8)]
@@ -1253,8 +927,8 @@ class Looks:
         their subject and their style, "subject" or "style"), nearest
         first, as near as :meth:`enough` says (``further`` steps less
         near: the list scrolled to its end), for Szukaj
-        (``Library.like_near``, ``PlaylistRules.like``); None with Szukanie
-        wyglądem off. Asks Google nothing. ``colours`` ("Barwy" beside
+        (``Library.like_near``, ``PlaylistRules.like``); None while SigLIP
+        does not answer. ``colours`` ("Barwy" beside
         them): of those, a step less near, the ones of near colours; ``by``
         "colours": "Barwy" alone (:meth:`alike_colours`)."""
         if by == "colours":
@@ -1262,7 +936,7 @@ class Looks:
         if not self.enabled():
             return None
         shape: By = by if by in ("subject", "style") else ""  # type: ignore[assignment]
-        most = ALIKE_OLD_MOST if self._before() else ALIKE_MOST
+        most = ALIKE_MOST
         wide = further + 1 if colours else further
         if item_id.startswith(PHOTO):
             vector = self.photo_vector(item_id)
@@ -1284,32 +958,14 @@ class Looks:
     def near_ids(self, item_id: str, limit: int = 40) -> list[str]:
         """The ids of the works whose numbers lie nearest ``item_id``'s
         (subject and style), whatever they are and wherever they are
-        hidden: the gatekeeper's look-alikes of a cover. Asks Google
-        nothing; none without numbers."""
-        vector = self._asked().vector(item_id)
+        hidden: the gatekeeper's look-alikes of a cover. None without
+        numbers."""
+        vector = self.seen.index.vector(item_id)
         if vector is None:
             return []
-        if self.seen is not None and self.local():
-            near = self.seen.index.nearest(vector, limit + 1)
-            raw = seen_floors().raw
-            return [i for i, score in near if i != item_id and score >= raw][:limit]
-        if self._old:
-            near = self.index.nearest(vector, limit + 1)
-            return [i for i, score in near if i != item_id and score >= PICTURE_FLOOR][:limit]
-        # Its style and its subject as they come, not centred: the
-        # gatekeeper asks this of 200 covers at once, and this is some five
-        # times quicker than :meth:`_alike_near`.
-        style = _unit(vector[:PART])
-        subject = _unit(vector[PART : 2 * PART])
-
-        def score(rows: np.ndarray, norms: np.ndarray) -> np.ndarray:
-            g = rows[:, :PART].astype(np.float32) @ style / np.maximum(norms[:, 0], 1e-9)
-            h = rows[:, PART : 2 * PART].astype(np.float32) @ subject
-            h /= np.maximum(norms[:, 1], 1e-9)
-            return (g + h) / 2
-
-        near = self.three.ranked(score, limit + 1)
-        return [i for i, score in near if i != item_id and score >= RAW_FLOOR][:limit]
+        near = self.seen.index.nearest(vector, limit + 1)
+        raw = seen_floors().raw
+        return [i for i, score in near if i != item_id and score >= raw][:limit]
 
     def neighbours(self, item_id: str, limit: int = 12) -> list[str]:
         """The ids of works that look most like ``item_id`` (the study's
@@ -1321,85 +977,40 @@ class Looks:
         return [f.item.id for f in self.similar(item, limit, Place.PROPOSED)]
 
     def _check(self) -> None:
-        if self.local():
-            if not self.config.config.looks:
-                raise AiUnavailable("Szukanie wyglądem is switched off")
-            return
-        if not self.painter.enabled():
-            raise AiUnavailable("no Google API key")
-        if not self.config.config.looks:
-            raise AiUnavailable("Szukanie wyglądem is switched off")
-        if not len(self._asked()):
-            raise AiUnavailable("no work has its numbers yet")
+        if not self.enabled():
+            raise AiUnavailable("SigLIP does not answer yet")
 
     def _words_vector(self, text: str) -> list[float]:
-        local = self.seen is not None and self.local()
-        key = ("seen|" if local else "") + text.lower()
+        key = text.lower()
         with self._words_lock:
             if key in self._words:
                 self._words.move_to_end(key)
                 return self._words[key]
         self._check()
-        # In English, as the museums abroad are asked: Google read one
-        # Polish word poorly ("koń": an ex libris first, Mateusz 2026-11-20).
+        # In English, as the museums abroad are asked ("koń": an ex libris
+        # first in Polish, Mateusz 2026-11-20).
         english = self.english(text) or text
-        if self.seen is not None and local:
-            vector = [float(x) for x in self.seen.model.words([english])[0]]
-        else:
-            vector = self.painter.embed(KIND, [QUERY + english])[0]
+        vector = [float(x) for x in self.seen.model.words([english])[0]]
         with self._words_lock:
             self._words[key] = vector
             while len(self._words) > REMEMBERED:
                 self._words.popitem(last=False)
         return vector
 
-    def _words_score(self, rows: np.ndarray, vector: Sequence[float] | np.ndarray) -> np.ndarray:
-        """How near words' numbers lie to works' rows: to the whole
-        thumbnail before, to the nearer of its style and its subject now
-        (their raw numbers: words name either)."""
+    @staticmethod
+    def _words_score(rows: np.ndarray, vector: Sequence[float] | np.ndarray) -> np.ndarray:
+        """How near words' numbers lie to works' rows."""
         rows = np.asarray(rows, dtype=np.float32)
-        if self._old or self.local():
-            return _unit(rows) @ _unit(np.asarray(vector, dtype=np.float32))
-        words = _unit(np.asarray(vector, dtype=np.float32)[:PART])
-        style = _unit(rows[:, :PART]) @ words
-        subject = _unit(rows[:, PART : 2 * PART]) @ words
-        return np.maximum(style, subject)
+        return _unit(rows) @ _unit(np.asarray(vector, dtype=np.float32))
 
     def _words_near(
         self, vector: Sequence[float] | np.ndarray, count: int
     ) -> list[tuple[str, float]]:
-        if self.seen is not None and self.local():
-            return self.seen.index.nearest(vector, count)
-        if self._old:
-            return self.index.nearest(vector, count)
-        words = _unit(np.asarray(vector, dtype=np.float32)[:PART])
-
-        def score(rows: np.ndarray, norms: np.ndarray) -> np.ndarray:
-            style = rows[:, :PART].astype(np.float32) @ words / np.maximum(norms[:, 0], 1e-9)
-            subject = rows[:, PART : 2 * PART].astype(np.float32) @ words
-            return np.maximum(style, subject / np.maximum(norms[:, 1], 1e-9))
-
-        return self.three.ranked(score, count)
+        return self.seen.index.nearest(vector, count)
 
     def _alike_near(self, vector: np.ndarray, count: int, by: By = "") -> list[tuple[str, float]]:
-        """The works nearest a work's (or a photograph's) numbers, by
-        ``by``; with the numbers of before, simply the nearest. The works'
-        style and subject are worked out once (:class:`Shaped`), not for
-        each question (some 6 s each for 160 000 works, 2026-11-18)."""
-        if self.seen is not None and self.local():
-            return self.seen.alike_near(vector, count, by)
-        if self._old:
-            return self.index.nearest(vector, count)
-        shaped = self.shaped.get()
-        style, subject = shapes(np.asarray(vector, dtype=np.float32)[None, :], shaped.means)
-        scores = np.zeros(len(shaped.ids), dtype=np.float32)
-        if by != "subject":
-            scores += shaped.score(shaped.style, shaped.style_norms, style[0])
-        if by != "style":
-            scores += shaped.score(shaped.subject, shaped.subject_norms, subject[0])
-        if not by:
-            scores /= 2
-        return LookIndex.top(scores, shaped.ids, shaped.live, count)
+        """The works nearest a work's (or a photograph's) numbers, by ``by``."""
+        return self.seen.alike_near(vector, count, by)
 
     def _answer(
         self,
@@ -1417,7 +1028,7 @@ class Looks:
             return []
         best = near[0][1]
         low = -2.0 if floor is None else floor
-        bar = max(low, best - self._near_best()) if relative else low
+        bar = max(low, best - seen_floors().near_best) if relative else low
         hidden = self.library.hidden()
         works = self.library.works()
         seen: set[int | str] = set()
@@ -1438,426 +1049,9 @@ class Looks:
             found.append(Found(item, round(score, 4)))
         return found
 
-    # -- a work's three ----------------------------------------------------------------
-
-    @staticmethod
-    def _asks(img: Image.Image, words: str) -> list[Embedded]:
-        """What the embedding model is asked of a picture for its three:
-        its style, its subject, its sentence (none when Gemini gave none:
-        the subject stands for it, :meth:`_joined`)."""
-        asks: list[Embedded] = [(STYLE_ASK, img), (SUBJECT_ASK, img)]
-        return [*asks, TOLD + words] if words else asks
-
-    @staticmethod
-    def _joined(g: Sequence[float], h: Sequence[float], c: Sequence[float]) -> list[float]:
-        """A row of the three: the first :data:`PART` of each."""
-        return [*g[:PART], *h[:PART], *c[:PART]]
-
-    def _tell(self, img: Image.Image) -> str:
-        """Gemini's sentence on what a picture depicts, asked at once;
-        empty when it gives none (a picture it will not take)."""
-        small = img.convert("RGB")
-        small.thumbnail((TOLD_SIDE, TOLD_SIDE))
-        try:
-            return self.painter.describe(KIND, DESCRIBE, small)
-        except (NotDrawn, httpx.HTTPError) as err:
-            log.info("looks: no sentence for a picture (%s)", err)
-            return ""
-
-    def _load_told(self) -> None:
-        path = self.three.root / TOLD_FILE
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return
-        for line in lines:
-            try:
-                one = json.loads(line)
-                item_id, stamp, words = str(one["id"]), int(one["stamp"]), str(one["words"])
-            except (ValueError, KeyError, TypeError):
-                continue  # a line broken off
-            if self.three.stamp(item_id) == stamp:
-                self._told.pop(item_id, None)
-            else:
-                self._told[item_id] = (stamp, words)
-
-    def _keep_told(self, item_id: str, stamp: int, words: str) -> None:
-        """A work's sentence, kept on disk (for good) and here (until its
-        three are made)."""
-        line = json.dumps({"id": item_id, "stamp": stamp, "words": words}, ensure_ascii=False)
-        with self._told_lock:
-            self.three.root.mkdir(parents=True, exist_ok=True)
-            with (self.three.root / TOLD_FILE).open("a", encoding="utf-8") as out:
-                out.write(line + "\n")
-            self._told[item_id] = (stamp, words)
-
-    # -- the background --------------------------------------------------------------
-
-    def waiting(self, limit: int) -> list[tuple[Item, Path, int]]:
-        """Up to ``limit`` works whose sentence to ask now, with their
-        thumbnails and their stamps: without their three, or with the three
-        of a picture since changed, and no sentence of this picture yet;
-        those cared about first. Only thumbnails already here are sent."""
-        have = self.three.ids()
-        out = {
-            item_id
-            for name in (TELLING, BATCHES)
-            for rows in self._out(name).values()
-            for item_id, _ in rows
-        }
-        with self._told_lock:
-            told = dict(self._told)
-        ranks = self.cared()
-        items = [i for i in self.library.all_items() if self.wanted(i)]
-        # Cared about first, then those without numbers, then the rest
-        # (whose picture may have changed).
-        items.sort(key=lambda i: (ranks.get(i.id, 99), i.id in have))
-        found: list[tuple[Item, Path, int]] = []
-        for item in items:
-            if len(found) >= limit:
-                break
-            if item.id in out:
-                continue
-            if item.id in have and ranks.get(item.id) is None:
-                break  # works not cared about are looked at again only when gone
-            seen = self._no_thumb.get(item.id)
-            if seen is not None and self.clock() - seen < NO_THUMB_AGAIN:
-                continue
-            thumb = self.images.kept_thumb(item.id)
-            if thumb is None:
-                self._no_thumb[item.id] = self.clock()
-                continue
-            try:
-                stamp = int(thumb.stat().st_mtime)
-            except OSError:
-                continue
-            if self.three.stamp(item.id) == stamp or told.get(item.id, (None,))[0] == stamp:
-                continue
-            found.append((item, thumb, stamp))
-        return found
-
-    def _ready_to_number(self, limit: int) -> list[tuple[str, Path, int, str]]:
-        """Up to ``limit`` works told and not yet numbered (their thumbnail,
-        its stamp, the sentence), those cared about first; a sentence of a
-        picture since changed, or of a work gone, is let go."""
-        out = {item_id for rows in self._out(BATCHES).values() for item_id, _ in rows}
-        ranks = self.cared()
-        with self._told_lock:
-            told = sorted(self._told.items(), key=lambda kv: ranks.get(kv[0], 99))
-        found: list[tuple[str, Path, int, str]] = []
-        for item_id, (stamp, words) in told:
-            if len(found) >= limit:
-                break
-            seen = self._no_thumb.get(item_id)
-            if item_id in out or (seen is not None and self.clock() - seen < NO_THUMB_AGAIN):
-                continue
-            thumb = self.images.kept_thumb(item_id)
-            try:
-                now = int(thumb.stat().st_mtime) if thumb is not None else None
-            except OSError:
-                now = None
-            if now != stamp or self.library.get(item_id) is None:
-                with self._told_lock:
-                    if self._told.get(item_id, (None,))[0] == stamp:
-                        del self._told[item_id]
-                continue
-            assert thumb is not None
-            found.append((item_id, thumb, stamp, words))
-        return found
-
-    # -- the Batch --------------------------------------------------------------------
-
-    def _out(self, name: str = BATCHES, old: bool = False) -> dict[str, list[tuple[str, int]]]:
-        """The batches out: their works and stamps, by the batch's name
-        (``old``: those of the numbers of before)."""
-        root = self.root if old else self.three.root
-        try:
-            raw = json.loads((root / name).read_text())
-        except (OSError, ValueError):
-            return {}
-        return {
-            str(batch): [(str(i), int(stamp)) for i, stamp in rows]
-            for batch, rows in raw.items()
-            if isinstance(rows, list)
-        }
-
-    def _keep_out(self, out: dict[str, list[tuple[str, int]]], name: str = BATCHES) -> None:
-        root = self.three.root
-        root.mkdir(parents=True, exist_ok=True)
-        path = root / name
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps({batch: [list(r) for r in rows] for batch, rows in out.items()}))
-        os.replace(temp, path)
-
-    def _all_out(self) -> int:
-        return sum(len(self._out(name)) for name in (TELLING, BATCHES)) + len(self._out(old=True))
-
-    def collect(self) -> int:
-        """The answers of the batches Google has answered kept: sentences,
-        then numbers; how many works got their three. A lost batch is
-        dropped (its works go again)."""
-        self._collect_old()
-        self._collect_told()
-        out = self._out(BATCHES)
-        done = 0
-        for name, rows in list(out.items()):
-            try:
-                found = self.painter.embed_batched(KIND, name)
-            except NotDrawn as err:
-                log.warning("looks: %s", err)
-                del out[name]
-                continue
-            if found is None:
-                continue
-            kept = []
-            with self._told_lock:
-                told = dict(self._told)
-            for item_id, stamp in rows:
-                g, h = found.get(f"{item_id}#g"), found.get(f"{item_id}#h")
-                if not g or not h:
-                    self._no_thumb[item_id] = self.clock()  # tried again tomorrow
-                    continue
-                c = found.get(f"{item_id}#c") or h
-                kept.append((item_id, stamp, self._joined(g, h, c)))
-            self.three.add(kept)
-            with self._told_lock:
-                for item_id, stamp, _ in kept:
-                    if told.get(item_id, (None,))[0] == stamp and item_id in self._told:
-                        del self._told[item_id]
-            done += len(kept)
-            del out[name]
-        self._keep_out(out, BATCHES)
-        return done
-
-    def _collect_told(self) -> int:
-        """The sentences of the batches Google has answered kept; how
-        many. A work Gemini says nothing of gets an empty one (its subject
-        stands for it)."""
-        out = self._out(TELLING)
-        done = 0
-        for name, rows in list(out.items()):
-            try:
-                found = self.painter.described(KIND, name)
-            except NotDrawn as err:
-                log.warning("looks: %s", err)
-                del out[name]
-                continue
-            if found is None:
-                continue
-            for item_id, stamp in rows:
-                said = found.get(item_id)
-                self._keep_told(item_id, stamp, said if isinstance(said, str) else "")
-                done += 1
-            del out[name]
-        self._keep_out(out, TELLING)
-        return done
-
-    def _collect_old(self) -> int:
-        """The numbers of before still out when the three came: kept while
-        they answer, let go after."""
-        out = self._out(old=True)
-        if not out:
-            return 0
-        done = 0
-        for name, rows in list(out.items()):
-            if self._old:
-                try:
-                    found = self.painter.embed_batched(KIND, name)
-                except NotDrawn:
-                    found = {}
-                if found is None:
-                    continue
-                stamps = dict(rows)
-                kept = [
-                    (item_id, stamps[item_id], vector)
-                    for item_id, vector in found.items()
-                    if vector is not None and item_id in stamps
-                ]
-                self.index.add(kept)
-                done += len(kept)
-            del out[name]
-        path = self.root / BATCHES
-        temp = path.with_suffix(".tmp")
-        temp.write_text(json.dumps({b: [list(r) for r in rows] for b, rows in out.items()}))
-        os.replace(temp, path)
-        return done
-
-    def send(self) -> int:
-        """Batches sent while fewer than :data:`OPEN` are out: the numbers
-        of works told, then the sentences of works waiting; how many works
-        went."""
-        if not self.enabled():
-            return 0
-        sent = 0
-        out = self._out(BATCHES)
-        while self._all_out() < OPEN and not self._stop.is_set():
-            todo = self._ready_to_number(PER_BATCH)
-            groups: list[tuple[tuple[str, int], list[tuple[str, Embedded]]]] = []
-            for item_id, thumb, stamp, words in todo:
-                try:
-                    with Image.open(io.BytesIO(thumb.read_bytes())) as img:
-                        img.load()
-                        picture = img.convert("RGB")
-                except OSError:
-                    self._no_thumb[item_id] = self.clock()
-                    continue
-                asks = self._asks(picture, words)
-                names = [f"{item_id}#g", f"{item_id}#h", f"{item_id}#c"]
-                groups.append(((item_id, stamp), list(zip(names, asks, strict=False))))
-            if not groups:
-                break
-            try:
-                sent += self._hand(
-                    groups, lambda part: self.painter.embed_batch(KIND, part), out, BATCHES
-                )
-            except NotDrawn as err:  # Google busy, or no more at a time: the next round
-                log.info("looks: no more numbers sent now (%s)", err)
-                return sent
-            if len(todo) < PER_BATCH:
-                break
-        telling = self._out(TELLING)
-        while self._all_out() < OPEN and not self._stop.is_set():
-            waiting = self.waiting(PER_TOLD)
-            told: list[tuple[tuple[str, int], list[tuple[str, Image.Image]]]] = []
-            for item, thumb, stamp in waiting:
-                try:
-                    with Image.open(io.BytesIO(thumb.read_bytes())) as img:
-                        img.load()
-                        small = img.convert("RGB")
-                    small.thumbnail((TOLD_SIDE, TOLD_SIDE))
-                except OSError:
-                    self._no_thumb[item.id] = self.clock()
-                    continue
-                told.append(((item.id, stamp), [(item.id, small)]))
-            if not told:
-                break
-            try:
-                sent += self._hand(
-                    told,
-                    lambda part: self.painter.describe_batch(KIND, DESCRIBE, part),
-                    telling,
-                    TELLING,
-                )
-            except NotDrawn as err:
-                log.info("looks: no more sentences asked now (%s)", err)
-                return sent
-            if len(waiting) < PER_TOLD:
-                break
-        return sent
-
-    def _hand(
-        self,
-        groups: Sequence[tuple[tuple[str, int], Sequence[tuple[str, Any]]]],
-        send: Callable[[list[tuple[str, Any]]], str],
-        out: dict[str, list[tuple[str, int]]],
-        name: str,
-    ) -> int:
-        """Hands each work's questions (``groups``: the work and its
-        stamp, its questions) to the Batch with ``send``, in halves while
-        they weigh more than Google takes at once (bigger thumbnails: 300
-        weighed 30 MB of 19, and no work got its numbers from 2026-11-13
-        16:08 on); how many works went. A work too heavy alone waits as one
-        without a thumbnail."""
-        try:
-            batch = send([one for _, asks in groups for one in asks])
-        except TooHeavy:
-            if len(groups) == 1:
-                self._no_thumb[groups[0][0][0]] = self.clock()
-                return 0
-            half = len(groups) // 2
-            return self._hand(groups[:half], send, out, name) + self._hand(
-                groups[half:], send, out, name
-            )
-        out[batch] = [row for row, _ in groups]
-        self._keep_out(out, name)
-        return len(groups)
-
-    def round(self) -> tuple[int, int]:
-        """Collects what came back, then sends more: (works that got their
-        three, works sent); then, once enough works have their three, they
-        answer."""
-        done, sent = self.collect(), self.send()
-        self.settle()
-        return done, sent
-
-    def settle(self) -> bool:
-        """Once :data:`READY_SHARE` of the works have their three, they
-        answer; whether they do. The numbers of before (and the photographs
-        searched with them) stay on disk, unread, until the owner has seen
-        that the three do well (Mateusz 2026-11-17: "zostawmy je i nie
-        usuwajmy ich automatycznie zanim nie sprawdzę czy wszystko
-        działa"); without ``three/ready`` they answer again."""
-        if not self._old:
-            return True
-        self._counts = None
-        done, total = self.counts()
-        if not total or done < READY_SHARE * total:
-            return False
-        self.three.root.mkdir(parents=True, exist_ok=True)
-        (self.three.root / READY).write_text(f"{done}/{total}\n")
-        self._old = False
-        self.index = LookIndex(self.root, load=False)
-        log.info("looks: %d of %d works have their three; they answer now", done, total)
-        return True
-
-    def tidy(self) -> int:
-        """Rows of works no longer in the library forgotten; how many."""
-        kept = {i.id for i in self.library.all_items()}
-        gone = self.three.ids() - kept
-        self.three.forget(gone)
-        if self._old:
-            self.index.forget(self.index.ids() - kept)
-        return len(gone)
-
-    def start(self) -> None:
-        if self._thread is None:
-            self._thread = threading.Thread(target=self._run, name="looks", daemon=True)
-            self._thread.start()
-
     def stop(self) -> None:
-        self._stop.set()
-        self._wake.set()
         self._askers.shutdown(wait=False, cancel_futures=True)
-
-    def nudge(self) -> None:
-        """The switch or the key changed: look at once."""
-        self._wake.set()
-
-    def _warm(self) -> None:
-        """The works' style and subject worked out before anyone asks."""
-        if not self._old and len(self.three):
-            self.shaped.get()
-
-    def _run(self) -> None:
-        tidied = 0.0
-        while not self._stop.is_set():
-            pause = IDLE
-            if self.enabled():
-                try:
-                    if self.clock() - tidied > 86_400:
-                        self.tidy()
-                        tidied = self.clock()
-                    self._warm()
-                    done, sent = self.round()
-                    self._warm()
-                    self.trouble = None
-                    pause = POLL if self._all_out() else IDLE
-                    if done or sent:
-                        log.info(
-                            "looks: %d works got their three, %d sent (%d kept)",
-                            done,
-                            sent,
-                            len(self.three),
-                        )
-                except (AiUnavailable, NotDrawn) as err:
-                    self.trouble = str(err)
-                    log.info("looks: %s", err)
-                    pause = REST
-                except Exception:
-                    log.exception("looks: a round failed")
-                    pause = REST
-            self._wake.wait(pause)
-            self._wake.clear()
+        self._numberers.shutdown(wait=False, cancel_futures=True)
 
 
 def seen_floors() -> Any:

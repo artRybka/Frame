@@ -68,9 +68,6 @@ protocol FrameBackend: Sendable {
     /// The card opened: when the work's picture is poor, the server looks
     /// for a sharper copy in other sources; waits up to `wait` seconds.
     func sharpen(itemID: String, wait: Int) async throws -> SharperView
-    /// The card opened: a work not looked at yet is cut down to the work in
-    /// its museum photograph when something is around it (`wait`: seconds).
-    func checkCut(itemID: String, wait: Int) async throws -> CutView
     /// "Popraw kadr" (the corners of the work as shown) or the paper choice.
     func setCut(itemID: String, update: CutUpdate) async throws -> Item
     /// "Cofnij kadrowanie": the museum's photograph whole, for good.
@@ -424,8 +421,6 @@ protocol FrameBackend: Sendable {
     func suggestReviewFixes(itemID: String) async throws -> AiReview
     /// "Popraw": the value on the work (a title with its Polish title).
     func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview
-    /// "Przytnij": Opus cuts the work out of its photograph now (422: nothing found).
-    func cutReviewed(itemID: String) async throws -> AiReview
     /// One problem done elsewhere (a better copy picked).
     func dropReviewProblem(itemID: String, field: String) async throws -> AiReview
     /// "Ukryj": the work out of the catalogue and off the list.

@@ -77,9 +77,6 @@ class PhoneCrops:
         self.library = library
         self.crops = crops
 
-    def on(self) -> bool:
-        return self.crops.on_phone()
-
     def _state(self) -> dict[str, Any]:
         state = dict(self.library.get_state(KEY, {}) or {})
         state.setdefault("looked", {})
@@ -95,7 +92,7 @@ class PhoneCrops:
     def wants(self, item: Item, looked: dict[str, Any] | None = None) -> bool:
         """Whether the phone is to look at ``item``: a museum work with no
         cut of the photograph shown, not looked at by this model."""
-        if not self.on() or not Crops.wanted(item) or not Crops.open_to_cut(item):
+        if not Crops.wanted(item) or not Crops.open_to_cut(item):
             return False
         seen = (looked if looked is not None else self._state()["looked"]).get(item.id)
         model = model_of(kind_of(item.classification, item.medium))

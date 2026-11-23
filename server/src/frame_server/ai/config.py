@@ -73,7 +73,7 @@ class TaskUpdate(BaseModel):
 STUDY_PARTS = ("journey", "web_facts", "stages")
 #: Tasks with a portion of their own every night, their switch here
 #: (``leftover.BASE``).
-PORTION_TASKS = ("crops", "audit")
+PORTION_TASKS = ("audit",)
 
 
 class AiConfig(BaseModel):
@@ -102,14 +102,6 @@ class AiConfig(BaseModel):
     #: Facts about a work from the web for its study (Sonnet with the web
     #: search, once a work, about 0.3 USD; ``ai.web_facts``, "G8").
     web_facts: bool = True
-    #: Museum photographs cut down to the work: the frame, the easel, the
-    #: board around it (Haiku picks them, Opus sets the corners; at night
-    #: and when a card opens, ``ai.crops``).
-    crops: bool = True
-    #: The museum photographs cut by the phone's own model instead, and
-    #: Claude asked about none of them (Mateusz 2026-11-20: „Celem jest
-    #: całkowite uniknięcie Opus”; ``phone_crops``).
-    crops_on_phone: bool = True
     #: A green that may be a blue under yellowed varnish shown to Haiku at
     #: night; the blue it names is the work's accent (``ai.varnish``).
     varnish_blue: bool = True
@@ -123,9 +115,6 @@ class AiConfig(BaseModel):
     #: How a work was painted, told in a few sentences when a published
     #: technical study of it was found ("G2"; no longer drawn).
     stages: bool = True
-    #: How works look as numbers (Google's embedding model): Szukaj by how a
-    #: work looks, by a photograph, and the works that look alike ("G1").
-    looks: bool = True
     #: Nothing more is asked once this month's cost reaches it.
     monthly_limit_usd: float = Field(5.0, ge=0, le=1000)
     #: The same for the image model, which has a month's limit of its own.
@@ -168,11 +157,8 @@ class AiConfigUpdate(BaseModel):
     audit: bool | None = None
     journey: bool | None = None
     web_facts: bool | None = None
-    crops: bool | None = None
-    crops_on_phone: bool | None = None
     varnish_blue: bool | None = None
     drawn: bool | None = None
-    looks: bool | None = None
     stages: bool | None = None
     monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
     gemini_monthly_limit_usd: float | None = Field(None, ge=0, le=1000)
@@ -292,7 +278,6 @@ class AiConfigStore:
         if kind in (
             "gatekeeper",
             "audit",
-            "crops",
             "varnish_blue",
         ):
             return bool(getattr(config, kind))

@@ -366,11 +366,10 @@ class FrameService:
         # are, and a few works a night looked over (Haiku and its critic).
         self.gatekeeper = Gatekeeper(self.library, self.images, self.claude, self.ai_config)
         self.audit = Audit(self.library, self.images, self.claude, self.ai_config)
-        # Museum photographs cut down to the work (Haiku picks them, Opus
-        # sets the corners): at night and when a card opens.
-        self.crops = Crops(self.library, self.images, self.claude, self.ai_config)
+        # Museum photographs cut down to the work by the phone's own model,
+        # with no Claude (Mateusz 2026-11-20); the cuts kept here.
+        self.crops = Crops(self.library, self.images)
         self.crops.importer = self.importer
-        # ... or by the phone's own model, with no Claude (Mateusz 2026-11-20).
         self.phone_crops = PhoneCrops(self.library, self.crops)
         self.own_works = OwnWorks(
             self.library, self.images, self.importer, self.crops, self.sizes, self.claude
@@ -381,13 +380,9 @@ class FrameService:
         self.cleaning.background = True
         self.cleaning.importer = self.importer
         self.sharper.cleaned_again = self.cleaning.renew
-        # A page about a work (its study, the day's) reads the work cut
-        # down from its frame: the photograph is looked at first.
-        self.daily.job.cutting = self.crops.before_page
         # "Do sprawdzenia": each finding's remedy in one tap (Mateusz 2026-11-15).
         self.review_fixes = ReviewFixes(
-            self.library, self.images, self.claude, self.gatekeeper, self.audit, self.crops,
-            self.pl_text,
+            self.library, self.images, self.claude, self.gatekeeper, self.audit, self.pl_text,
         )  # fmt: skip
         # Favourites, playlists and Discover's works first in the night's
         # tidying (Mateusz 2026-11-11).
@@ -426,7 +421,6 @@ class FrameService:
         # Town names of photos' coordinates: after each album sync and at night.
         self.places = Places(self.library)
         self.study = Study(self.daily, self.ai, StudyJob(self.library, self.images, self.ai_config))
-        self.study.job.cutting = self.crops.before_page
         self.ai.register(self.study.job)
         # Facts about a work from the web, for its page (Sonnet with the web search).
         self.web_facts = WebFacts(self.library, self.claude, self.ai_config)
@@ -472,18 +466,13 @@ class FrameService:
         )
         # How a work was painted, when a technical study of it was found.
         self.stages = PaintingStages(self.library, self.claude, self.web_facts, self.ai_config)
-        # How the museums' works look, as Google's numbers: Szukaj by how a
-        # work looks or by a photograph, and the works that look alike
-        # (Mateusz 2026-11-13, "G1"); those cared about first.
-        self.looks = Looks(
-            self.library, self.images, self.painter, self.ai_config, settings.data_dir / "looks"
-        )
-        self.looks.cared = self.cared.ranks
-        # The same made on the server by SigLIP 2, in the background, to take
-        # Google's place (Mateusz 2026-11-20: "Przesiadamy.").
+        # How the works look, as numbers made on the server by SigLIP 2 in
+        # the background (Mateusz 2026-11-20: "Przesiadamy."; Google's until
+        # 2026-11-23), those cared about first; Szukaj by how a work looks or
+        # by a photograph, and the works that look alike ("G1").
         self.seen = Seen(self.library, self.images, settings.data_dir / "seen")
         self.seen.cared = self.cared.ranks
-        self.looks.seen = self.seen
+        self.looks = Looks(self.library, self.images, self.seen, settings.data_dir / "looks")
         self.looks.english = self._english
         # Szukaj's words for how works look, the groups narrowing them, and
         # a smart playlist made of them (Mateusz 2026-11-13).
@@ -534,12 +523,11 @@ class FrameService:
             self.cared.ranks,
             refresh=self.study_refresh,
             review=self.text_review,
-            crops=self.crops,
             audit=self.audit,
         )
         # One of its uses run now, for the owner's amount, at the full price.
         self.on_demand = OnDemand(
-            self.library, self.claude, self.ai_config, self.ai, self.leftover, crops=self.crops
+            self.library, self.claude, self.ai_config, self.ai, self.leftover
         )
         self.leftover.on_demand = self.on_demand
 
