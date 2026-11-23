@@ -27,7 +27,8 @@ actor DemoBackend: FrameBackend {
     private var demoFine: Set<String> = []
     private var playlistsByID: [Int: Playlist]
     /// The cards' order once one was moved, as the server keeps it.
-    private var playlistOrder: [Int] = []
+    private var cardOrder: [Int] = []
+    private var seededOwn = false
     /// The order chosen for each playlist's works (the server keeps it with the playlist).
     private var playlistSorts: [Int: PlaylistSort] = [:]
     private var settingsValue = FrameSettings.defaults
@@ -192,6 +193,19 @@ actor DemoBackend: FrameBackend {
         }
         shared.current = settingsValue
         shared.shown = settingsValue
+    }
+
+    /// Screenshots ("playlists-own"): a work of his own, and "Kolekcja
+    /// prywatna" moved to second place among the cards.
+    private func seedOwnCard() {
+        guard LaunchRoute.screen == "playlists-own", !seededOwn else { return }
+        seededOwn = true
+        guard let photo = DemoOwn.photo(glare: 0) else { return }
+        _ = try? storeOwn(id: "upload:demo0000own", image: photo, corners: nil, by: "", own: nil) {
+            $0.title = "Spacer po klifie"
+            $0.artist = "Claude Monet"
+        }
+        cardOrder = [1, -1]
     }
 
     private static func load() -> DemoFile {
@@ -1060,21 +1074,24 @@ actor DemoBackend: FrameBackend {
     // MARK: Playlists
 
     func playlists() async throws -> [PlaylistSummary] {
+        seedOwnCard()
         let made = playlistsByID.keys.sorted { a, b in
             // As the server: "Ulubione" first until a card is moved.
             let (fa, fb) = (playlistsByID[a]?.isFavorites == true, playlistsByID[b]?.isFavorites == true)
             return fa != fb ? fa : a < b
         }
         let ids = made.sorted { a, b in
-            (playlistOrder.firstIndex(of: a) ?? playlistOrder.count) < (playlistOrder.firstIndex(of: b) ?? playlistOrder.count)
+            (cardOrder.firstIndex(of: a) ?? cardOrder.count) < (cardOrder.firstIndex(of: b) ?? cardOrder.count)
         }
         return ids.compactMap { playlistsByID[$0] }.map(summary)
     }
 
     func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary] {
-        playlistOrder = ids.filter { playlistsByID[$0] != nil }
+        cardOrder = ids.filter { playlistsByID[$0] != nil || $0 == -1 }  // -1: "Kolekcja prywatna"
         return try await playlists()
     }
+
+    func playlistOrder() async throws -> [Int] { cardOrder }
 
     func playlist(id: Int) async throws -> PlaylistDetail {
         guard let playlist = playlistsByID[id] else { throw BackendError.notFound }

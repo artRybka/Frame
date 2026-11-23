@@ -146,6 +146,9 @@ protocol FrameBackend: Sendable {
     /// The cards in Playlisty in this order from now on (each person's own);
     /// the playlists back in it.
     func arrangePlaylists(ids: [Int]) async throws -> [PlaylistSummary]
+    /// The cards' order as last put, with `AppModel.ownWorksCard` where
+    /// "Kolekcja prywatna" stands (absent until it was moved).
+    func playlistOrder() async throws -> [Int]
     func deletePlaylist(id: Int) async throws
     /// The order of the playlist's works, in the app and on the frame.
     func sortPlaylist(id: Int, sort: PlaylistSort) async throws -> PlaylistDetail
