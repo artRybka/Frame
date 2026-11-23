@@ -104,14 +104,15 @@ struct RootView: View {
             // Galeria first for everyone (Mateusz 2026-11-23); "Ramka" is the
             // tab once called "Teraz", the frame's settings pushed on it. A
             // guest never touches the frame: no "Ramka" (2026-11-19).
-            Tab("Galeria", systemImage: "photo.stack", value: Screen.gallery) {
+            // The order Mateusz chose 2026-11-23 15:15.
+            Tab("Galeria", systemImage: "rectangle.portrait.on.rectangle.portrait.angled", value: Screen.gallery) {
                 GalleryView()
-            }
-            if !model.isGuest {
-                Tab("Ramka", systemImage: "photo.fill", value: Screen.now) { NowView() }
             }
             Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }
+            if !model.isGuest {
+                Tab("Ramka", systemImage: "photo.fill", value: Screen.now) { NowView() }
+            }
             Tab("Szukaj", systemImage: "magnifyingglass", value: Screen.search, role: .search) { SearchView() }
         }
         // Cards and the send bar, in a window above the app (over sheets too).

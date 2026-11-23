@@ -247,6 +247,19 @@ struct NowView: View {
                     }
                     .accessibilityLabel("Stan i ustawienia ramki")
                 }
+                // Konfiguracja (a household member's "Mój dostęp") right
+                // beside it, as a page (Mateusz 2026-11-23).
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        path.append(ConfigurationRoute())
+                    } label: {
+                        Image(systemName: model.isOwner ? "gearshape" : "person.crop.circle")
+                            .font(.headline)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(model.isOwner ? "Konfiguracja" : "Mój dostęp")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSend = true
@@ -271,6 +284,9 @@ struct NowView: View {
             }
             .navigationDestination(for: FrameSettingsRoute.self) { _ in
                 FrameTabView(embedded: true)
+            }
+            .navigationDestination(for: ConfigurationRoute.self) { _ in
+                if model.isOwner { ConnectionSettingsView(embedded: true) } else { MyAccessView(embedded: true) }
             }
             .onChange(of: model.frameSettingsOpened) {
                 path = NavigationPath()
@@ -1369,3 +1385,4 @@ struct ShownMarkLabel: View {
 
 /// The frame's state and settings, pushed on "Ramka" (`FrameTabView`).
 struct FrameSettingsRoute: Hashable {}
+struct ConfigurationRoute: Hashable {}
