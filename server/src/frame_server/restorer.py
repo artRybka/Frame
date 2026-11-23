@@ -100,6 +100,13 @@ COLOUR_SIGMA = 2.0
 #: half the change and a contour drawn thinner, the texture still there,
 #: but the work "trochę za miękki" (19:40): seven tenths.
 DRAWN = 0.7
+#: The drawing and its picture are laid on each other this small (its
+#: longer side) before the colours and the plain enlargement are put over;
+#: they must then match at least so well (correlation of their tones),
+#: moved and scaled by no more than :data:`LAID_SHIFT` of the side.
+LAID_SIDE = 800
+LAID_MATCH = 0.85
+LAID_SHIFT = 0.06
 #: A drawing's note says it is in the picture's colours and tempered by
 #: :data:`DRAWN` (``colours``): the ones kept before are made so once
 #: (:meth:`Restorer.recolour_kept`).
@@ -739,10 +746,72 @@ def recoloured(picture: Image.Image, drawn: Image.Image, share: float = DRAWN) -
     own = picture.convert("RGB").resize(size, Image.Resampling.LANCZOS)
     museum = linear_to_oklab(u8_to_linear(np.asarray(own))).astype(np.float32)
     lab = linear_to_oklab(u8_to_linear(np.asarray(drawn.convert("RGB")))).astype(np.float32)
+    laid = _laid(museum[..., 0], lab[..., 0])
+    if laid is None:
+        # Not the picture it was drawn from, or not where it lies: neither
+        # its colours nor its plain enlargement are put over the drawing
+        # (Mondrian's ginger pot came back doubled, Mateusz 2026-11-22).
+        log.info("restorer: the drawing does not lie on its picture, kept as drawn")
+        return drawn.convert("RGB")
+    museum = np.asarray(
+        cv2.warpAffine(
+            museum,
+            laid,
+            (size[0], size[1]),
+            flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+            borderMode=cv2.BORDER_REFLECT,
+        ),
+        dtype=np.float32,
+    )
     lab += cv2.GaussianBlur(museum, (0, 0), sigma) - cv2.GaussianBlur(lab, (0, 0), sigma)
     lab = museum + share * (lab - museum)
     rgb = linear_to_u8(np.clip(oklab_to_linear(lab), 0.0, 1.0))
     return Image.fromarray(rgb, "RGB")
+
+
+def _laid(museum: np.ndarray, drawn: np.ndarray) -> np.ndarray | None:
+    """Where the museum's picture (enlarged to the drawing's size) lies on
+    the drawing, as the affine map from the drawing's pixels to its; None
+    when the two do not match (:data:`LAID_MATCH`). The model may draw a
+    picture a few pixels larger or moved (its sizes rounded), and a plain
+    enlargement put over it a few pixels off doubles every edge."""
+    h, w = drawn.shape
+    k = min(1.0, LAID_SIDE / max(h, w))
+    small = (max(8, round(w * k)), max(8, round(h * k)))
+
+    def prepared(a: np.ndarray) -> np.ndarray:
+        b = cv2.resize(a, small, interpolation=cv2.INTER_AREA)
+        return cv2.GaussianBlur(b, (0, 0), 1.0)
+
+    a, b = prepared(drawn), prepared(museum)
+    warp = np.eye(2, 3, dtype=np.float32)
+    try:
+        _, warp = cv2.findTransformECC(  # type: ignore[call-overload]
+            a,
+            b,
+            warp,
+            cv2.MOTION_AFFINE,
+            (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 100, 1e-5),
+            None,
+            5,
+        )
+    except cv2.error:
+        return None
+    moved = cv2.warpAffine(
+        b,
+        warp,
+        small,
+        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_REFLECT,
+    )
+    da, dm = a - a.mean(), moved - moved.mean()
+    match = float((da * dm).sum() / (np.sqrt((da * da).sum() * (dm * dm).sum()) + 1e-9))
+    shift = float(np.abs(warp[:, 2]).max()) / max(small)
+    if match < LAID_MATCH or shift > LAID_SHIFT or abs(warp[0, 0] - 1) > LAID_SHIFT:
+        return None
+    full = warp.copy()
+    full[:, 2] /= k
+    return full
 
 
 def _chunks(items: list[Item], n: int) -> Iterator[list[Item]]:

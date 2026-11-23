@@ -480,11 +480,34 @@ def test_a_drawing_kept_before_is_put_in_the_pictures_colours(app: Any, monkeypa
     assert service.restorer.recolour_kept() == 0
 
 
-def test_half_of_what_the_model_drew_finer_than_the_picture_is_kept() -> None:
+def test_part_of_what_the_model_drew_finer_than_the_picture_is_kept() -> None:
     rng = np.random.default_rng(3)
-    picture = Image.fromarray(np.full((100, 80, 3), 128, np.uint8))
-    made_up = np.clip(128 + rng.normal(0, 30, (400, 320, 3)), 0, 255).astype(np.uint8)
-    kept = np.asarray(recoloured(picture, Image.fromarray(made_up)), dtype=np.float32)
-    plain = np.asarray(recoloured(picture, Image.fromarray(np.full((400, 320, 3), 128, np.uint8))))
-    ratio = float(np.abs(kept - plain).std()) / float(np.abs(made_up - 128.0).std())
+    y, x = np.mgrid[0:100, 0:80]
+    tones = (128 + 60 * np.sin(x / 5.0) * np.cos(y / 7.0))[..., None].repeat(3, -1)
+    picture = Image.fromarray(tones.astype(np.uint8))
+    plain = np.asarray(picture.resize((320, 400), Image.Resampling.LANCZOS), dtype=np.float32)
+    made_up = rng.normal(0, 20, plain.shape)
+    drawn = np.clip(plain + made_up, 0, 255).astype(np.uint8)
+    kept = np.asarray(recoloured(picture, Image.fromarray(drawn)), dtype=np.float32)
+    ratio = float((kept - plain).std()) / float((drawn - plain).std())
     assert 0.55 < ratio < 0.85
+
+
+def test_a_drawing_a_few_pixels_off_its_picture_is_laid_on_it_first() -> None:
+    rng = np.random.default_rng(5)
+    y, x = np.mgrid[0:300, 0:240]
+    tones = (128 + 60 * np.sin(x / 9.0) * np.cos(y / 13.0))[..., None].repeat(3, -1)
+    picture = Image.fromarray(tones.astype(np.uint8))
+    big = np.asarray(picture.resize((960, 1200), Image.Resampling.LANCZOS), dtype=np.float32)
+    drawn = np.roll(big, (10, -8), (0, 1)) + rng.normal(0, 4, big.shape)
+    drawn = np.clip(drawn, 0, 255).astype(np.uint8)
+    out = np.asarray(recoloured(picture, Image.fromarray(drawn)), dtype=np.float32)
+    coarse = cv2.GaussianBlur(np.abs(out - drawn.astype(np.float32)), (0, 0), 3)
+    assert float(coarse.mean()) < 3.0
+
+
+def test_a_drawing_of_another_picture_is_kept_as_drawn() -> None:
+    rng = np.random.default_rng(6)
+    picture = Image.fromarray(rng.integers(0, 255, (120, 100, 3), dtype=np.uint8))
+    other = Image.fromarray(rng.integers(0, 255, (480, 400, 3), dtype=np.uint8))
+    assert np.array_equal(np.asarray(recoloured(picture, other)), np.asarray(other))
