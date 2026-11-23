@@ -266,6 +266,9 @@ def test_wikiart_types_by_medium_or_picture() -> None:
     assert not matches(sepia, painting) and matches(sepia, drawing)
     assert matches(oil, painting) and not matches(oil, drawing)
     assert not matches(wikiart("pencil, paper"), painting)
+    # A grey picture is a drawing before its colours are analysed again.
+    grey = wikiart().model_copy(update={"tint_spread": 0.004})
+    assert not matches(grey, painting) and matches(grey, drawing)
     assert matches(wikiart("pencil, paper"), drawing)
     assert matches(wikiart("oil, canvas", ("monochrome",)), painting)
     # A search for paintings found them: its type alone is no answer.

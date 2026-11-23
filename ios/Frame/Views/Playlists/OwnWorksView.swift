@@ -8,6 +8,8 @@ struct OwnWorksRoute: Hashable {}
 struct OwnWorksCard: View {
     static let title = "Kolekcja prywatna"
     let items: [ItemSummary]
+    /// The frame plays it: said in the caption, as on a playlist's card.
+    var isActive = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -23,9 +25,15 @@ struct OwnWorksCard: View {
                 Text(bound: Self.title)
                     .font(.serif(16, weight: .semibold))
                     .foregroundStyle(Theme.ink)
-                Text(bound: Names.works(items.count))
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
+                Group {
+                    if isActive {
+                        OnFrameCount(count: Names.works(items.count))
+                    } else {
+                        Text(bound: Names.works(items.count))
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
             }
         }
         .accessibilityElement(children: .combine)

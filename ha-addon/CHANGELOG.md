@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.337
+
+- Szare rysunki z WikiArt (ołówek, tusz) odpadają z „Malarstwa” od razu,
+  bez czekania na przeliczenie barw katalogu.
+
+## 1.145.336
+
+- Przytrzymany kafelek „Kolekcja prywatna” pokazuje to samo menu co
+  playlisty (bez „Usuń playlistę”): można ją prezentować na ramce.
+- Przeciąganie kafelków w Playlistach jest płynniejsze: karta z menu nie
+  przeskakuje na początku, a pozostałe kafelki robią miejsce spokojnie,
+  bez przesuwania się tam i z powrotem.
+
 ## 1.145.335
 
 - Kafelek Studium dnia w Odkrywaj kadruje się na twarz postaci, którą
