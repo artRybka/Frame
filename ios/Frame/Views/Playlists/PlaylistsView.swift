@@ -11,8 +11,11 @@ struct PlaylistsView: View {
     @State private var deleting: PlaylistSummary?
     /// How far the page is scrolled, for the glow of the card on top.
     @State private var scrolled: CGFloat = 0
-    /// The playlist whose card is being moved with a finger.
+    /// The card being moved with a finger (`AppModel.cards`).
     @State private var dragged: Int?
+    /// When the cards last made room: the next move waits for them to
+    /// settle, else a card arriving under the finger moved them again.
+    @State private var settled = Date.distantPast
     /// "Dodaj własne dzieło" on the whole screen.
     @State private var addingOwn = ["own-start", "own-scan", "own-scan2", "own-cut", "own-balance", "own-describe", "own-card"].contains(LaunchRoute.screen)
 
@@ -57,6 +60,12 @@ struct PlaylistsView: View {
                 VStack(alignment: .leading, spacing: 26) {
                     if let active, model.playlists.contains(where: { $0.id == active.id }) {
                         NavigationLink(value: active.id) {
+                            NowPlayingCard(playlist: active)
+                        }
+                        .buttonStyle(.plain)
+                    } else if let active, active.ownWorks == true {
+                        // "Kolekcja prywatna" on the frame: opens the collection.
+                        NavigationLink(value: OwnWorksRoute()) {
                             NowPlayingCard(playlist: active)
                         }
                         .buttonStyle(.plain)
@@ -108,7 +117,7 @@ struct PlaylistsView: View {
                     // the card, gaps too: without the shape only the cards
                     // did, and a card held over a gap showed "no entry".
                     .contentShape(Rectangle())
-                    .onDrop(of: [.text], delegate: CardDrop(target: nil, dragged: $dragged, model: model))
+                    .onDrop(of: [.text], delegate: drop(on: nil))
                 }
                 .environment(\.parallaxLift, scrolled)
                 .pageWidth()
@@ -191,15 +200,15 @@ struct PlaylistsView: View {
             dragged = playlist.id
             return NSItemProvider(object: String(playlist.id) as NSString)
         } preview: {
-            // Drawn apart from the page, without its
-            // environment: `ArtImage` needs the model
-            // (1.136.0 crashed as soon as a card was held).
-            Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
-                .frame(width: 150, height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            // The same card as the menu's, so the card held goes on
+            // with the finger as it is: a smaller square in its place
+            // jumped as the drag began (Mateusz 2026-11-23). Drawn
+            // apart from the page, without its environment: `ArtImage`
+            // needs the model (1.136.0 crashed as soon as a card was held).
+            DragCard { PlaylistMenuPreview(playlist: playlist) }
                 .environment(model)
         }
-        .onDrop(of: [.text], delegate: CardDrop(target: playlist.id, dragged: $dragged, model: model))
+        .onDrop(of: [.text], delegate: drop(on: playlist.id))
         // On the card held, not the page: on iOS 26 the dialog
         // is a popover pointing at the view it hangs on.
         .confirmationDialog(
@@ -221,22 +230,33 @@ struct PlaylistsView: View {
     /// 2026-11-15), moved like a playlist's card.
     private var ownWorksCard: some View {
         NavigationLink(value: OwnWorksRoute()) {
-            OwnWorksCard(items: model.ownWorks)
+            OwnWorksCard(items: model.ownWorks, isActive: ownWorksActive)
         }
         .buttonStyle(.plain)
+        // Held: the same menu as a playlist's, without "Usuń playlistę"
+        // (Mateusz 2026-11-23).
         .contextMenu {
-            moveMenu(AppModel.ownWorksCard)
+            ownWorksMenu
+        } preview: {
+            OwnWorksMenuPreview(items: model.ownWorks)
+                .environment(model)
         }
         .onDrag {
             dragged = AppModel.ownWorksCard
             return NSItemProvider(object: String(AppModel.ownWorksCard) as NSString)
         } preview: {
-            Collage(itemIDs: model.ownWorks.prefix(4).map(\.id), title: OwnWorksCard.title)
-                .frame(width: 150, height: 150)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            DragCard { OwnWorksMenuPreview(items: model.ownWorks) }
                 .environment(model)
         }
-        .onDrop(of: [.text], delegate: CardDrop(target: AppModel.ownWorksCard, dragged: $dragged, model: model))
+        .onDrop(of: [.text], delegate: drop(on: AppModel.ownWorksCard))
+    }
+
+    /// The frame plays "Kolekcja prywatna".
+    private var ownWorksActive: Bool { active?.ownWorks == true }
+
+    /// Where a card moved with a finger is let go.
+    private func drop(on target: Int?) -> CardDrop {
+        CardDrop(target: target, dragged: $dragged, settled: $settled, model: model)
     }
 
     /// New playlists come from the "+" at the top only (Mateusz
@@ -322,6 +342,23 @@ extension PlaylistsView {
         }
     }
 
+    /// Held on "Kolekcja prywatna": as a playlist's menu, without deleting.
+    @ViewBuilder
+    private var ownWorksMenu: some View {
+        if model.isGuest {
+            // A guest sends nothing to the frame.
+        } else if !ownWorksActive {
+            Button("Prezentuj na ramce", systemImage: "photo.fill") {
+                Task { await model.playOwnWorks() }
+            }
+            .disabled(model.ownWorks.isEmpty || !model.isOwner)
+        } else {
+            Button("Teraz prezentowane", systemImage: "checkmark") {}
+                .disabled(true)
+        }
+        moveMenu(AppModel.ownWorksCard)
+    }
+
     /// "Przesuń na początek" and "na koniec" of a card held (a playlist's
     /// or "Kolekcja prywatna").
     @ViewBuilder
@@ -331,7 +368,7 @@ extension PlaylistsView {
             Button("Przesuń na początek", systemImage: "arrow.up.to.line") {
                 var list = cards
                 list.insert(list.remove(at: index), at: 0)
-                withAnimation(.snappy) { model.showCards(list) }
+                withAnimation(CardDrop.making) { model.showCards(list) }
                 Task { await model.arrangeCards(list) }
             }
         }
@@ -339,7 +376,7 @@ extension PlaylistsView {
             Button("Przesuń na koniec", systemImage: "arrow.down.to.line") {
                 var list = cards
                 list.append(list.remove(at: index))
-                withAnimation(.snappy) { model.showCards(list) }
+                withAnimation(CardDrop.making) { model.showCards(list) }
                 Task { await model.arrangeCards(list) }
             }
         }
@@ -376,16 +413,25 @@ extension Playlist: Identifiable {}
 private struct CardDrop: DropDelegate {
     let target: Int?
     @Binding var dragged: Int?
+    @Binding var settled: Date
     let model: AppModel
+
+    /// How the others make room: soft, without bouncing past their places.
+    static let making = Animation.spring(response: 0.34, dampingFraction: 0.9)
+    /// Until then a card that slid in under the finger does not move them
+    /// again (a card taken across a row moved the whole row back and forth).
+    static let settling: TimeInterval = 0.3
 
     func dropEntered(info: DropInfo) {
         var cards = model.cards
         guard let target, let dragged, dragged != target,
+              Date.now >= settled,
               let from = cards.firstIndex(of: dragged),
               let to = cards.firstIndex(of: target)
         else { return }
         cards.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        withAnimation(.snappy) { model.showCards(cards) }
+        settled = .now + Self.settling
+        withAnimation(Self.making) { model.showCards(cards) }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
@@ -1158,6 +1204,29 @@ struct PlaylistMenuPreview: View {
             if !playlist.isMine, let owner = playlist.ownerName, !owner.isEmpty {
                 Label(owner, systemImage: "person.2").font(.caption2)
             }
+        }
+    }
+}
+
+/// A card held and moved with a finger: the menu's own card, its corners
+/// as the system's rounded preview has them, so the card lifted for the
+/// menu goes on with the finger unchanged.
+struct DragCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+    }
+}
+
+/// "Kolekcja prywatna" held: its card like a playlist's.
+struct OwnWorksMenuPreview: View {
+    let items: [ItemSummary]
+
+    var body: some View {
+        CardMenuPreview(title: OwnWorksCard.title, subtitle: Names.works(items.count)) {
+            Collage(itemIDs: items.prefix(4).map(\.id), title: OwnWorksCard.title)
         }
     }
 }

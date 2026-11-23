@@ -1156,6 +1156,8 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     var sort: PlaylistSort?
     /// "Doszukuj w tle" (`Playlist.grows`).
     var grows: Bool?
+    /// "Kolekcja prywatna" as the frame plays it (never among the cards).
+    var ownWorks: Bool?
 
     var isFavorites: Bool { kind == .smart && rules.favoritesOnly }
     /// Made by this phone's person: only they change it.

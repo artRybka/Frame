@@ -1155,6 +1155,13 @@ actor DemoBackend: FrameBackend {
         try await next()
     }
 
+    func playOwnWorks() async throws {
+        let own = items.filter { $0.kind == .own }.map(\.id)
+        guard !own.isEmpty else { throw BackendError.notFound }
+        queue = own.shuffled()
+        try await next()
+    }
+
     func playSuggestions() async throws {
         settingsValue.playlistId = nil
         queue = try await daySuggestions().items.map(\.item.id)

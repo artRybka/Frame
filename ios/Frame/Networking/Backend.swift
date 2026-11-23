@@ -161,6 +161,8 @@ protocol FrameBackend: Sendable {
     func play(playlistID: Int) async throws
     /// Propozycje on the frame: the rotation without a playlist.
     func playSuggestions() async throws
+    /// "Kolekcja prywatna" on the frame (the owner's own works).
+    func playOwnWorks() async throws
     /// Propozycje dnia of the asking person (made once a day).
     func daySuggestions() async throws -> DayPicks
 
