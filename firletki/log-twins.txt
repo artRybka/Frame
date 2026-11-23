@@ -1,0 +1,572 @@
+2026-11-23 04:06:42,531 INFO frame_server.library.twins: twins: 4 pictures of 4 artists looked at in 5 s: 0 copies, 0 details or framed photographs; 4 hashed
+2026-11-23 04:06:42,531 INFO frame_server.library.twins: twins: time: candidates 3.9 s (1), keypoints 0.2 s (17), hash distances 0.0 s (4), writes 0.0 s (8), hashes 0.0 s (4), pairs 0.0 s (13), grouping 0.0 s (9)
+2026-11-23 04:06:57,040 INFO frame_server.library.twins: twins: 2 pictures of 1 artists looked at in 6 s: 0 copies, 0 details or framed photographs; 2 hashed
+2026-11-23 04:06:57,040 INFO frame_server.library.twins: twins: time: candidates 5.1 s (1), keypoints 0.0 s (2), hash distances 0.0 s (2), hashes 0.0 s (2), writes 0.0 s (2), grouping 0.0 s (3)
+2026-11-23 04:57:42,746 INFO frame_server.library.twins: twins: 236 pictures of 135 artists looked at in 17 s: 0 copies, 0 details or framed photographs; 236 hashed
+2026-11-23 04:57:42,746 INFO frame_server.library.twins: twins: time: candidates 6.3 s (1), keypoints 4.0 s (338), hash distances 2.3 s (236), writes 2.3 s (270), hashes 1.2 s (236), pairs 0.2 s (155), grouping 0.0 s (271)
+2026-11-23 04:58:00,952 INFO frame_server.library.twins: twins: 3 pictures of 3 artists looked at in 4 s: 0 copies, 0 details or framed photographs; 3 hashed
+2026-11-23 04:58:00,952 INFO frame_server.library.twins: twins: time: candidates 3.6 s (1), keypoints 0.0 s (3), hash distances 0.0 s (3), hashes 0.0 s (3), writes 0.0 s (6), grouping 0.0 s (7)
+2026-11-23 04:58:09,377 INFO frame_server.library.twins: twins: 3 pictures of 2 artists looked at in 4 s: 0 copies, 0 details or framed photographs; 3 hashed
+2026-11-23 04:58:09,377 INFO frame_server.library.twins: twins: time: candidates 3.5 s (1), keypoints 0.0 s (3), hash distances 0.0 s (3), hashes 0.0 s (3), writes 0.0 s (4), grouping 0.0 s (5)
+2026-11-23 04:58:20,419 INFO frame_server.library.twins: twins: 1 pictures of 1 artists looked at in 5 s: 0 copies, 0 details or framed photographs; 1 hashed
+2026-11-23 04:58:20,419 INFO frame_server.library.twins: twins: time: candidates 4.8 s (1), keypoints 0.0 s (1), hash distances 0.0 s (1), hashes 0.0 s (1), writes 0.0 s (2), grouping 0.0 s (3)
+2026-11-23 05:43:41,832 WARNING frame_server.loopwatch: POST /api/library/items/wikiart:57727123edc2cb3880c05c06/sharpen has waited 16 s (2 requests under way); threads at work:
+  thread ThreadPoolExecutor-550_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread twins:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    frame_server/library/twins.py:437 _search_round
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:917 _large_details
+    frame_server/library/twins.py:899 sets_of
+    frame_server/library/twins.py:1388 large_keypoints
+  thread Thread-13 (work_out_cards):
+    frame_server/library/vocabulary.py:1522 <genexpr>
+    frame_server/library/vocabulary.py:1420 term_matches
+  thread ai-now:
+    httpx2/_decoders.py:76 decompress
+2026-11-23 05:57:32,237 INFO frame_server.library.twins: twins: 245 pictures of 128 artists looked at in 20 s: 0 copies, 0 details or framed photographs; 245 hashed
+2026-11-23 05:57:32,238 INFO frame_server.library.twins: twins: time: candidates 6.6 s (1), keypoints 5.1 s (410), writes 2.6 s (256), hash distances 2.3 s (245), hashes 1.3 s (245), pairs 0.5 s (420), grouping 0.0 s (257)
+2026-11-23 06:03:47,548 INFO frame_server.library.twins: twins: 4 pictures of 4 artists looked at in 5 s: 0 copies, 0 details or framed photographs; 4 hashed
+2026-11-23 06:03:47,548 INFO frame_server.library.twins: twins: time: candidates 4.2 s (1), hash distances 0.1 s (4), keypoints 0.1 s (4), writes 0.0 s (8), hashes 0.0 s (4), grouping 0.0 s (9)
+2026-11-23 06:04:15,592 INFO frame_server.library.twins: twins: 1 pictures of 1 artists looked at in 4 s: 0 copies, 0 details or framed photographs; 1 hashed
+2026-11-23 06:04:15,593 INFO frame_server.library.twins: twins: time: candidates 3.6 s (1), keypoints 0.0 s (1), hash distances 0.0 s (1), hashes 0.0 s (1), writes 0.0 s (2), grouping 0.0 s (3)
+2026-11-23 06:04:25,240 INFO frame_server.library.twins: twins: 2 pictures of 2 artists looked at in 6 s: 0 copies, 0 details or framed photographs; 2 hashed
+2026-11-23 06:04:25,240 INFO frame_server.library.twins: twins: time: candidates 4.8 s (1), keypoints 0.0 s (2), hash distances 0.0 s (2), hashes 0.0 s (2), writes 0.0 s (4), grouping 0.0 s (5)
+2026-11-23 06:22:09,958 WARNING frame_server.loopwatch: other threads at work while the loop stood:
+  thread ThreadPoolExecutor-0_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread AnyIO worker thread:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    anyio/_backends/_asyncio.py:1124 run
+    frame_server/web/crops_api.py:109 <lambda>
+    frame_server/phone_crops.py:171 found
+    frame_server/phone_crops.py:91 _save
+    frame_server/library/repo.py:2620 set_state
+    .13/contextlib.py:148 __exit__
+    frame_server/library/repo.py:929 _db
+  thread AnyIO worker thread:
+    .13/threading.py:1044 _bootstrap_inner
+    anyio/_backends/_asyncio.py:1124 run
+    fastapi/telemetry/_api.py:244 _run_sync_endpoint
+    frame_server/web/player_api.py:211 player
+    frame_server/web/player_api.py:180 _player_view
+    frame_server/web/player_api.py:125 _now_showing
+    frame_server/ai/pl_text.py:791 text
+    frame_server/library/repo.py:2688 note
+    .13/contextlib.py:141 __enter__
+    frame_server/library/repo.py:916 _db
+  thread twins:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    frame_server/library/twins.py:437 _search_round
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:928 _large_details
+    frame_server/library/twins.py:898 sets_of
+    frame_server/library/twins.py:1375 large_keypoints
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread Thread-9:
+    frame_server/artist_people.py:338 _send
+    frame_server/artist_people.py:354 <lambda>
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread ai-now:
+    httpcore2/_sync/http11.py:192 _receive_response_body
+    httpcore2/_sync/http11.py:217 _receive_event
+    httpcore2/_backends/sync.py:126 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+2026-11-23 06:22:15,030 WARNING frame_server.loopwatch: POST /api/library/items/wikiart:5772712fedc2cb3880c0ca92/sharpen has waited 15 s (4 requests under way); threads at work:
+  thread ThreadPoolExecutor-0_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread twins:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    frame_server/library/twins.py:437 _search_round
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:912 _large_details
+    frame_server/library/twins.py:898 sets_of
+    frame_server/library/twins.py:1375 large_keypoints
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread Thread-9:
+    frame_server/artist_people.py:338 _send
+    frame_server/artist_people.py:354 <lambda>
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread ai-now:
+    httpx2/_models.py:961 iter_raw
+    httpx2/_client.py:138 __iter__
+    httpx2/_transports/default.py:121 __iter__
+    httpcore2/_sync/connection_pool.py:427 __iter__
+    httpcore2/_sync/http11.py:312 __iter__
+    httpcore2/_sync/http11.py:188 _receive_response_body
+    httpcore2/_sync/http11.py:200 _receive_event
+    httpcore2/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+2026-11-23 06:23:12,270 WARNING frame_server.loopwatch: POST /api/library/items/wikiart:5772711eedc2cb3880c0515e/sharpen has waited 16 s (7 requests under way); threads at work:
+  thread AnyIO worker thread:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    anyio/_backends/_asyncio.py:1124 run
+    frame_server/library/repo.py:2282 places
+    frame_server/library/repo.py:2303 _count_places
+    frame_server/library/models.py:611 held_at
+    frame_server/library/places.py:231 key_of
+    frame_server/library/places.py:219 qid_of
+    frame_server/library/places.py:160 fold
+  thread ThreadPoolExecutor-1_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread twins:
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:912 _large_details
+    frame_server/library/twins.py:893 sets_of
+    frame_server/library/twins.py:954 _large_picture
+    frame_server/library/images.py:1165 looked_at
+    frame_server/library/images.py:1156 sample
+    frame_server/library/images.py:1140 _download
+    frame_server/library/images.py:1116 _fetch
+    frame_server/library/hosts.py:483 wait_calm
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread Thread-9:
+    frame_server/artist_people.py:338 _send
+    frame_server/artist_people.py:354 <lambda>
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+2026-11-23 06:23:45,302 WARNING frame_server.loopwatch: POST /api/library/items/wikiart:5772711eedc2cb3880c05170/sharpen has waited 15 s (2 requests under way); threads at work:
+  thread ThreadPoolExecutor-3_2:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread AnyIO worker thread:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    anyio/_backends/_asyncio.py:1113 run
+    frame_server/web/library_api.py:946 smaller
+    PIL/Image.py:2724 save
+    PIL/JpegImagePlugin.py:871 _save
+    PIL/ImageFile.py:675 _save
+    PIL/ImageFile.py:686 _encode_tile
+  thread ThreadPoolExecutor-2_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread twins:
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:912 _large_details
+    frame_server/library/twins.py:893 sets_of
+    frame_server/library/twins.py:954 _large_picture
+    frame_server/library/images.py:1165 looked_at
+    frame_server/library/images.py:1156 sample
+    frame_server/library/images.py:1140 _download
+    frame_server/library/images.py:1116 _fetch
+    frame_server/library/hosts.py:483 wait_calm
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread Thread-9:
+    frame_server/artist_people.py:338 _send
+    frame_server/artist_people.py:354 <lambda>
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+2026-11-23 06:36:35,999 INFO frame_server.library.twins: twins: 1 pairs left to the judge (hash)
+2026-11-23 06:36:41,803 INFO frame_server.library.twins: twins: 231 pictures of 144 artists looked at in 19 s: 0 copies, 0 details or framed photographs; 231 hashed
+2026-11-23 06:36:41,803 INFO frame_server.library.twins: twins: time: candidates 7.7 s (1), keypoints 4.7 s (272), hash distances 2.8 s (231), hashes 1.5 s (231), writes 0.6 s (288), pairs 0.2 s (120), grouping 0.0 s (289)
+2026-11-23 06:37:02,917 INFO frame_server.library.twins: twins: 4 pictures of 4 artists looked at in 5 s: 0 copies, 0 details or framed photographs; 4 hashed
+2026-11-23 06:37:02,917 INFO frame_server.library.twins: twins: time: candidates 4.1 s (1), keypoints 0.4 s (7), hash distances 0.0 s (4), hashes 0.0 s (4), writes 0.0 s (8), pairs 0.0 s (3), grouping 0.0 s (9)
+2026-11-23 06:37:18,504 INFO frame_server.library.twins: twins: 3 pictures of 3 artists looked at in 5 s: 0 copies, 0 details or framed photographs; 3 hashed
+2026-11-23 06:37:18,506 INFO frame_server.library.twins: twins: time: candidates 4.0 s (1), keypoints 0.1 s (3), hash distances 0.1 s (3), writes 0.0 s (6), hashes 0.0 s (3), grouping 0.0 s (7)
+2026-11-23 06:37:33,228 INFO frame_server.library.twins: twins: 3 pictures of 3 artists looked at in 7 s: 0 copies, 0 details or framed photographs; 3 hashed
+2026-11-23 06:37:33,228 INFO frame_server.library.twins: twins: time: candidates 6.1 s (1), keypoints 0.2 s (5), hash distances 0.0 s (3), hashes 0.0 s (3), writes 0.0 s (6), pairs 0.0 s (2), grouping 0.0 s (7)
+2026-11-23 07:23:11,180 WARNING frame_server.loopwatch: POST /api/library/items/europeana:2064116~Museu_ProvidedCHO_Nationalmuseum__Sweden_22989/sharpen has waited 16 s (1 requests under way); threads at work:
+  thread ThreadPoolExecutor-21_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread twins:
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:928 _large_details
+    frame_server/library/twins.py:893 sets_of
+    frame_server/library/twins.py:954 _large_picture
+    frame_server/library/images.py:1165 looked_at
+    frame_server/library/images.py:1156 sample
+    frame_server/library/images.py:1140 _download
+    frame_server/library/images.py:1116 _fetch
+    frame_server/library/hosts.py:483 wait_calm
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread looks:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+2026-11-23 07:23:55,250 WARNING frame_server.loopwatch: GET /api/library/items/wikiart:57727151edc2cb3880c10a02/polish has waited 16 s (8 requests under way); threads at work:
+  thread work-medium:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    frame_server/media.py:318 _look_then_done
+    frame_server/media.py:411 _remember
+    frame_server/library/repo.py:1068 update
+    frame_server/library/repo.py:1079 _update
+    .13/contextlib.py:148 __exit__
+    frame_server/library/repo.py:929 _db
+  thread ThreadPoolExecutor-28_15:
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    .13/concurrent/futures/thread.py:93 _worker
+    .13/concurrent/futures/thread.py:59 run
+    frame_server/library/hosts.py:275 call
+    frame_server/library/importer.py:946 ask
+    frame_server/library/importer.py:663 search
+    frame_server/library/importer.py:689 _ask
+    frame_server/library/importer.py:722 _ask_museum
+    fr
+  [... 712 characters left out ...]
+.py:663 search
+    frame_server/library/importer.py:689 _ask
+    frame_server/library/importer.py:717 _ask_museum
+    frame_server/library/importer.py:386 remember
+    frame_server/library/importer.py:393 _keep_seen
+    frame_server/library/importer.py:447 _store
+    frame_server/library/records.py:89 put_many
+  thread ThreadPoolExecutor-27_8:
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    .13/concurrent/futures/thread.py:93 _worker
+    .13/concurrent/futures/thread.py:59 run
+    frame_server/library/hosts.py:275 call
+    frame_server/library/importer.py:946 ask
+    frame_server/library/importer.py:663 search
+    frame_server/library/importer.py:689 _ask
+    frame_server/library/importer.py:722 _ask_museum
+    frame_server/library/pages.py:139 put
+  thread AnyIO worker thread:
+    .13/threading.py:1044 _bootstrap_inner
+    anyio/_backends/_asyncio.py:1124 run
+    fastapi/telemetry/_api.py:244 _run_sync_endpoint
+    frame_server/web/player_api.py:211 player
+    frame_server/web/player_api.py:180 _player_view
+    frame_server/web/player_api.py:125 _now_showing
+    frame_server/ai/pl_text.py:800 text
+    frame_server/library/wikidata.py:224 known
+    frame_server/library/wikidata.py:214 cached
+    frame_server/library/records.py:51 get
+  thread AnyIO worker thread:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    anyio/_backends/_asyncio.py:1124 run
+    frame_server/web/crops_api.py:109 <lambda>
+    frame_server/phone_crops.py:188 found
+    frame_server/library/repo.py:1068 update
+    frame_server/library/repo.py:1071 _update
+  thread twins:
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:928 _large_details
+    frame_server/library/twins.py:893 sets_of
+    frame_server/library/twins.py:954 _large_picture
+    frame_server/library/images.py:1165 looked_at
+    frame_server/library/images.py:1156 sample
+    frame_server/library/images.py:1140 _download
+    frame_server/library/images.py:1116 _fetch
+    frame_server/library/hosts.py:483 wait_calm
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread ai-now:
+    frame_server/ai/jobs.py:697 _do
+    frame_server/ai/jobs.py:390 run_one
+    frame_server/ai/pl_text.py:656 params
+    frame_server/ai/pl_text.py:662 note_params
+    frame_server/ai/pl_text.py:634 context
+    frame_server/ai/pl_text.py:630 facts
+    frame_server/library/wikidata.py:227 facts
+    frame_server/library/wikidata.py:249 facts_of
+    frame_server/library/wikidata.py:271 _keep
+    frame_server/library/records.py:75 put
+2026-11-23 07:24:25,256 WARNING frame_server.loopwatch: POST /api/library/items/wmc:33566950/describe has waited 17 s (1 requests under way); threads at work:
+  thread twins:
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:928 _large_details
+    frame_server/library/twins.py:893 sets_of
+    frame_server/library/twins.py:954 _large_picture
+    frame_server/library/images.py:1165 looked_at
+    frame_server/library/images.py:1156 sample
+    frame_server/library/images.py:1140 _download
+    frame_server/library/images.py:1116 _fetch
+    frame_server/library/hosts.py:483 wait_calm
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread ai-now:
+    httpx2/_models.py:961 iter_raw
+    httpx2/_client.py:138 __iter__
+    httpx2/_transports/default.py:121 __iter__
+    httpcore2/_sync/connection_pool.py:427 __iter__
+    httpcore2/_sync/http11.py:312 __iter__
+    httpcore2/_sync/http11.py:188 _receive_response_body
+    httpcore2/_sync/http11.py:200 _receive_event
+    httpcore2/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+2026-11-23 07:27:25,449 WARNING frame_server.loopwatch: POST /api/library/items/wmc:180375446/describe has waited 16 s (6 requests under way); threads at work:
+  thread twins:
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:928 _large_details
+    frame_server/library/twins.py:893 sets_of
+    frame_server/library/twins.py:954 _large_picture
+    frame_server/library/images.py:1165 looked_at
+    frame_server/library/images.py:1156 sample
+    frame_server/library/images.py:1140 _download
+    frame_server/library/images.py:1116 _fetch
+    frame_server/library/hosts.py:483 wait_calm
+  thread job-catalogue:
+    frame_server/library/muza.py:199 discover
+    frame_server/library/muza.py:161 _get
+    httpx/_client.py:1053 get
+    httpx/_client.py:825 request
+    frame_server/library/hosts.py:361 send
+    httpx/_client.py:914 send
+    httpx/_client.py:942 _send_handling_auth
+    httpx/_client.py:977 _send_handling_redirects
+    frame_server/library/hosts.py:487 before
+    frame_server/library/hosts.py:483 wait_calm
+  thread ai-now:
+    httpx2/_models.py:961 iter_raw
+    httpx2/_client.py:138 __iter__
+    httpx2/_transports/default.py:121 __iter__
+    httpcore2/_sync/connection_pool.py:427 __iter__
+    httpcore2/_sync/http11.py:312 __iter__
+    httpcore2/_sync/http11.py:188 _receive_response_body
+    httpcore2/_sync/http11.py:200 _receive_event
+    httpcore2/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+2026-11-23 07:36:34,681 WARNING frame_server.loopwatch: POST /api/library/items/wikiart:5772713eedc2cb3880c0e781/sharpen has waited 15 s (5 requests under way); threads at work:
+  thread ThreadPoolExecutor-41_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread ThreadPoolExecutor-39_9:
+    httpx/_client.py:1014 _send_single_request
+    httpx/_transports/default.py:250 handle_request
+    httpcore/_sync/connection_pool.py:236 handle_request
+    httpcore/_sync/connection.py:103 handle_request
+    httpcore/_sync/http11.py:106 handle_request
+    httpcore/_sync/http11.py:177 _receive_response_headers
+    httpcore/_sync/http11.py:217 _receive_event
+    httpcore/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+  thread twins:
+    .13/threading.py:1015 _bootstrap
+    .13/threading.py:1044 _bootstrap_inner
+    .13/threading.py:995 run
+    frame_server/library/twins.py:437 _search_round
+    frame_server/library/twins.py:669 look
+    frame_server/library/twins.py:817 _artist
+    frame_server/library/twins.py:933 _large_details
+    frame_server/library/twins.py:933 <genexpr>
+    frame_server/library/twins.py:1424 lies_within
+    frame_server/library/likeness.py:83 mapping
+  thread job-catalogue:
+    frame_server/library/importer.py:1671 run
+    frame_server/player.py:1678 grow
+    frame_server/library/importer.py:1214 collect
+    frame_server/library/importer.py:1324 _take
+    frame_server/library/importer.py:1377 _take_from
+    frame_server/library/importer.py:589 _analysed
+    frame_server/library/images.py:1186 ensure_thumb
+    .13/contextlib.py:141 __enter__
+    frame_server/library/images.py:654 _holding
+    frame_server/library/hosts.py:483 wait_calm
+  thread ai-now:
+    httpx2/_models.py:961 iter_raw
+    httpx2/_client.py:138 __iter__
+    httpx2/_transports/default.py:121 __iter__
+    httpcore2/_sync/connection_pool.py:427 __iter__
+    httpcore2/_sync/http11.py:312 __iter__
+    httpcore2/_sync/http11.py:188 _receive_response_body
+    httpcore2/_sync/http11.py:200 _receive_event
+    httpcore2/_backends/sync.py:128 read
+    .13/ssl.py:1296 recv
+    .13/ssl.py:1151 read
+2026-11-23 08:07:16,391 INFO frame_server.library.twins: twins: 261 pictures of 122 artists looked at in 19 s: 0 copies, 0 details or framed photographs; 261 hashed
+2026-11-23 08:07:16,391 INFO frame_server.library.twins: twins: time: candidates 6.2 s (1), keypoints 5.2 s (342), hash distances 2.7 s (261), writes 2.6 s (244), hashes 1.4 s (261), pairs 0.2 s (183), grouping 0.0 s (245)
+2026-11-23 08:14:29,131 INFO frame_server.library.twins: twins: 9 pictures of 9 artists looked at in 6 s: 0 copies, 0 details or framed photographs; 9 hashed
+2026-11-23 08:14:29,131 INFO frame_server.library.twins: twins: time: candidates 3.9 s (1), keypoints 1.1 s (28), hash distances 0.1 s (9), hashes 0.1 s (9), pairs 0.0 s (19), writes 0.0 s (18), grouping 0.0 s (19)
+2026-11-23 08:14:44,656 INFO frame_server.library.twins: twins: 5 pictures of 3 artists looked at in 6 s: 0 copies, 0 details or framed photographs; 5 hashed
+2026-11-23 08:14:44,657 INFO frame_server.library.twins: twins: time: candidates 4.6 s (1), keypoints 0.1 s (5), hash distances 0.0 s (5), hashes 0.0 s (5), writes 0.0 s (6), grouping 0.0 s (7)
+2026-11-23 08:15:27,959 INFO frame_server.library.twins: twins: 3 pictures of 3 artists looked at in 5 s: 0 copies, 0 details or framed photographs; 3 hashed
+2026-11-23 08:15:27,960 INFO frame_server.library.twins: twins: time: candidates 4.8 s (1), keypoints 0.0 s (3), hash distances 0.0 s (3), hashes 0.0 s (3), writes 0.0 s (6), grouping 0.0 s (7)

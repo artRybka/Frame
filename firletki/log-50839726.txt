@@ -1,0 +1,6 @@
+2026-11-23 08:27:32,016 INFO frame_server.web.app: slow GET /api/library/items/wmc:50839726/polish -> 200 in 2.3 s
+2026-11-23 08:27:32,169 INFO frame_server.web.app: slow GET /api/library/items/wmc:50839726/image -> 200 in 2.8 s
+2026-11-23 08:27:32,502 INFO frame_server.web.app: slow GET /api/library/items/wmc:50839726/full -> 200 in 2.9 s
+2026-11-23 08:27:32,513 INFO frame_server.web.app: slow GET /api/library/items/wmc:50839726/recovery -> 200 in 2.5 s
+2026-11-23 08:27:32,607 INFO httpx: HTTP Request: GET https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&prop=revisions&rvprop=content&rvslots=main&pageids=50839726 "HTTP/1.1 200 OK"
+2026-11-23 08:27:33,837 INFO frame_server.web.app: slow POST /api/library/items/wmc:50839726/sharpen -> 200 in 4.4 s
