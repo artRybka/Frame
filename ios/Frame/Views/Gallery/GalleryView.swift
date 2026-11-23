@@ -99,9 +99,9 @@ struct GalleryView: View {
     }
 
     private func heartButton(_ work: RemoteItem) -> some View {
-        let on = model.liked(ItemSummary(work.item))
+        let on = model.liked(work.summary)
         return Button {
-            Task { await model.like(ItemSummary(work.item), !on) }
+            Task { await model.like(work.summary, !on) }
         } label: {
             Image(systemName: on ? "heart.fill" : "heart")
                 .font(.title3.weight(.medium))
@@ -120,9 +120,9 @@ struct GalleryView: View {
     @ViewBuilder
     private func menu(_ work: RemoteItem) -> some View {
         Button("Otwórz kartę dzieła", systemImage: "info.circle") { open(work) }
-        let on = model.liked(ItemSummary(work.item))
+        let on = model.liked(work.summary)
         Button(on ? "Usuń z ulubionych" : "Dodaj do ulubionych", systemImage: on ? "heart.slash" : "heart") {
-            Task { await model.like(ItemSummary(work.item), !on) }
+            Task { await model.like(work.summary, !on) }
         }
         if !model.isGuest {  // a guest sends nothing to the frame
             Button("Pokaż na ramce", systemImage: "photo") {
@@ -135,7 +135,7 @@ struct GalleryView: View {
     }
 
     private func heart(_ work: RemoteItem) {
-        let summary = ItemSummary(work.item)
+        let summary = work.summary
         if !model.liked(summary) { Task { await model.like(summary, true) } }
         bloom = work.id
         Task {
@@ -145,7 +145,7 @@ struct GalleryView: View {
     }
 
     private func open(_ work: RemoteItem) {
-        ItemPeeks.remember(ItemSummary(work.item), thumb: .thumb(work.id))
+        ItemPeeks.remember(work.summary, thumb: .thumb(work.id))
         chrome = true  // the tab bar under the card, as elsewhere
         path.append(work.id)
     }
