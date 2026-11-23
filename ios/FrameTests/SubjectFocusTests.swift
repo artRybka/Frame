@@ -102,4 +102,24 @@ final class SubjectFocusTests: XCTestCase {
     func testNothingFoundKeepsThePoint() {
         XCTAssertEqual(SubjectFocus.near(UnitPoint(x: 0.3, y: 0.6), faces: [], people: []), UnitPoint(x: 0.3, y: 0.6))
     }
+
+    /// Galeria: two places draw the eye far apart; the cut goes to the
+    /// stronger one, not to the empty middle between them.
+    func testGalleryCutsOnOnePlaceNotBetweenTwo() {
+        let point = SubjectFocus.subject(faces: [], figures: [], salient: [
+            (box: CGRect(x: 0.05, y: 0.3, width: 0.2, height: 0.3), weight: 0.9),
+            (box: CGRect(x: 0.75, y: 0.3, width: 0.1, height: 0.1), weight: 0.5),
+        ])
+        XCTAssertEqual(point.x, 0.15, accuracy: 0.001)
+    }
+
+    /// A large figure is the subject (its head); a small one in a landscape
+    /// is not.
+    func testGalleryLargeFigureSmallStaffage() {
+        let large = CGRect(x: 0.5, y: 0.1, width: 0.2, height: 0.8)
+        let point = SubjectFocus.subject(faces: [], figures: [large], salient: [])
+        XCTAssertEqual(point.y, 0.1 + 0.8 * SubjectFocus.headInFigure, accuracy: 0.001)
+        let small = CGRect(x: 0.8, y: 0.6, width: 0.03, height: 0.1)
+        XCTAssertEqual(SubjectFocus.subject(faces: [], figures: [small], salient: []), .center)
+    }
 }

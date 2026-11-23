@@ -41,13 +41,22 @@ actor SubjectFocus {
     /// the day): the face by that point, Vision's boxes being exact where
     /// Claude's point is only roughly right (Homer's "Autumn" cut under
     /// the lady's chin, Mateusz 2026-11-23); no face there, the point.
-    func point(in image: UIImage, key: String, near: UnitPoint? = nil, patience: Double = 2.5) async -> UnitPoint {
-        let key = near.map { Self.key(key, near: $0) } ?? key
+    ///
+    /// `subject`: the one thing the picture is of, for a cut much tighter
+    /// than the picture (Galeria, Mateusz 2026-11-23: "Staraj się kadrować
+    /// na temat"): the main faces; else the largest figure's head; else the
+    /// most telling of the places that draw the eye, not all of them
+    /// together (a middle between two of them is often empty).
+    func point(
+        in image: UIImage, key: String, near: UnitPoint? = nil, subject: Bool = false, patience: Double = 2.5
+    ) async -> UnitPoint {
+        let key = near.map { Self.key(key, near: $0) } ?? (subject ? key + "|subject" : key)
         if let cached = Self.found.point(key) { return cached }
         let fallback = near ?? .center
         let job = Job()
         let operation = BlockOperation {
-            let point = near.map { Self.find(in: image, near: $0) } ?? Self.find(in: image)
+            let point = near.map { Self.find(in: image, near: $0) }
+                ?? (subject ? Self.findSubject(in: image) : Self.find(in: image))
             job.finish(point)
             Task { await SubjectFocus.shared.remember(point, for: key) }
         }
@@ -134,6 +143,45 @@ actor SubjectFocus {
         let salient = (attention.results?.first?.salientObjects ?? []).filter { $0.confidence > 0.3 }
         if let box = union(salient.map(\.boundingBox)) {
             return center(of: box)
+        }
+        return .center
+    }
+
+    private static func findSubject(in image: UIImage) -> UnitPoint {
+        guard let cgImage = image.cgImage else { return .center }
+        let faces = VNDetectFaceRectanglesRequest()
+        let people = VNDetectHumanRectanglesRequest()
+        people.upperBodyOnly = false
+        let attention = VNGenerateAttentionBasedSaliencyImageRequest()
+        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: .up)
+        try? handler.perform([faces, people, attention])
+        let faceBoxes = (faces.results ?? []).filter { $0.confidence > 0.5 }.map { topLeft($0.boundingBox) }
+        let figures = (people.results ?? []).filter { $0.confidence > 0.5 }.map { topLeft($0.boundingBox) }
+        let salient = (attention.results?.first?.salientObjects ?? [])
+            .filter { $0.confidence > 0.3 }
+            .map { (box: topLeft($0.boundingBox), weight: CGFloat($0.confidence)) }
+        return subject(faces: faceBoxes, figures: figures, salient: salient)
+    }
+
+    /// A figure this small (a share of the picture's height) is staffage,
+    /// not the subject.
+    static let figureLeast: CGFloat = 0.25
+
+    /// See `point(in:key:near:subject:)`. Boxes are fractions with the
+    /// origin top-left.
+    static func subject(faces: [CGRect], figures: [CGRect], salient: [(box: CGRect, weight: CGFloat)]) -> UnitPoint {
+        let largest = faces.map(\.area).max() ?? 0
+        if let box = union(faces.filter { $0.area >= largest * 0.4 }) {
+            return UnitPoint(x: box.midX, y: box.midY)
+        }
+        if let figure = figures.filter({ $0.height >= figureLeast }).max(by: { $0.area < $1.area }) {
+            return UnitPoint(x: figure.midX, y: figure.minY + figure.height * headInFigure)
+        }
+        // The heaviest single place, by how sure Vision is and how much of
+        // the picture it takes (the square root: a big field is no subject
+        // for its size alone).
+        if let best = salient.max(by: { $0.weight * $0.box.area.squareRoot() < $1.weight * $1.box.area.squareRoot() }) {
+            return UnitPoint(x: best.box.midX, y: best.box.midY)
         }
         return .center
     }

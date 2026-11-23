@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.345
+
+- Galeria kadruje na temat dzieła: twarz, główną postać albo najmocniejsze
+  miejsce, i oddala się wokół niego. Ruch po przechyleniu telefonu jest
+  żywszy.
+
 ## 1.145.344
 
 - Każde dzieło w Galerii zaczyna lekko przybliżone i powoli się oddala.
