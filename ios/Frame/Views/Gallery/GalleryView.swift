@@ -3,12 +3,13 @@ import SwiftUI
 /// "Galeria", the first tab (Mateusz 2026-11-23): works one after another on
 /// the whole screen, cut to fill it. A swipe up brings the next, down the one
 /// before; the order is the person's own (`GET /api/gallery`: their hearts,
-/// works like them, new ones). The caption, the glass heart in the top
-/// corner and the tab bar are always there (Mateusz 2026-11-23 16:32: "Tytuł,
-/// autor, pasek menu zawsze widoczne"); a tap draws the work back to the
-/// whole of it and another cuts it to the screen again. The caption opens
-/// the work's card; a double tap gives a heart, the corner's lighting up; a
-/// hold opens the work's menu.
+/// works like them, new ones). Cut to the screen, the work has only the
+/// glass heart in its top corner; a tap draws it back to the whole of it
+/// on its own colour, with its caption and the tab bar (Mateusz 2026-11-23
+/// 17:42: "Jednak bez widocznego tytułu i paska menu. Samo serduszko. Pasek
+/// menu, autor i tytuł po kliknięciu"), and another cuts it to the screen
+/// again. The caption opens the work's card; a double tap gives a heart,
+/// red pouring into the corner's; a hold opens the work's menu.
 struct GalleryView: View {
     @Environment(AppModel.self) private var model
     /// The works not seen yet when the app was last left: shown at once on
@@ -37,20 +38,24 @@ struct GalleryView: View {
             pages
                 .background(Color.black)
                 .overlay(alignment: .bottom) {
-                    if let shown {
+                    if let shown, whole == shown.id {
                         GalleryCaption(work: shown) { open(shown) }
                             .id(shown.id)
                             .transition(.opacity)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    if let shown { heartButton(shown) }
+                    // Its own for each work: swiped to a work given a heart
+                    // before, the red is there already, not pouring in.
+                    if let shown { heartButton(shown).id(shown.id) }
                 }
                 .overlay {
                     if works.isEmpty { emptyState }
                 }
                 .animation(.easeInOut(duration: 0.2), value: shown?.id)
                 .toolbarVisibility(.hidden, for: .navigationBar)
+                .toolbarVisibility(whole != nil || !path.isEmpty ? .visible : .hidden, for: .tabBar)
+                .statusBarHidden(whole == nil)
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
                 }
@@ -75,7 +80,8 @@ struct GalleryView: View {
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
                         .onTapGesture {
-                            withAnimation(.spring(duration: 0.5, bounce: 0.1)) {
+                            // Quick (17:42: "szybciej i dynamiczniej").
+                            withAnimation(.spring(duration: 0.32, bounce: 0.18)) {
                                 whole = whole == work.id ? nil : work.id
                             }
                         }
@@ -251,10 +257,24 @@ private struct GalleryPage: View {
             .frame(width: geo.size.width, height: geo.size.height)
             .task(id: current && geo.size.width > 0) { await drawBack(geo.size) }
         }
-        .background(whole ? Color(white: 0.055) : placeholder)
+        .background(whole ? behind : placeholder)
         .task(id: work.id) { await load() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
+    }
+
+    /// Behind the whole work: its own main colour, quiet and dark
+    /// (Mateusz 2026-11-23 17:42: "Tło za dziełem nie czarne, tylko
+    /// wypełnione stonowaną barwą dzieła").
+    private var behind: Color {
+        let hex = work.item.colors.first?.hex ?? ""
+        return Self.toned(UIColor(Color(hexString: hex) ?? .black))
+    }
+
+    static func toned(_ color: UIColor) -> Color {
+        var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
+        color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha)
+        return Color(hue: hue, saturation: min(saturation * 0.7, 0.4), brightness: 0.2)
     }
 
     /// The work's own main colour, dimmed, while its picture comes.
@@ -367,50 +387,54 @@ private struct Whole {
     }
 }
 
-/// The corner's glass heart, as on the tiles (`HeartMark`): a double tap
-/// makes it flash, swell and fill red, with a ring going out from it.
+/// The corner's glass heart, as on the tiles (`HeartMark`). Given, red
+/// pours into it from the bottom with a little swell; no flash around it
+/// (Mateusz 2026-11-23 17:42: "bez tego wielkiego rozbłysku na zewnątrz …
+/// Wlanie się czerwieni wewnątrz może być bardziej efektowne, żywe").
 private struct GalleryHeart: View {
     let on: Bool
     let flashes: Int
+    @State private var level: CGFloat = 0
+
+    private static let size: CGFloat = 26
+    private static let red = Color(red: 0xD2 / 255, green: 0x46 / 255, blue: 0x3A / 255)
 
     var body: some View {
-        HeartMark(on: on, size: 26)
-            .animation(.snappy, value: on)
-            .keyframeAnimator(initialValue: Flash(), trigger: flashes) { heart, flash in
-                heart
-                    .scaleEffect(flash.scale)
-                    .background {
-                        HeartShape()
-                            .stroke(.white.opacity(flash.ring), lineWidth: 2)
-                            .scaleEffect(flash.spread)
+        HeartMark(on: false, size: Self.size)
+            .overlay {
+                // Red rising inside the glass, its top a little slanted.
+                HeartShape()
+                    .fill(
+                        LinearGradient(
+                            colors: [Self.red.opacity(0.95), Self.red.opacity(0.75)],
+                            startPoint: .bottom, endPoint: .top
+                        )
+                    )
+                    .mask(alignment: .bottom) {
+                        GeometryReader { geo in
+                            Rectangle()
+                                .frame(height: geo.size.height * 1.3 * level)
+                                .rotationEffect(.degrees(Double(1 - level) * 14))
+                                .frame(maxHeight: .infinity, alignment: .bottom)
+                        }
                     }
-                    .shadow(color: .white.opacity(flash.glow), radius: 10)
+                    .padding(1)
+            }
+            .keyframeAnimator(initialValue: CGFloat(1), trigger: flashes) { heart, scale in
+                heart.scaleEffect(scale)
             } keyframes: { _ in
-                KeyframeTrack(\.scale) {
-                    SpringKeyframe(1.55, duration: 0.18, spring: .snappy)
-                    SpringKeyframe(1, duration: 0.45, spring: .bouncy)
-                }
-                KeyframeTrack(\.spread) {
-                    LinearKeyframe(1, duration: 0.05)
-                    CubicKeyframe(2.6, duration: 0.6)
-                    LinearKeyframe(1, duration: 0.01)
-                }
-                KeyframeTrack(\.ring) {
-                    LinearKeyframe(0.9, duration: 0.05)
-                    CubicKeyframe(0, duration: 0.6)
-                }
-                KeyframeTrack(\.glow) {
-                    LinearKeyframe(0.9, duration: 0.1)
-                    CubicKeyframe(0, duration: 0.6)
+                SpringKeyframe(1.18, duration: 0.15, spring: .snappy)
+                SpringKeyframe(1, duration: 0.4, spring: .bouncy)
+            }
+            .onAppear { level = on ? 1 : 0 }
+            .onChange(of: on) { _, now in
+                if now {
+                    level = 0
+                    withAnimation(.spring(duration: 0.55, bounce: 0.35)) { level = 1 }
+                } else {
+                    withAnimation(.easeIn(duration: 0.25)) { level = 0 }
                 }
             }
-    }
-
-    struct Flash {
-        var scale: CGFloat = 1
-        var spread: CGFloat = 1
-        var ring: Double = 0
-        var glow: Double = 0
     }
 }
 
