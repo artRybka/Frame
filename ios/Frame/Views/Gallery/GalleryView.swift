@@ -74,9 +74,8 @@ struct GalleryView: View {
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
                         .onTapGesture {
-                            // Quick (17:42: "szybciej i dynamiczniej") but
-                            // smooth (19:01: "Wygląda jak skok"): no bounce,
-                            // fast out and settling gently.
+                            // The page melts one into the other with its own
+                            // timings (`GalleryPage`); this is the rest's.
                             withAnimation(GalleryPage.toWhole) {
                                 whole = whole == work.id ? nil : work.id
                             }
@@ -217,6 +216,7 @@ private struct GalleryPage: View {
 
     @State private var thumb: UIImage?
     @State private var full: UIImage?
+    @State private var polish: PolishText?
     @State private var focus: UnitPoint?
     /// The full picture over the thumbnail, 1 once it is in.
     @State private var fullShown: Double = 1
@@ -243,27 +243,46 @@ private struct GalleryPage: View {
             ZStack {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
-                    let place = whole ? Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets) : nil
-                    if let glow {
-                        // Made before the tap, it travels with the work and
-                        // grows out of it as it draws back.
-                        Glow(
-                            edges: glow,
-                            size: place?.size ?? layout.size,
-                            offset: place?.offset ?? CGSize(width: layout.offset.width + pan, height: layout.offset.height)
-                        )
-                        .opacity(whole ? 1 : 0)
-                    }
+                    let place = Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets)
+                    // Two pictures, never one moved between them (Mateusz
+                    // 2026-11-23 20:14: the scaling "nadal nie wygląda
+                    // dobrze. Zaproponuj zupełnie inne rozwiązanie"; B,
+                    // "Rozpływ w łunę"): the cut one melts into its glow, and
+                    // the whole one surfaces out of it where it will stay.
                     ZStack {
-                        if let thumb { picture(thumb, layout, place) }
-                        if let full { picture(full, layout, place).opacity(fullShown) }
+                        ZStack {
+                            if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
+                            if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
+                        }
+                        .scaleEffect(reduceMotion ? 1 : zoom, anchor: layout.anchor)
+                        .offset(x: pan)
+                        if current { caption(nil, geo) }
                     }
-                    .scaleEffect(reduceMotion || whole ? 1 : zoom, anchor: layout.anchor)
-                    .offset(x: whole ? 0 : pan)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
-                    .transition(.opacity)
-                    if current { caption(place, geo) }
+                    .blur(radius: whole ? Self.melt : 0)
+                    .opacity(whole ? 0 : 1)
+                    .animation(whole ? .easeIn(duration: 0.26) : .easeOut(duration: 0.3).delay(0.08), value: whole)
+                    .allowsHitTesting(!whole)
+                    ZStack {
+                        if let glow { Glow(edges: glow, size: place.size, offset: place.offset) }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .opacity(whole ? 1 : 0)
+                    .animation(whole ? .easeOut(duration: 0.3) : .easeIn(duration: 0.22), value: whole)
+                    ZStack {
+                        ZStack {
+                            if let thumb { picture(thumb, size: place.size, offset: place.offset) }
+                            if let full { picture(full, size: place.size, offset: place.offset).opacity(fullShown) }
+                        }
+                        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+                        if current { caption(place, geo) }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .scaleEffect(whole ? 1 : 0.96, anchor: UnitPoint(x: 0.5, y: 0.5 + place.offset.height / max(geo.size.height, 1)))
+                    .opacity(whole ? 1 : 0)
+                    .animation(whole ? .easeOut(duration: 0.34).delay(0.12) : .easeIn(duration: 0.18), value: whole)
+                    .allowsHitTesting(whole)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -271,6 +290,7 @@ private struct GalleryPage: View {
         }
         .background(whole ? behind : placeholder)
         .task(id: work.id) { await load() }
+        .task(id: current) { if current { await loadPolish() } }
         // Made while the work is shown, before any tap: ready for it.
         .task(id: (current || whole) && (thumb ?? full) != nil) {
             guard current || whole, glow == nil, let picture = thumb ?? full else { return }
@@ -287,7 +307,7 @@ private struct GalleryPage: View {
     private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
         let box = geo.size
         let under = place.map { box.height / 2 + $0.offset.height + $0.size.height / 2 + Whole.gap }
-        return GalleryCaption(work: work, whole: place != nil, open: open)
+        return GalleryCaption(work: work, polish: polish, whole: place != nil, open: open)
             .padding(.top, under ?? 0)
             .padding(.bottom, under == nil ? max(geo.safeAreaInsets.bottom, 34) : 0)
             .frame(width: box.width, height: box.height, alignment: under == nil ? .bottom : .top)
@@ -313,12 +333,31 @@ private struct GalleryPage: View {
         return (Color(hexString: hex) ?? .black).opacity(0.35)
     }
 
-    private func picture(_ image: UIImage, _ layout: Fill, _ place: Whole?) -> some View {
+    private func picture(_ image: UIImage, size: CGSize, offset: CGSize) -> some View {
         Image(uiImage: image)
             .resizable()
             .interpolation(.high)
-            .frame(width: place?.size.width ?? layout.size.width, height: place?.size.height ?? layout.size.height)
-            .offset(place?.offset ?? layout.offset)
+            .frame(width: size.width, height: size.height)
+            .offset(offset)
+    }
+
+    /// How far the cut work is blurred as it melts into its glow (points).
+    static let melt: CGFloat = 36
+
+    /// The caption's Polish texts: asked for once the work has stayed a
+    /// moment, not for each one swiped past; one for both its captions.
+    private func loadPolish() async {
+        polish = ItemPeeks.polish[work.id]
+        // Always shown now: asked for only once the work has stayed a moment,
+        // not for each one swiped past.
+        guard polish == nil, work.item.kind == .artwork else { return }
+        try? await Task.sleep(for: .seconds(1.5))
+        guard !Task.isCancelled,
+              let view = try? await model.backend.polish(itemID: work.id, wait: 0, early: true),
+              let text = view.text
+        else { return }
+        ItemPeeks.keep(text, for: work.id)
+        withAnimation(.easeInOut(duration: 0.4)) { polish = text }
     }
 
     private func load() async {
@@ -390,8 +429,9 @@ private struct GalleryPage: View {
         withAnimation(.easeInOut(duration: Self.drawBack)) { pan = to }
     }
 
-    /// To the whole work and back.
-    static let toWhole = Animation.spring(duration: 0.42, bounce: 0)
+    /// To the whole work and back, for what has no timing of its own
+    /// (the background, the tab bar).
+    static let toWhole = Animation.easeInOut(duration: 0.4)
 
     /// How far a work drifts sideways while it draws back (points), at most.
     static let drift: CGFloat = 22
@@ -447,10 +487,23 @@ private struct Glow: View {
         let small = CIImage(cgImage: cg).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let extent = small.extent
         let pad = max(extent.width, extent.height) * reach
-        let out = small.clampedToExtent()
+        let outer = extent.insetBy(dx: -pad, dy: -pad)
+        let glow = small.clampedToExtent()
             .applyingGaussianBlur(sigma: Double(max(extent.width, extent.height) * softness))
-            .cropped(to: extent.insetBy(dx: -pad, dy: -pad))
-        guard let made = context.createCGImage(out, from: out.extent) else { return nil }
+            .cropped(to: outer)
+        // Its fading out made with it, the same on every side and gone
+        // well before its own edge: a fade laid over it in SwiftUI still
+        // left an edge (Mateusz 2026-11-23 19:01 and 20:14, "Nadal widać
+        // krawędź").
+        let fade = CIImage(color: .white)
+            .cropped(to: extent.insetBy(dx: -pad * 0.45, dy: -pad * 0.45))
+            .applyingGaussianBlur(sigma: Double(pad / 6))
+            .cropped(to: outer)
+        let out = glow.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: outer),
+            kCIInputMaskImageKey: fade,
+        ])
+        guard let made = context.createCGImage(out, from: outer) else { return nil }
         return UIImage(cgImage: made)
     }
 
@@ -462,15 +515,6 @@ private struct Glow: View {
         Image(uiImage: edges)
             .resizable()
             .frame(width: whole.width, height: whole.height)
-            .mask {
-                // Fading out the same way on every side, gone before the
-                // picture's own edge: a round fade left a wide work's glow
-                // cut straight above and below (Mateusz 2026-11-23 19:01,
-                // "Czasami widać krawędź łuny").
-                Rectangle()
-                    .frame(width: size.width + pad, height: size.height + pad)
-                    .blur(radius: pad / 4)
-            }
             .opacity(0.9)
             .offset(offset)
             .allowsHitTesting(false)
@@ -508,18 +552,27 @@ private struct GalleryHeart: View {
                         )
                         .scaleEffect(level, anchor: UnitPoint(x: 0.5, y: 0.45))
                         .opacity(level > 0 ? 1 : 0)
-                    // The flash: a livelier red along the inside of the edge.
-                    HeartShape()
-                        .stroke(Self.bright, lineWidth: 4)
-                        .blur(radius: 1.5)
-                        .mask(HeartShape())
-                        .keyframeAnimator(initialValue: 0.0, trigger: given) { edge, shown in
-                            edge.opacity(shown)
-                        } keyframes: { _ in
-                            LinearKeyframe(0, duration: 0.1)
-                            CubicKeyframe(1, duration: 0.1)
-                            CubicKeyframe(0, duration: 0.45)
-                        }
+                    // The flash: a livelier red along the inside of the
+                    // edge, glowing into the middle (20:14: "Błysk serca
+                    // mocniejszy").
+                    ZStack {
+                        HeartShape().fill(Self.bright.opacity(0.45))
+                        HeartShape()
+                            .stroke(Self.bright, lineWidth: 7)
+                            .blur(radius: 2.5)
+                        HeartShape()
+                            .stroke(Color(red: 1, green: 0.55, blue: 0.5), lineWidth: 2)
+                            .blur(radius: 0.8)
+                    }
+                    .mask(HeartShape())
+                    .keyframeAnimator(initialValue: 0.0, trigger: given) { edge, shown in
+                        edge.opacity(shown)
+                    } keyframes: { _ in
+                        LinearKeyframe(0, duration: 0.08)
+                        CubicKeyframe(1, duration: 0.08)
+                        LinearKeyframe(1, duration: 0.12)
+                        CubicKeyframe(0, duration: 0.55)
+                    }
                 }
                 .padding(1)
             }
@@ -583,11 +636,12 @@ private struct Fill {
 private struct GalleryCaption: View {
     @Environment(AppModel.self) private var model
     let work: RemoteItem
+    /// Its Polish texts, once the page has them.
+    let polish: PolishText?
     /// Under the whole work: with the museum and the artist's years, on
     /// the glow; over the cut one only the title and the artist, on a shade.
     var whole = false
     let open: () -> Void
-    @State private var polish: PolishText?
 
     private var item: Item { work.item }
 
@@ -640,7 +694,6 @@ private struct GalleryCaption: View {
         .buttonStyle(.plain)
         // Light text on the shade in both modes.
         .environment(\.colorScheme, .dark)
-        .task(id: work.id) { await loadPolish() }
     }
 
     private var title: String {
@@ -651,19 +704,5 @@ private struct GalleryCaption: View {
     private func nonEmpty(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
         return text
-    }
-
-    private func loadPolish() async {
-        polish = ItemPeeks.polish[work.id]
-        // Always shown now: asked for only once the work has stayed a moment,
-        // not for each one swiped past.
-        guard polish == nil, item.kind == .artwork else { return }
-        try? await Task.sleep(for: .seconds(1.5))
-        guard !Task.isCancelled,
-              let view = try? await model.backend.polish(itemID: work.id, wait: 0, early: true),
-              let text = view.text
-        else { return }
-        ItemPeeks.keep(text, for: work.id)
-        withAnimation(.easeInOut(duration: 0.4)) { polish = text }
     }
 }
