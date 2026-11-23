@@ -195,6 +195,7 @@ struct TidyChangesView: View {
         let how = switch change.by {
         case "judge": "sędzia i krytyk"
         case "hash": "odcisk obrazu"
+        case "wikidata": "to samo dzieło w Wikidacie"
         default: "dopasowanie obrazów"
         }
         let when = When.past(change.at) ?? ""

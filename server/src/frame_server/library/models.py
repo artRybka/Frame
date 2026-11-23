@@ -567,6 +567,13 @@ class Item(BaseModel):
     #: The thumbnail's difference hash (``library.picture_hash``), "" while
     #: not worked out, "-" when there is no telling.
     picture_hash: str = ""
+    #: The Wikidata item of the work the picture is of, as its Commons page
+    #: says ({{Artwork |wikidata=Q...}}) or as Wikidata says of the museum's
+    #: record (``frame_server.work_ids``): pictures naming one item are
+    #: copies of one work however unlike they look (van Gogh's stolen
+    #: "Poppy Flowers", three Commons files of Q4118041, Mateusz
+    #: 2026-11-23). "" while not looked up, "-" when nothing says.
+    work_qid: str = ""
     #: Changes when the work's picture became another photograph with no
     #: copy taking its place (``ImageCache.thumb_follows``): an original
     #: kept from a mirror while its museum was down (Paris Musées' gilt
