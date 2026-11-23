@@ -7,7 +7,9 @@
   odciski Gemini skasowane. W Konfiguracji bez zadania „Kadrowanie”
   i przełącznika „Szukanie wyglądem”, postęp odcisków w Diagnostyce.
   W „Do sprawdzenia” „Popraw kadr” zamiast „Przytnij”. Z Diagnostyki
-  zniknęła próba „Składanie skanu na iPhonie”.
+  zniknęła próba „Składanie skanu na iPhonie”. Library of Congress
+  wyłączona jako źródło (jej zdjęcia przychodzą z Wikimedia Commons;
+  dzieła już w bibliotece zostają).
 
 ## 1.145.352
 

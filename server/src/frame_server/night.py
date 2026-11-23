@@ -525,7 +525,7 @@ def _utc_now() -> str:
 def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
-    from .library import courtauld, dumps, loc_index, louvre, met_index, nga, rijks_index
+    from .library import courtauld, dumps, louvre, met_index, nga, rijks_index
     from .notifications import births_at_night
     from .web import discover_api
 
@@ -753,12 +753,6 @@ def tasks(service: FrameService) -> list[NightTask]:
             "met",
             lambda night: met_index.refresh_at_night(service.settings.data_dir),
             "Spis Metropolitan Museum",
-            group=idx,
-        ),
-        NightTask(
-            "loc",
-            lambda night: loc_index.refresh_at_night(service.settings.data_dir),
-            "Spis Biblioteki Kongresu",
             group=idx,
         ),
         *(

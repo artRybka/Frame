@@ -23,6 +23,13 @@ The collections drawn from are kept at home (:mod:`.loc_index`): draws and
 searches within one of them read that, and the LoC's own API is asked only
 for what the app waits for (words typed, a card) and at night, never by the
 rest of the background (2026-11-07: blocked two mornings running).
+
+Retired 2026-11-24 (Mateusz: "To źródło to chyba trup - też można
+usunąć"): its Cloudflare wall had answered every request from home since
+2026-11-07. It is offered nowhere (:meth:`offered`) and the server asks
+its API nothing (:meth:`_may_ask`); the works of it already in the
+library stay, their pictures from tile.loc.gov, and so does what a kept
+collection holds. Its collections come from Wikimedia Commons.
 """
 
 from __future__ import annotations
@@ -30,10 +37,10 @@ from __future__ import annotations
 import re
 from typing import Any, ClassVar
 
-from .hosts import Resting, from_app, purpose
+from .hosts import Resting
 from .loc_index import INDEX, KEPT, LocIndex
 from .models import Item
-from .museums import PRIVATE_LICENCE, Discovery, Kind, Museum
+from .museums import PRIVATE_LICENCE, Access, Discovery, Kind, Museum
 
 API = "https://www.loc.gov"
 IIIF = "https://tile.loc.gov/image-services/iiif"
@@ -152,6 +159,11 @@ class LibraryOfCongress(Museum):
     #: Asked only for photographs (Importer.asked_sources).
     only: ClassVar[Kind | None] = "photograph"
 
+    @classmethod
+    def offered(cls, access: Access) -> bool:
+        """Retired (2026-11-24): never offered, in Szukaj, draws or places."""
+        return False
+
     def _map(self, d: dict[str, Any]) -> Item | None:
         # A search result keeps half its facts under "item".
         d = {**(d.get("item") or {}), **{k: v for k, v in d.items() if k != "item"}}
@@ -207,12 +219,12 @@ class LibraryOfCongress(Museum):
         return INDEX.get(folder)
 
     def _may_ask(self) -> None:
-        """The LoC's own API: for what the app waits for, and at night (a
-        museum made without the server's data folder, as tools and tests
-        make it, asks it as before)."""
-        if from_app() or purpose() == "noc" or self.access.data_dir is None:
+        """The LoC's own API: never by the server since it was retired
+        (2026-11-24; a museum made without the server's data folder, as
+        tools and tests make it, asks it as before)."""
+        if self.access.data_dir is None:
             return
-        raise Resting("www.loc.gov: asked only for the app and at night")
+        raise Resting("www.loc.gov: retired (2026-11-24)")
 
     def _local(
         self, kept: LocIndex, slug: str, words: str, params: dict[str, Any], limit: int, page: int
