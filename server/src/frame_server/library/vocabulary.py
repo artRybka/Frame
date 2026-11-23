@@ -1257,6 +1257,9 @@ def _own_type(classification: str) -> str:
 #: (Mateusz 2026-11-22: "Driveway" and "Old Woman Asleep after Rops" under
 #: Malarstwo).
 UNTYPED_SOURCES = frozenset({"wikiart"})
+#: Below this tint spread a picture has no colour of its own beyond one
+#: faint tint (``style.MONOCHROME_SPREAD``): pencil, ink, etchings.
+UNTOLD_GREY_SPREAD = 0.012
 
 
 def stated_type(item: Item) -> str:
@@ -1276,14 +1279,17 @@ def technique_type(item: Item) -> str:
     with another medium, what that medium names decides, a drawing when it
     names nothing known ("pencil, paper"); with none (the works of a
     search, whose record was not read yet), a picture of one tone (its
-    ``"monochrome"`` tag) is a drawing and any other a painting."""
+    ``"monochrome"`` tag, or a picture with no colour of its own,
+    ``UNTOLD_GREY_SPREAD``: a grey one is known before its colours are
+    analysed again) is a drawing and any other a painting."""
     if item.source not in UNTYPED_SOURCES:
         return _own_type(item.classification)
     if _is_painting("", item.medium):
         return "Painting"
     if item.medium.strip():
         return "" if _names_technique(item.medium) else "Drawing"
-    return "Drawing" if "monochrome" in item.color_tags else "Painting"
+    grey = item.tint_spread is not None and item.tint_spread < UNTOLD_GREY_SPREAD
+    return "Drawing" if grey or "monochrome" in item.color_tags else "Painting"
 
 
 def _technique_matches(found: Term, item: Item) -> bool:
