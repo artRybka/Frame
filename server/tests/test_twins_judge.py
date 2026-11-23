@@ -12,7 +12,7 @@ from test_sharper import _print
 from test_twins import _work
 
 from frame_server.ai import AiConfigUpdate
-from frame_server.ai.client import HAIKU
+from frame_server.ai.client import HAIKU, SONNET
 from frame_server.ai.twins_judge import STATE_KEY, NightJudge
 from frame_server.library.twins import pair_key
 from frame_server.service import FrameService
@@ -153,3 +153,84 @@ def test_the_judge_never_hides_a_museums_work(service: FrameService) -> None:
     for item_id in ("met:1", "rijks:2"):
         item = service.library.get(item_id)
         assert item is not None and not item.detail_of and not item.copy_of
+
+
+def _near(service: FrameService, key: str) -> None:
+    """The pair's thumbnails hashed as one picture (a faded photograph and a
+    clean one of van Gogh's "Poppy Flowers", 35 bits apart)."""
+    first = service.library.get("wmc:1")
+    assert first is not None and first.picture_hash
+    service.library.update("wmc:2", picture_hash=first.picture_hash)
+
+
+def test_kept_apart_though_hashed_near_sonnet_is_asked(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    key = _strip(service)
+    _near(service, key)
+    judge: NightJudge = service.twins_judge
+    fake.ended = True
+    _answer(fake, {"why": "yellow against cream", "kind": "different", "whole": "none"})
+    assert judge.order() and judge.collect()
+    assert judge.state()["second"] == {key: "different"}
+    assert key not in judge.state().get("judged", {})
+    assert key not in service.twins.suspects()
+
+    assert judge.order()  # the second opinion
+    asked = fake.batches["batch_2"][0]["params"]
+    assert asked["model"] == SONNET and "cast over the whole picture" in str(asked["system"])
+    _answer(fake, {"why": "one painting, faded photo", "kind": "same", "whole": "none"})
+    assert judge.collect()
+    assert judge.state()["claims"] == {key: "same"}
+    assert judge.state()["claim_models"] == {key: SONNET}
+
+    assert judge.order()  # Sonnet as the critic of its own claim
+    assert fake.batches["batch_3"][0]["params"]["model"] == SONNET
+    _answer(fake, {"why": "figure for figure", "verdict": "confirm", "confidence": 0.9})
+    assert judge.collect()
+    assert len(_groups(service)) == 1
+    assert not judge.state()["second"] and not judge.state()["claim_models"]
+    assert not judge.order()
+
+
+def test_sonnet_keeping_them_apart_is_the_last_word(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    key = _strip(service)
+    _near(service, key)
+    judge: NightJudge = service.twins_judge
+    fake.ended = True
+    _answer(fake, {"why": "two works", "kind": "different", "whole": "none"})
+    assert judge.order() and judge.collect()
+    assert judge.order() and judge.collect()
+    said = judge.state()["judged"][key]
+    assert said["judge"] == "different" and said["second"] == "different"
+    assert not judge.order()
+    assert len(_groups(service)) == 2
+
+
+def test_pairs_kept_apart_before_are_asked_again_once(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    key = _strip(service)
+    _near(service, key)
+    service.twins.drop_suspects([key])
+    service.library.set_state(
+        STATE_KEY, {"judged": {key: {"judge": "different", "at": "2026-11-10"}}}
+    )
+    judge: NightJudge = service.twins_judge
+    assert judge.order()
+    assert fake.batches["batch_1"][0]["params"]["model"] == SONNET
+    fake.ended = True
+    _answer(fake, {"why": "two works", "kind": "different", "whole": "none"})
+    assert judge.collect()
+    assert judge.state()["judged"][key]["second"] == "different"
+    assert not judge.order()  # once
+
+
+def _groups(service: FrameService) -> set[int | None]:
+    grouped = service.library.works()
+    return {grouped.group_index(i) for i in ("wmc:1", "wmc:2")}

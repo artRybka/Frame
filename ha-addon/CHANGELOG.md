@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.340
+
+- Kopie jednego dzieła łączą się także wtedy, gdy zdjęcia są do siebie
+  niepodobne, a Wikimedia Commons mówi, że to to samo dzieło (identyfikator
+  w Wikidacie). Tak łączą się trzy kafelki „Maków” van Gogha.
+- Gdy odciski obrazów są prawie takie same, a Haiku uznał parę za różne
+  dzieła, decyzję sprawdza jeszcze Sonnet. Dawne takie pary są sprawdzane
+  raz jeszcze.
+
 ## 1.145.339
 
 - Nowa pierwsza karta „Galeria”: dzieła jedno po drugim na cały ekran,

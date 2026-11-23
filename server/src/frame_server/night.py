@@ -660,6 +660,17 @@ def tasks(service: FrameService) -> list[NightTask]:
         ]
         return Done(seen, _listed(parts, ""))
 
+    def work_ids(night: Night) -> Done:
+        """The Wikidata items of the library's pictures from Commons, then
+        pictures naming one item made copies of one work (work_ids.py)."""
+        first = service.cared.first
+        read, joined = service.work_ids.at_night(night.quiet, lambda i: first(i, lambda x: [x.id]))
+        parts: list[object] = [
+            read and plural(read, "obraz sprawdzony", "obrazy sprawdzone", "obrazów sprawdzonych"),
+            joined and plural(joined, "kopia", "kopie", "kopii"),
+        ]
+        return Done(joined, _listed(parts, "nic nowego"))
+
     def twins_judge(night: Night) -> Done:
         began = _utc_now()
         service.twins_judge.at_night(night)
@@ -796,6 +807,10 @@ def tasks(service: FrameService) -> list[NightTask]:
         # Copies under other titles and details, by their pictures: what the
         # night has time for (40 minutes at most), the rest the next.
         NightTask("twins", twins, "Powtórki i detale", group=dup),
+        # Copies by the work their Commons pages name, however unlike their
+        # pictures (Mateusz 2026-11-23): after the pictures' look, which
+        # keeps details and photographs on a wall out of it.
+        NightTask("work ids", work_ids, "Kopie według Wikidaty", group=dup),
         # The catalogue's gatekeeper before the judge: what it sets aside
         # as no artwork the judge is not asked about (ai/gatekeeper.py).
         NightTask(

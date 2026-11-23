@@ -1282,6 +1282,50 @@ class Twins:
             )
             return True
 
+    # -- one Wikidata item -------------------------------------------------------
+
+    def join_work(self, qid: str, item_ids: Iterable[str]) -> int:
+        """The pictures ``item_ids``, each naming the Wikidata item ``qid`` as
+        its work (``Item.work_qid``), made copies of one work, however unlike
+        they look: three Commons files of van Gogh's stolen "Poppy Flowers"
+        (a faded gallery photograph, a small news cutting, a shop's painted
+        copy) matched no keypoints and the judge called two of them
+        different (Mateusz 2026-11-23). A detail or a photograph of the work
+        on a wall names the same item: the pictures' own finding of one
+        (looked at first) keeps it out, as do the owner's "To nie to samo"
+        and two museums' own works. How many pictures joined a work."""
+        with self._lock:
+            grouped = self.library.works()
+            items = [
+                i
+                for item_id in dict.fromkeys(item_ids)
+                if (i := self.library.get(item_id)) is not None
+                and candidate(i)
+                and not i.scene_of
+                and i.twins_seen >= VERSION
+            ]
+            # One picture of each work they are now: those already one are
+            # not joined again.
+            firsts: dict[object, Item] = {}
+            for item in items:
+                at = grouped.group_index(item.id)
+                firsts.setdefault(item.id if at is None else at, item)
+            if len(firsts) < 2:
+                return 0
+            ones = list(firsts.values())
+            family = {i.id: i for one in ones for i in self._copies(one, grouped)}
+            if sum(i.source in COLLECTIONS for i in family.values()) > 1:
+                log.info("twins: %s names two museums' works, not joined", qid)
+                return 0
+            same = Fit(WHOLE_MATCHES, 1.0, 1.0, 0.0)
+            fits = {(ones[0].id, other.id): same for other in ones[1:]}
+            found, _ = self._write(
+                list(family.values()), [], fits, by="wikidata", said={"why": f"Wikidata {qid}"}
+            )
+        if found:
+            log.info("twins: %d pictures of %s joined as one work (Wikidata)", found + 1, qid)
+        return found
+
     # -- the owner's word ----------------------------------------------------------
 
     def apart(self) -> set[str]:
