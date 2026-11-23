@@ -243,6 +243,10 @@ private struct GalleryPage: View {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
                     let place = whole ? Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets) : nil
+                    if let place, let glow = thumb ?? full {
+                        Glow(image: glow, place: place)
+                            .transition(.opacity)
+                    }
                     ZStack {
                         if let thumb { picture(thumb, layout, place) }
                         if let full { picture(full, layout, place).opacity(fullShown) }
@@ -384,6 +388,36 @@ private struct Whole {
         let scale = min(room.width / max(picture.width, 1), room.height / max(picture.height, 1))
         size = CGSize(width: picture.width * scale, height: picture.height * scale)
         offset = CGSize(width: 0, height: (top - bottom) / 2)
+    }
+}
+
+/// Behind the whole work, the colours of its edges flowing out and
+/// fading into its own quiet colour (Mateusz 2026-11-23 17:53: "rozmyte
+/// ale od krawędzi. Takie łuny koloru").
+private struct Glow: View {
+    let image: UIImage
+    let place: Whole
+
+    /// How far the edges reach out, as a share of the work's size.
+    static let spread: CGFloat = 1.6
+    static let blur: CGFloat = 45
+
+    var body: some View {
+        let size = CGSize(width: place.size.width * Self.spread, height: place.size.height * Self.spread)
+        let reach = max(size.width, size.height) / 2
+        Image(uiImage: image)
+            .resizable()
+            .frame(width: size.width, height: size.height)
+            .blur(radius: Self.blur)
+            .mask {
+                RadialGradient(
+                    colors: [.white, .white.opacity(0.6), .clear],
+                    center: .center, startRadius: reach * 0.35, endRadius: reach * 1.05
+                )
+            }
+            .opacity(0.85)
+            .offset(place.offset)
+            .allowsHitTesting(false)
     }
 }
 
