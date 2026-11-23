@@ -67,4 +67,39 @@ final class SubjectFocusTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 2)
         _ = await busy.result
     }
+
+    /// The study of the day: Claude's point on the lady's chest in Homer's
+    /// "Autumn" cut her face off; the face Vision finds by it wins.
+    func testStudyCropsOnTheFaceByClaudesPoint() {
+        let face = CGRect(x: 0.4, y: 0.3, width: 0.08, height: 0.05)
+        let point = SubjectFocus.near(UnitPoint(x: 0.45, y: 0.42), faces: [face], people: [])
+        XCTAssertEqual(point.x, face.midX, accuracy: 0.001)
+        XCTAssertEqual(point.y, face.midY, accuracy: 0.001)
+    }
+
+    func testOfSeveralFacesTheOneByThePoint() {
+        let left = CGRect(x: 0.1, y: 0.3, width: 0.1, height: 0.1)
+        let right = CGRect(x: 0.7, y: 0.3, width: 0.1, height: 0.1)
+        let point = SubjectFocus.near(UnitPoint(x: 0.7, y: 0.45), faces: [left, right], people: [])
+        XCTAssertEqual(point.x, right.midX, accuracy: 0.001)
+    }
+
+    func testAFaceFarFromThePointIsNotTheOneMeant() {
+        let face = CGRect(x: 0.0, y: 0.0, width: 0.05, height: 0.05)
+        let point = SubjectFocus.near(UnitPoint(x: 0.7, y: 0.8), faces: [face], people: [])
+        XCTAssertEqual(point, UnitPoint(x: 0.7, y: 0.8))
+    }
+
+    /// No face found (turned away, too small): the head of the figure the
+    /// point is on.
+    func testWithoutAFaceTheFiguresHead() {
+        let figure = CGRect(x: 0.3, y: 0.2, width: 0.2, height: 0.7)
+        let point = SubjectFocus.near(UnitPoint(x: 0.4, y: 0.55), faces: [], people: [figure])
+        XCTAssertEqual(point.x, 0.4, accuracy: 0.001)
+        XCTAssertEqual(point.y, 0.2 + 0.7 * SubjectFocus.headInFigure, accuracy: 0.001)
+    }
+
+    func testNothingFoundKeepsThePoint() {
+        XCTAssertEqual(SubjectFocus.near(UnitPoint(x: 0.3, y: 0.6), faces: [], people: []), UnitPoint(x: 0.3, y: 0.6))
+    }
 }

@@ -76,7 +76,13 @@ MARGIN = 0.03
 TICK = 0.03
 #: An echo's ring: its radius between these (of the longer side), from the
 #: thing it rings; the line joining the rings is this thick (of a stroke).
-RING = (0.03, 0.07)
+RING = (0.02, 0.04)
+#: The thing is looked for this far round its point (of the longer side),
+#: as the patch of colours this near the point's (CIELAB ΔE), and
+#: ringed with this much room round it.
+RING_REACH = 0.07
+RING_ALIKE = 12.0
+RING_ROOM = 1.25
 JOIN = 0.6
 #: A loop is at least this large round its middle (of the field's sides).
 LOOP_LEAST = 0.05
@@ -288,50 +294,42 @@ class Hand:
 
     def blob(self, sheet: Array, p: Array) -> tuple[float, float, float, float]:
         """The thing an echo points at, round ``p`` (pixels), as a box: the
-        part GrabCut finds in a window round the point that holds (or lies
-        nearest) it; only its size is taken, never its outline."""
+        patch of the point's own colour that holds it (a glove's white, an
+        orange), a little room round it. Only its size is taken, never its
+        outline. A patch that runs on into its surround (a ground, not a
+        thing) or is not found gets a small ring (Mateusz 2026-11-23 00:13,
+        of Homer's „Jesień”: "Okręgi wokół rękawiczek są zdecydowanie zbyt
+        duże"; GrabCut had taken a part of the figure round each)."""
         k = 384 / self.long
         small = cv2.resize(
             sheet, (round(self.w * k), round(self.h * k)), interpolation=cv2.INTER_AREA
         )
-        sh, sw = small.shape[:2]
+        lab = cv2.cvtColor(small.astype(np.float32) / 255, cv2.COLOR_RGB2LAB)
+        sh, sw = lab.shape[:2]
         cx, cy = int(min(max(p[0] * k, 0), sw - 1)), int(min(max(p[1] * k, 0), sh - 1))
         lo, hi = RING[0] * self.long, RING[1] * self.long
-        reach = int(0.12 * 384)
-        x0, y0 = max(cx - reach, 1), max(cy - reach, 1)
-        x1, y1 = min(cx + reach, sw - 2), min(cy + reach, sh - 2)
-        mask = np.zeros((sh, sw), np.uint8)
-        if x1 - x0 > 4 and y1 - y0 > 4:
-            try:
-                cv2.grabCut(
-                    cv2.cvtColor(small, cv2.COLOR_RGB2BGR),
-                    mask,
-                    (x0, y0, x1 - x0, y1 - y0),
-                    np.zeros((1, 65)),
-                    np.zeros((1, 65)),
-                    4,
-                    cv2.GC_INIT_WITH_RECT,
-                )
-            except cv2.error:
-                mask[:] = 0
-        fg: Array = cv2.morphologyEx(
-            np.isin(mask, (1, 3)).astype(np.uint8), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8)
+        reach = int(RING_REACH * 384)
+        x0, y0 = max(cx - reach, 0), max(cy - reach, 0)
+        x1, y1 = min(cx + reach + 1, sw), min(cy + reach + 1, sh)
+        here = lab[max(cy - 1, 0) : cy + 2, max(cx - 1, 0) : cx + 2].reshape(-1, 3)
+        alike = np.linalg.norm(lab[y0:y1, x0:x1] - np.median(here, axis=0), axis=2) < RING_ALIKE
+        near: Array = cv2.morphologyEx(
+            alike.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8)
         )
-        n, labels, stats, centres = cv2.connectedComponentsWithStats(fg)
-        if n < 2:
-            r = 0.034 * self.long
-            return (p[0] - r, p[1] - r * 0.85, p[0] + r, p[1] + r * 0.85)
-        idx = int(labels[cy, cx])
-        if idx == 0:  # the part nearest the point
-            d = np.hypot(centres[1:, 0] - cx, centres[1:, 1] - cy)
-            idx = 1 + int(np.argmin(d - np.sqrt(stats[1:, cv2.CC_STAT_AREA]) * 0.5))
-        bx, by, bw, bh = (int(v) for v in stats[idx, :4])
-        bx0, by0, bx1, by1 = bx / k, by / k, (bx + bw) / k, (by + bh) / k
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(near)
+        idx = int(labels[cy - y0, cx - x0]) if n > 1 else 0
+        bx, by, bw, bh = (int(v) for v in stats[idx, :4]) if idx else (0, 0, 0, 0)
+        ground = bx == 0 or by == 0 or bx + bw >= x1 - x0 or by + bh >= y1 - y0
+        if not idx or ground:
+            r = RING[0] * self.long * 1.2
+            return (p[0] - r, p[1] - r, p[0] + r, p[1] + r)
+        bx0, by0 = (bx + x0) / k, (by + y0) / k
+        bx1, by1 = (bx + x0 + bw) / k, (by + y0 + bh) / k
         # between the thing and the point, so that the ring never leaves the point
         mx, my = ((bx0 + bx1) / 2 + p[0]) / 2, ((by0 + by1) / 2 + p[1]) / 2
-        hx = min(max(max(bx1 - mx, mx - bx0) * 1.05, lo), hi)
-        hy = min(max(max(by1 - my, my - by0) * 1.05, lo * 0.8), hi)
-        return (mx - hx, my - hy, mx + hx, my + hy)
+        half = max(bx1 - mx, mx - bx0, by1 - my, my - by0) * RING_ROOM
+        r = min(max(half, lo), hi)
+        return (mx - r, my - r, mx + r, my + r)
 
     def arc(self, pts: Array) -> Array:
         """A motion's course as one smooth arc from its start to its end,
