@@ -111,9 +111,28 @@ struct ConnectionSettingsView: View {
     /// „Do sprawdzenia" opened from the top of the list (Mateusz 2026-11-16:
     /// „wejście w »do sprawdzenia« daj także od razu z ekranu konfiguracji").
     @State private var reviewing = false
+    /// Pushed on "Ramka" from its own button (Mateusz 2026-11-23: "nie jako
+    /// wyskakująca karta, tylko zwykły ekran"): no stack of its own, no
+    /// "Gotowe".
+    let embedded: Bool
+
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+    }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        if embedded {
+            list.task { await load() }.task { await model.syncTailnet() }
+        } else {
+            NavigationStack(path: $path) { list }
+                // On the stack, not the list: the list's tasks stop when a page
+                // opens over it (and never start when one opens right away).
+                .task { await load() }
+                .task { await model.syncTailnet() }
+        }
+    }
+
+    private var list: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     if let count = model.aiSettings?.reviewCount, count > 0 {
@@ -132,18 +151,19 @@ struct ConnectionSettingsView: View {
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Gotowe") { dismiss() }
+                if !embedded {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Gotowe") { dismiss() }
+                    }
                 }
             }
             .navigationDestination(for: SettingsPage.self) { page in
                 SettingsPageView(page: page)
             }
             .navigationDestination(isPresented: $reviewing) { AiReviewView() }
-        }
-        // On the stack, not the list: the list's tasks stop when a page
-        // opens over it (and never start when one opens right away).
-        .task {
+    }
+
+    private func load() async {
             // The disk is measured after the rest has come: the server
             // looks at every picture for it (up to 45 s on the NAS, the
             // audit of 2026-11-14), and the page's other rows waited
@@ -157,8 +177,6 @@ struct ConnectionSettingsView: View {
             async let notifications: Void = model.loadNotifications()
             _ = await (counts, night, panel, update, ai, keys, notifications)
             await model.loadLibraryStorage()
-        }
-        .task { await model.syncTailnet() }
     }
 }
 

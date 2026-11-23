@@ -190,26 +190,26 @@ struct GalleryView: View {
 }
 
 /// One work on the whole screen, cut to fill it around what draws the eye.
-/// The thumbnail comes first; the full picture takes its place as a lens
-/// finding focus (a moment's blur sharpening), cut around the same point so
-/// nothing moves (Mateusz 2026-11-23: "mignięcie/przesunięcie"). A work much
-/// wider than the screen drifts across slowly while it is shown, each work
-/// its own way (`Drift`).
+/// The thumbnail comes first; the full picture fades in over it, cut around
+/// the same point so nothing moves (Mateusz 2026-11-23: "mignięcie/
+/// przesunięcie"; a focus pull "wygląda źle, zróbmy jednak delikatne
+/// przejście"). A work much wider than the screen moves across very slowly
+/// as the phone is turned (`Pan`).
 private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let work: RemoteItem
-    /// On screen now: a wide work drifts.
+    /// On screen now: a wide work follows the phone's turn.
     var current = false
     var bloom = false
 
     @State private var thumb: UIImage?
     @State private var full: UIImage?
     @State private var focus: UnitPoint?
-    /// The full picture's blur, 0 once it has "found focus".
-    @State private var blur: CGFloat = 0
-    /// How far the drift has gone (0…1).
-    @State private var drift: CGFloat = 0
+    /// The full picture over the thumbnail, 1 once it is in.
+    @State private var fullShown: Double = 1
+    /// How far a wide work has moved from where it was cut (points).
+    @State private var pan: CGFloat = 0
 
     private static let thumbPixel: CGFloat = 900
     private static let fullPixel: CGFloat = 2800
@@ -219,13 +219,11 @@ private struct GalleryPage: View {
             ZStack {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
-                    let motion = layout.wide && !reduceMotion ? Drift(id: work.id, layout: layout) : nil
                     ZStack {
                         if let thumb { picture(thumb, layout) }
-                        if let full { picture(full, layout).blur(radius: blur) }
+                        if let full { picture(full, layout).opacity(fullShown) }
                     }
-                    .scaleEffect(motion?.scale(at: drift) ?? 1 + blur * 0.002)
-                    .offset(motion?.offset(at: drift) ?? .zero)
+                    .offset(x: layout.wide ? pan : 0)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
                     .transition(.opacity)
@@ -239,7 +237,7 @@ private struct GalleryPage: View {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .task(id: geo.size.width > 0 && current) { await startDrift(geo.size) }
+            .task(id: geo.size.width > 0 && current && !reduceMotion) { await follow(geo.size) }
         }
         .background(placeholder)
         .animation(.spring(duration: 0.35), value: bloom)
@@ -290,10 +288,10 @@ private struct GalleryPage: View {
             withAnimation(.easeOut(duration: 0.3)) { full = image }
             return
         }
-        // Over the thumbnail as it looked, then into focus.
-        blur = 7
+        // Over the thumbnail, gently.
+        fullShown = 0
         full = image
-        withAnimation(.easeOut(duration: 0.55)) { blur = 0 }
+        withAnimation(.easeInOut(duration: 0.7)) { fullShown = 1 }
     }
 
     /// The point the picture is cut around: found once, on whichever
@@ -303,18 +301,29 @@ private struct GalleryPage: View {
         focus = await SubjectFocus.shared.point(in: image, key: key)
     }
 
-    private func startDrift(_ box: CGSize) async {
-        guard current, !reduceMotion else {
-            drift = 0
-            return
+    /// A wide work moves only once the phone is turned, the way it was
+    /// turned, and on very slowly after (Mateusz 2026-11-23: "zdecydowanie
+    /// zbyt szybka. to musi być minimalny ruch. Ruch niech startuje pod
+    /// żyroskopem - to on nadaje kierunek i ew przyspiesza animację").
+    private func follow(_ box: CGSize) async {
+        guard current, !reduceMotion, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
+        let tilt = Tilt.shared
+        tilt.start()
+        defer { tilt.stop() }
+        var pace = Pan()
+        let step = 1.0 / 30
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(step))
+            guard let shown = full ?? thumb, let focus else { continue }
+            let layout = Fill(picture: shown.size, box: box, focus: focus)
+            guard layout.wide else { continue }
+            // Where the picture may lie: +room shows its left edge.
+            let room = layout.room.width
+            let low = -room - layout.offset.width, high = room - layout.offset.width
+            let next = min(max(pan + pace.advance(tilt: tilt.x, by: step), low), high)
+            if next != pan { pan = next }
+            if next == low || next == high { pace.stopped() }
         }
-        // A breath before it starts, so a quick swipe past does not move it.
-        try? await Task.sleep(for: .seconds(0.8))
-        guard !Task.isCancelled, let shown = full ?? thumb, let focus else { return }
-        let layout = Fill(picture: shown.size, box: box, focus: focus)
-        guard layout.wide else { return }
-        let motion = Drift(id: work.id, layout: layout)
-        withAnimation(.easeInOut(duration: motion.duration)) { drift = 1 }
     }
 }
 
@@ -341,41 +350,32 @@ private struct Fill {
     var wide: Bool { room.width * 2 > size.width * 0.3 }
 }
 
-/// A wide work's slow drift while it is shown (Mateusz 2026-11-23: "z lekkiego
-/// zoomu, oddalenie i pano z lewej na prawo, ale żeby nie było monotonnie"):
-/// from a little closer to the whole height, across the picture. Each work
-/// its own way, the same each time it comes back: to the right or to the
-/// left, from an edge or from what draws the eye, closer or not, faster or
-/// slower.
-private struct Drift {
-    let duration: Double
-    private let fromScale: CGFloat
-    private let from: CGFloat
-    private let to: CGFloat
+/// How a wide work moves with the phone's turn: still until it is turned;
+/// then the way it was turned (turned right, the right part comes in), a
+/// little faster while it is turned, and on very slowly after, until its
+/// edge. Points a second.
+private struct Pan {
+    /// After a turn, the slow way on.
+    static let creep: Double = 1.5
+    /// The most a turn adds: still a slow move.
+    static let turned: Double = 7
+    /// A turn smaller than this is the hand's shake (`Tilt.x`, -1…1).
+    static let still: Double = 0.12
 
-    init(id: String, layout: Fill) {
-        var seed = UInt64(truncatingIfNeeded: id.utf8.reduce(5381) { ($0 &* 33) &+ Int($1) })
-        func next() -> Double {
-            seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
-            return Double(seed >> 11) / Double(1 << 53)
-        }
-        let room = layout.room.width
-        let rightward = next() < 0.5
-        let fromFocus = next() < 0.35
-        fromScale = 1 + CGFloat(0.04 + next() * 0.1)
-        duration = 14 + next() * 10
-        // Where the picture lies: +room shows its left edge, -room its right
-        // one. The drift moves it from where it was cut (`layout.offset`).
-        let start = fromFocus ? layout.offset.width : (rightward ? room : -room)
-        let end = rightward ? -room * CGFloat(0.6 + next() * 0.4) : room * CGFloat(0.6 + next() * 0.4)
-        from = start - layout.offset.width
-        to = end - layout.offset.width
+    private var way: Double = 0
+    private var speed: Double = 0
+
+    mutating func advance(tilt: Double, by step: Double) -> CGFloat {
+        if abs(tilt) > Self.still { way = tilt > 0 ? -1 : 1 }
+        let along = way == 0 ? 0 : max(0, -tilt * way)
+        let goal = way == 0 ? 0 : Self.creep + Self.turned * min(along, 1)
+        // Speeds up and slows down over a couple of seconds.
+        speed += (goal - speed) * min(step * 0.8, 1)
+        return CGFloat(way * speed * step)
     }
 
-    func scale(at t: CGFloat) -> CGFloat { fromScale + (1 - fromScale) * t }
-
-    func offset(at t: CGFloat) -> CGSize {
-        CGSize(width: from + (to - from) * t, height: 0)
+    mutating func stopped() {
+        speed = 0
     }
 }
 
