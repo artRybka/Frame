@@ -336,9 +336,23 @@ struct MyAccessView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var confirmLeave = false
+    /// Pushed on "Ramka" from its own button (Mateusz 2026-11-23): no stack
+    /// of its own, no "Gotowe".
+    let embedded: Bool
+
+    init(embedded: Bool = false) {
+        self.embedded = embedded
+    }
 
     var body: some View {
-        NavigationStack {
+        if embedded {
+            page
+        } else {
+            NavigationStack { page }
+        }
+    }
+
+    private var page: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     VStack(alignment: .leading, spacing: 16) {
@@ -391,11 +405,12 @@ struct MyAccessView: View {
             .navigationTitle("Mój dostęp")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Gotowe") { dismiss() }
+                if !embedded {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Gotowe") { dismiss() }
+                    }
                 }
             }
-        }
     }
 
     private func address(_ title: String, _ value: String) -> some View {
