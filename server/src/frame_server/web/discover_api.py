@@ -22,6 +22,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
+from .. import gallery
 from ..library import (
     Item,
     Job,
@@ -709,6 +710,29 @@ async def day_suggestions(svc: Svc) -> DayPicksView:
             cards=[DayCard(key=k, name=n, description=d) for k, n, d in picks.cards],
             items=_light(remote_items(svc, items, copies=False)),
         )
+
+    return await run_in_threadpool(view)
+
+
+@router.get("/gallery", response_model=list[RemoteItem])
+async def gallery_works(
+    svc: Svc, count: Annotated[int, Query(ge=1, le=40)] = 12
+) -> list[RemoteItem]:
+    """The next works of the asking person's Galeria (the app's first tab):
+    their hearts, works like them and a few new ones, each given once in a
+    while (:mod:`frame_server.gallery`)."""
+    user = viewer_id()
+
+    def neighbours(item_id: str, limit: int) -> list[str]:
+        return svc.looks.neighbours(item_id, limit) if svc.looks.enabled() else []
+
+    def starters() -> list[str]:
+        found = day_picks.kept(svc.library, user)
+        return list(found.ids) if found is not None else []
+
+    def view() -> list[RemoteItem]:
+        items = gallery.next_works(svc.library, user, count, neighbours, starters)
+        return _light(remote_items(svc, items, copies=False))
 
     return await run_in_threadpool(view)
 
