@@ -161,3 +161,19 @@ def test_an_echo_has_one_number_and_a_rhythm_two() -> None:
     for layer, spots in zip(layers, numbers, strict=True):  # each on its own line
         for x, y in spots:
             assert _at(layer, x, y, 8) > 0.3
+
+
+def test_an_echo_rings_a_small_accent_snugly() -> None:
+    """2026-11-23 00:13, Homer's „Jesień”: "Okręgi wokół rękawiczek są
+    zdecydowanie zbyt duże": a ring as large as the patch of colour it rings."""
+    img = Image.new("RGB", (W, H), (240, 234, 222))
+    canvas = ImageDraw.Draw(img)
+    canvas.rectangle((0.35 * W, 0.1 * H, 0.65 * W, 0.9 * H), fill=(40, 35, 35))  # a dark figure
+    for x, y in ((0.45, 0.3), (0.55, 0.7)):  # two white gloves on it
+        canvas.ellipse((x * W - 14, y * H - 20, x * W + 14, y * H + 20), fill=(250, 250, 250))
+    [layer] = chalk.draw(np.asarray(img), [Stroke("echo", [(0.45, 0.3), (0.55, 0.7)])], seed=1)
+    ys, xs = np.nonzero(layer[: H // 2] > 0.3)  # the upper ring, and the start of the line
+    ring = (xs < 0.45 * W + 70) & (ys < 0.3 * H + 70)
+    width = xs[ring].max() - xs[ring].min()
+    assert 40 < width < chalk.RING[1] * W * 2 + 20  # round the glove, no farther
+    assert _at(layer, 0.45, 0.3, 6) < 0.2  # the glove itself is left bare

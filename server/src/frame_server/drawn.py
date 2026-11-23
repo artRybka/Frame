@@ -144,8 +144,11 @@ Take = tuple["Item", "View"]
 #: The marks of the sheets kept before are drawn anew in chalk once, over
 #: their page as it is (Mateusz 2026-11-22 22:10, "Działamy"; nothing is
 #: paid): a sheet notes it (``chalk`` in its meta), the state that all are.
+#: 2: an echo's rings as large as the colour patch they ring (2026-11-23
+#: 00:13, Homer's „Jesień”: "Okręgi wokół rękawiczek są zdecydowanie zbyt
+#: duże").
 CHALKED = "drawn_chalk"
-CHALK = 1
+CHALK = 2
 #: The sheets whose marks are drawn anew in one go of the background.
 CHALK_AT_ONCE = 8
 
