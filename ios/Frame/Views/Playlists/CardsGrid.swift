@@ -145,8 +145,13 @@ struct CardsGrid: UIViewRepresentable {
             self.view = view
             let registration = UICollectionView.CellRegistration<UICollectionViewCell, GridCard> { [weak self] cell, _, card in
                 cell.backgroundConfiguration = .clear()
+                // Clear in every state too: held, put down and lifted again
+                // a card had the cell's white behind it for a second.
+                cell.configurationUpdateHandler = { cell, _ in cell.backgroundConfiguration = .clear() }
                 guard let content = self?.grid?.cells[card] else { return }
-                cell.contentConfiguration = UIHostingConfiguration { content }.margins(.all, 0)
+                cell.contentConfiguration = UIHostingConfiguration { content }
+                    .margins(.all, 0)
+                    .background { Color.clear }
             }
             source = UICollectionViewDiffableDataSource(collectionView: view) { view, index, card in
                 view.dequeueConfiguredReusableCell(using: registration, for: index, item: card)
@@ -258,7 +263,8 @@ struct CardsGrid: UIViewRepresentable {
             guard session.localDragSession != nil else { return UICollectionViewDropProposal(operation: .forbidden) }
             // Over "Propozycje dnia" or past "Ukryte" no gap opens: they
             // stepped aside and jumped back once the card was let go.
-            if let destination, clamped(destination, in: view) != destination {
+            // Nor in the empty place after the last card (no index there).
+            guard let destination, clamped(destination, in: view) == destination else {
                 return UICollectionViewDropProposal(operation: .move, intent: .unspecified)
             }
             return UICollectionViewDropProposal(operation: .move, intent: .insertAtDestinationIndexPath)
