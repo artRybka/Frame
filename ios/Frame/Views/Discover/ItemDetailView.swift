@@ -228,8 +228,8 @@ struct ItemDetailView: View {
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
                     restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
-                    correctCut: canCut(item) ? { correctingCut = true } : nil,
-                    undoCut: canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
+                    correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
+                    undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
                     recover: recoveryKind != nil && !cleaning
                         ? { Task { await toggleCleaning() } } : nil,
                     recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
@@ -730,7 +730,7 @@ struct ItemDetailView: View {
 
     /// A museum's work in the library: its photograph may be cut down to
     /// the work (not the owner's photos, nor a work drawn again).
-    private func canCut(_ item: Item) -> Bool {
+    static func canCut(_ item: Item) -> Bool {
         if item.isOwnWork { return true }  // his own photograph of it
         return item.kind == .artwork && item.look == nil && !item.isFragment
             && !["upload", "icloud", "cli", "frame"].contains(item.source)
@@ -743,7 +743,7 @@ struct ItemDetailView: View {
     /// the phone's own model (`MuseumCrop`, Mateusz 2026-11-20), when the
     /// server says so; his own photographs by the server.
     private func checkCut() async {
-        guard let id = described, id == itemID, let item, item.kind == .artwork, canCut(item) else { return }
+        guard let id = described, id == itemID, let item, item.kind == .artwork, Self.canCut(item) else { return }
         if let view = try? await model.backend.checkCut(itemID: id, wait: 60),
            !Task.isCancelled, id == itemID, view.changed {
             cutChanged(view.item)

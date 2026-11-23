@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.352
+
+- Galeria: przytrzymanie i dotknięcie tytułu pokazują całe dzieło,
+  pod podpisem guzik „Karta dzieła”, słabszy cień; kolejne dzieła
+  kadrowane w tle.
+
 ## 1.145.351
 
 - Galeria: po dotknięciu kadr rozpływa się w łunę, a z niej wypływa
