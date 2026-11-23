@@ -210,6 +210,13 @@ private struct GalleryPage: View {
     @State private var fullShown: Double = 1
     /// How far a wide work has moved from where it was cut (points).
     @State private var pan: CGFloat = 0
+    /// Each work comes a little closer and slowly draws back while it is
+    /// shown (Mateusz 2026-11-23 14:55 UTC: "zawsze zaczynaj od przybliżenia
+    /// i oddalaj"); the move sideways is the turn's alone (`follow`).
+    @State private var zoom: CGFloat = GalleryPage.closer
+    static let closer: CGFloat = 1.06
+    /// Seconds to draw back from `closer` to the whole picture.
+    static let drawBack: Double = 20
 
     private static let thumbPixel: CGFloat = 900
     private static let fullPixel: CGFloat = 2800
@@ -223,6 +230,7 @@ private struct GalleryPage: View {
                         if let thumb { picture(thumb, layout) }
                         if let full { picture(full, layout).opacity(fullShown) }
                     }
+                    .scaleEffect(reduceMotion ? 1 : zoom)
                     .offset(x: layout.wide ? pan : 0)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
@@ -238,6 +246,7 @@ private struct GalleryPage: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .task(id: geo.size.width > 0 && current && !reduceMotion) { await follow(geo.size) }
+            .task(id: current) { await drawBack() }
         }
         .background(placeholder)
         .animation(.spring(duration: 0.35), value: bloom)
@@ -305,6 +314,19 @@ private struct GalleryPage: View {
     /// turned, and on very slowly after (Mateusz 2026-11-23: "zdecydowanie
     /// zbyt szybka. to musi być minimalny ruch. Ruch niech startuje pod
     /// żyroskopem - to on nadaje kierunek i ew przyspiesza animację").
+    private func drawBack() async {
+        guard current else {
+            // Off the screen by then: closer again for the next time.
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { zoom = Self.closer }
+            return
+        }
+        withAnimation(.easeOut(duration: Self.drawBack)) { zoom = 1 }
+    }
+
     private func follow(_ box: CGSize) async {
         guard current, !reduceMotion, !ProcessInfo.processInfo.isLowPowerModeEnabled else { return }
         let tilt = Tilt.shared

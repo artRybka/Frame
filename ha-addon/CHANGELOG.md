@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.344
+
+- Każde dzieło w Galerii zaczyna lekko przybliżone i powoli się oddala.
+  Na boki rusza się dalej tylko od przechylenia telefonu.
+
 ## 1.145.343
 
 - Nowa kolejność kart: Galeria, Odkrywaj, Playlisty, Ramka, Szukaj.
