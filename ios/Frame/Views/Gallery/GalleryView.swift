@@ -74,8 +74,10 @@ struct GalleryView: View {
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
                         .onTapGesture {
-                            // Quick (17:42: "szybciej i dynamiczniej").
-                            withAnimation(.spring(duration: 0.32, bounce: 0.18)) {
+                            // Quick (17:42: "szybciej i dynamiczniej") but
+                            // smooth (19:01: "Wygląda jak skok"): no bounce,
+                            // fast out and settling gently.
+                            withAnimation(GalleryPage.toWhole) {
                                 whole = whole == work.id ? nil : work.id
                             }
                         }
@@ -242,9 +244,15 @@ private struct GalleryPage: View {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
                     let place = whole ? Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets) : nil
-                    if let place, let glow {
-                        Glow(edges: glow, place: place)
-                            .transition(.opacity)
+                    if let glow {
+                        // Made before the tap, it travels with the work and
+                        // grows out of it as it draws back.
+                        Glow(
+                            edges: glow,
+                            size: place?.size ?? layout.size,
+                            offset: place?.offset ?? CGSize(width: layout.offset.width + pan, height: layout.offset.height)
+                        )
+                        .opacity(whole ? 1 : 0)
                     }
                     ZStack {
                         if let thumb { picture(thumb, layout, place) }
@@ -263,10 +271,10 @@ private struct GalleryPage: View {
         }
         .background(whole ? behind : placeholder)
         .task(id: work.id) { await load() }
-        .task(id: whole) {
-            guard whole, glow == nil, let picture = thumb ?? full else { return }
-            let made = await Task.detached(priority: .userInitiated) { Glow.edges(of: picture) }.value
-            withAnimation(.easeOut(duration: 0.25)) { glow = made }
+        // Made while the work is shown, before any tap: ready for it.
+        .task(id: (current || whole) && (thumb ?? full) != nil) {
+            guard current || whole, glow == nil, let picture = thumb ?? full else { return }
+            glow = await Task.detached(priority: .utility) { Glow.edges(of: picture) }.value
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
@@ -382,6 +390,9 @@ private struct GalleryPage: View {
         withAnimation(.easeInOut(duration: Self.drawBack)) { pan = to }
     }
 
+    /// To the whole work and back.
+    static let toWhole = Animation.spring(duration: 0.42, bounce: 0)
+
     /// How far a work drifts sideways while it draws back (points), at most.
     static let drift: CGFloat = 22
 }
@@ -416,7 +427,9 @@ private struct Whole {
 /// Musimy brać kolor który faktycznie jest na krawędzi").
 private struct Glow: View {
     let edges: UIImage
-    let place: Whole
+    /// Where the work lies: its size and its offset from the middle.
+    let size: CGSize
+    let offset: CGSize
 
     /// How far the edges are drawn out on each side, as a share of the
     /// work's longer side; and their blur, as a share of it too.
@@ -443,70 +456,87 @@ private struct Glow: View {
 
     var body: some View {
         // The work's share of the made picture: 1 / (1 + 2 * reach * long / side).
-        let long = max(place.size.width, place.size.height)
+        let long = max(size.width, size.height)
         let pad = long * Self.reach
-        let size = CGSize(width: place.size.width + pad * 2, height: place.size.height + pad * 2)
+        let whole = CGSize(width: size.width + pad * 2, height: size.height + pad * 2)
         Image(uiImage: edges)
             .resizable()
-            .frame(width: size.width, height: size.height)
+            .frame(width: whole.width, height: whole.height)
             .mask {
-                RadialGradient(
-                    colors: [.white, .white.opacity(0.55), .clear],
-                    center: .center, startRadius: long * 0.5, endRadius: long * 0.5 + pad
-                )
+                // Fading out the same way on every side, gone before the
+                // picture's own edge: a round fade left a wide work's glow
+                // cut straight above and below (Mateusz 2026-11-23 19:01,
+                // "Czasami widać krawędź łuny").
+                Rectangle()
+                    .frame(width: size.width + pad, height: size.height + pad)
+                    .blur(radius: pad / 4)
             }
             .opacity(0.9)
-            .offset(place.offset)
+            .offset(offset)
             .allowsHitTesting(false)
     }
 }
 
 /// The corner's glass heart, as on the tiles (`HeartMark`). Given, red
-/// pours into it from the bottom with a little swell; no flash around it
-/// (Mateusz 2026-11-23 17:42: "bez tego wielkiego rozbłysku na zewnątrz …
-/// Wlanie się czerwieni wewnątrz może być bardziej efektowne, żywe").
+/// fills it from its middle outwards, quickly, and a brighter red lights
+/// up for a moment along its edge, inside it; nothing around it (Mateusz
+/// 2026-11-23 17:42: "bez tego wielkiego rozbłysku na zewnątrz"; 19:01:
+/// "wypełnianie od środka a nie od dołu. Szybsze. Z lekkim, chwilowym
+/// rozbłyskiem żywszą czerwienią wewnątrz serca, przy jego krawędzi").
 private struct GalleryHeart: View {
     let on: Bool
     let flashes: Int
     @State private var level: CGFloat = 0
+    /// Hearts given here, for the bright red at the edge for a moment.
+    @State private var given = 0
 
     private static let size: CGFloat = 26
     private static let red = Color(red: 0xD2 / 255, green: 0x46 / 255, blue: 0x3A / 255)
+    private static let bright = Color(red: 1, green: 0x3B / 255, blue: 0x30 / 255)
 
     var body: some View {
         HeartMark(on: false, size: Self.size)
             .overlay {
-                // Red rising inside the glass, its top a little slanted.
-                HeartShape()
-                    .fill(
-                        LinearGradient(
-                            colors: [Self.red.opacity(0.95), Self.red.opacity(0.75)],
-                            startPoint: .bottom, endPoint: .top
+                ZStack {
+                    // Red growing out from the middle of the glass.
+                    HeartShape()
+                        .fill(
+                            RadialGradient(
+                                colors: [Self.red.opacity(0.95), Self.red.opacity(0.8)],
+                                center: .center, startRadius: 0, endRadius: Self.size * 0.6
+                            )
                         )
-                    )
-                    .mask(alignment: .bottom) {
-                        GeometryReader { geo in
-                            Rectangle()
-                                .frame(height: geo.size.height * 1.3 * level)
-                                .rotationEffect(.degrees(Double(1 - level) * 14))
-                                .frame(maxHeight: .infinity, alignment: .bottom)
+                        .scaleEffect(level, anchor: UnitPoint(x: 0.5, y: 0.45))
+                        .opacity(level > 0 ? 1 : 0)
+                    // The flash: a livelier red along the inside of the edge.
+                    HeartShape()
+                        .stroke(Self.bright, lineWidth: 4)
+                        .blur(radius: 1.5)
+                        .mask(HeartShape())
+                        .keyframeAnimator(initialValue: 0.0, trigger: given) { edge, shown in
+                            edge.opacity(shown)
+                        } keyframes: { _ in
+                            LinearKeyframe(0, duration: 0.1)
+                            CubicKeyframe(1, duration: 0.1)
+                            CubicKeyframe(0, duration: 0.45)
                         }
-                    }
-                    .padding(1)
+                }
+                .padding(1)
             }
             .keyframeAnimator(initialValue: CGFloat(1), trigger: flashes) { heart, scale in
                 heart.scaleEffect(scale)
             } keyframes: { _ in
-                SpringKeyframe(1.18, duration: 0.15, spring: .snappy)
-                SpringKeyframe(1, duration: 0.4, spring: .bouncy)
+                SpringKeyframe(1.12, duration: 0.12, spring: .snappy)
+                SpringKeyframe(1, duration: 0.3, spring: .bouncy)
             }
             .onAppear { level = on ? 1 : 0 }
             .onChange(of: on) { _, now in
                 if now {
                     level = 0
-                    withAnimation(.spring(duration: 0.55, bounce: 0.35)) { level = 1 }
+                    withAnimation(.spring(duration: 0.28, bounce: 0.3)) { level = 1 }
+                    given += 1
                 } else {
-                    withAnimation(.easeIn(duration: 0.25)) { level = 0 }
+                    withAnimation(.easeIn(duration: 0.2)) { level = 0 }
                 }
             }
     }

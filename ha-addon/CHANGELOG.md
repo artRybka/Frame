@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.350
+
+- Galeria: serce wypełnia się od środka z krótkim błyskiem przy
+  krawędzi; przejście do całego dzieła płynne, łuny bez widocznej
+  krawędzi.
+
 ## 1.145.349
 
 - Galeria: tytuł i autor widoczne także w kadrze; po dotknięciu
