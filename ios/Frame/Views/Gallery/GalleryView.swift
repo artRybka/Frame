@@ -38,13 +38,6 @@ struct GalleryView: View {
         NavigationStack(path: $path) {
             pages
                 .background(Color.black)
-                .overlay(alignment: .bottom) {
-                    if let shown, whole == shown.id {
-                        GalleryCaption(work: shown) { open(shown) }
-                            .id(shown.id)
-                            .transition(.opacity)
-                    }
-                }
                 .overlay(alignment: .topTrailing) {
                     // Its own for each work: swiped to a work given a heart
                     // before, the red is there already, not pouring in.
@@ -76,7 +69,7 @@ struct GalleryView: View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(works) { work in
-                    GalleryPage(work: work, current: work.id == shown?.id, whole: whole == work.id)
+                    GalleryPage(work: work, current: work.id == shown?.id, whole: whole == work.id) { open(work) }
                         .containerRelativeFrame([.horizontal, .vertical])
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
@@ -215,8 +208,10 @@ private struct GalleryPage: View {
     let work: RemoteItem
     /// On screen now: it draws back and drifts a little.
     var current = false
-    /// Tapped: drawn back to the whole of it, above the caption.
+    /// Tapped: drawn back to the whole of it, the caption right under it.
     var whole = false
+    /// The caption tapped: the work's card.
+    var open: () -> Void = {}
 
     @State private var thumb: UIImage?
     @State private var full: UIImage?
@@ -260,6 +255,7 @@ private struct GalleryPage: View {
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
                     .transition(.opacity)
+                    if current { caption(place, geo) }
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -274,6 +270,19 @@ private struct GalleryPage: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
+    }
+
+    /// The title and the artist always (Mateusz 2026-11-23 18:20: "Na
+    /// pełnym ekranie pokazuj także tytuł i autora"): low on the cut work,
+    /// on a shade; right under the whole one ("tytuł i autora przesuwaj
+    /// bezpośrednio pod dzieło"), with the museum and the artist's years.
+    private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
+        let box = geo.size
+        let under = place.map { box.height / 2 + $0.offset.height + $0.size.height / 2 + Whole.gap }
+        return GalleryCaption(work: work, whole: place != nil, open: open)
+            .padding(.top, under ?? 0)
+            .padding(.bottom, under == nil ? max(geo.safeAreaInsets.bottom, 34) : 0)
+            .frame(width: box.width, height: box.height, alignment: under == nil ? .bottom : .top)
     }
 
     /// Behind the whole work: its own main colour, quiet and dark
@@ -385,7 +394,7 @@ private struct Whole {
     let offset: CGSize
 
     /// The caption's share of the screen's height, and the margins.
-    static let caption: CGFloat = 0.25
+    static let caption: CGFloat = 0.3
     static let side: CGFloat = 20
     static let gap: CGFloat = 12
 
@@ -537,13 +546,16 @@ private struct Fill {
     var wide: Bool { room.width * 2 > size.width * 0.3 }
 }
 
-/// The work's caption laid on its lower part (Mateusz 2026-11-23, variant 2:
-/// no card, the text on a shade): the museum, the title with its year, the
+/// The work's caption: on its lower part while it is cut (Mateusz 2026-11-23,
+/// variant 2: no card, the text on a shade), right under it when it is whole: the museum, the title with its year, the
 /// artist and their nationality and years, as on the work's card. Tapped:
 /// the card. The Polish texts are asked for once the work has stayed a moment.
 private struct GalleryCaption: View {
     @Environment(AppModel.self) private var model
     let work: RemoteItem
+    /// Under the whole work: with the museum and the artist's years, on
+    /// the glow; over the cut one only the title and the artist, on a shade.
+    var whole = false
     let open: () -> Void
     @State private var polish: PolishText?
 
@@ -554,14 +566,14 @@ private struct GalleryCaption: View {
             HStack(alignment: .center, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     let held = item.kind == .artwork ? item.heldBy ?? Names.source(item.source) : Names.source(item.source)
-                    if !held.isEmpty { Eyebrow(held, color: Theme.vermilion) }
+                    if whole, !held.isEmpty { Eyebrow(held, color: Theme.vermilion).transition(.opacity) }
                     TitleWithYear(
                         title: title,
                         date: nonEmpty(polish?.date) ?? item.dateText,
                         font: .serif(26, weight: .semibold)
                     )
                     .fixedSize(horizontal: false, vertical: true)
-                    .lineLimit(3)
+                    .lineLimit(whole ? 2 : 3)
                     VStack(alignment: .leading, spacing: 0) {
                         if !item.artist.isEmpty {
                             Text(bound: Names.artist(item.artist))
@@ -570,7 +582,7 @@ private struct GalleryCaption: View {
                                 .lineLimit(1)
                         }
                         let bio = nonEmpty(polish?.artistNote) ?? item.artistBio
-                        if !bio.isEmpty {
+                        if whole, !bio.isEmpty {
                             Text(bound: bio).font(.subheadline).foregroundStyle(Theme.inkSoft).lineLimit(1)
                         }
                     }
@@ -578,8 +590,9 @@ private struct GalleryCaption: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(.horizontal, Theme.gutter + 2)
-            .padding(.top, 70)
+            .padding(.top, whole ? 0 : 70)
             .padding(.bottom, 12)
+            .shadow(color: .black.opacity(whole ? 0.45 : 0), radius: 6, y: 1)
             .background(alignment: .bottom) {
                 LinearGradient(
                     stops: [
@@ -589,7 +602,8 @@ private struct GalleryCaption: View {
                     ],
                     startPoint: .top, endPoint: .bottom
                 )
-                .padding(.bottom, -140)  // under the tab bar too
+                .padding(.bottom, -140)  // to the screen's foot
+                .opacity(whole ? 0 : 1)
                 .allowsHitTesting(false)
             }
         }
