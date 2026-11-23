@@ -5,6 +5,9 @@
 - Nowa kolejność kart: Galeria, Odkrywaj, Playlisty, Ramka, Szukaj.
   Galeria ma nową ikonę. W Ramce obok ustawień ramki jest przycisk
   Konfiguracji (u domownika „Mój dostęp”), otwierany jako zwykły ekran.
+- Szerokie dzieła w Galerii ruszają dopiero, gdy przechylisz telefon,
+  w stronę przechylenia i bardzo powoli. Lepsza jakość wchodzi łagodnym
+  przenikaniem.
 
 ## 1.145.342
 
