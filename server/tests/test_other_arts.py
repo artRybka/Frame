@@ -96,6 +96,10 @@ def test_themes_of_other_arts_keep_to_their_group() -> None:
 def test_the_catalogue_keeps_a_share_of_other_arts(museums, monkeypatch) -> None:  # noqa: F811
     service = museums
     monkeypatch.setattr("frame_server.player.thin_other_art", lambda library: [])
+    # The made-up works share six pictures, so the look for twins after
+    # works are taken in (at once when their thumbnails are here) would
+    # make two sculptures one while this runs.
+    monkeypatch.setattr(service.importer, "taken", lambda items: None)
     for key in [k for k, m in MUSEUMS.items() if m.draws]:
         monkeypatch.setitem(MUSEUMS, key, _objects(key))
     library, player = service.library, service.player
