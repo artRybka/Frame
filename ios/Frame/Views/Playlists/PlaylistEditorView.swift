@@ -501,7 +501,7 @@ struct PlaylistEditorView: View {
             Label(
                 "Po zapisaniu serwer pobierze miniatury zdjęć z albumu, a oryginał każdego zdjęcia tuż przed "
                     + "pokazaniem go na ramce. Nowe zdjęcia z albumu dochodzą same co 30 minut. "
-                    + "Wygląd zdjęć ustawisz w zakładce Ramka → Prezentacja → Zdjęcia.",
+                    + "Wygląd zdjęć ustawisz w Ramce, pod przyciskiem ustawień → Prezentacja → Zdjęcia.",
                 systemImage: "icloud.and.arrow.down"
             )
             .font(.footnote)

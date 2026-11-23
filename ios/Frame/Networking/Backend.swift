@@ -165,6 +165,9 @@ protocol FrameBackend: Sendable {
     func playOwnWorks() async throws
     /// Propozycje dnia of the asking person (made once a day).
     func daySuggestions() async throws -> DayPicks
+    /// The next works of the asking person's Galeria (`GET /api/gallery`):
+    /// their hearts, works like them and new ones, none given lately.
+    func gallery(count: Int) async throws -> [RemoteItem]
 
     func settings() async throws -> FrameSettings
     func saveSettings(_ settings: FrameSettings) async throws -> FrameSettings

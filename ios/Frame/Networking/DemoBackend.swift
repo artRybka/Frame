@@ -1195,6 +1195,26 @@ actor DemoBackend: FrameBackend {
         return DayPicks(day: "2026-11-09", cards: cards, items: remote(order))
     }
 
+    /// As the server: the demo's artworks in a shuffled round, a new round
+    /// once all were given.
+    func gallery(count: Int) async throws -> [RemoteItem] {
+        let artworks = items.filter { $0.kind == .artwork && !$0.excluded }
+        guard !artworks.isEmpty else { return [] }
+        var out: [Item] = []
+        while out.count < count {
+            if galleryRound.isEmpty {
+                // The first round in a fixed order (CI screenshots).
+                galleryRound = galleryRounds == 0 ? artworks.reversed() : artworks.shuffled()
+                galleryRounds += 1
+            }
+            out.append(galleryRound.removeLast())
+        }
+        return remote(out)
+    }
+
+    private var galleryRound: [Item] = []
+    private var galleryRounds = 0
+
     // MARK: Settings, museums, device
 
     func settings() async throws -> FrameSettings { settingsValue }

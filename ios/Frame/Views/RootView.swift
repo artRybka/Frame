@@ -64,15 +64,22 @@ struct RootView: View {
     @State private var tab = Screen.initial
 
     enum Screen: Hashable {
-        case now, discover, search, playlists, frame
+        case gallery, now, discover, search, playlists
+
+        /// The frame's own pages (once the tab "Ramka"), pushed on "Ramka".
+        static let frameScreens: Set<String> = [
+            "frame", "notices", "connection", "battery", "schedule", "schedule-economy",
+            "presentation", "presentation-photo", "orientation",
+        ]
 
         static var initial: Screen {
-            switch LaunchRoute.screen {
+            if frameScreens.contains(LaunchRoute.screen) { return .now }
+            return switch LaunchRoute.screen {
+            case "gallery", "gallery-caption": .gallery
             case "discover", "discover-group", "discover-theme", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo", "search-like", "search-typed": .search
             case "playlists", "playlist", "playlist-search", "suggestions", "editor", "editor-new", "editor-manual",
                  "own-works", "playlists-own", "own-start", "own-cut", "own-balance", "own-describe", "own-card", "own-scan", "own-scan2": .playlists
-            case "frame", "notices", "connection", "battery", "schedule", "schedule-economy", "presentation", "presentation-photo", "orientation": .frame
             default: .now
             }
         }
@@ -94,25 +101,29 @@ struct RootView: View {
         // Szukaj is the system search tab: on its own at the bottom, the
         // other tabs fold into one as its glass field opens.
         TabView(selection: tabSelection) {
-            // A guest never touches the frame: no "Teraz", no "Ramka"
-            // (Mateusz 2026-11-19).
+            // Galeria first for everyone (Mateusz 2026-11-23); "Ramka" is the
+            // tab once called "Teraz", the frame's settings pushed on it. A
+            // guest never touches the frame: no "Ramka" (2026-11-19).
+            Tab("Galeria", systemImage: "photo.stack", value: Screen.gallery) {
+                GalleryView()
+            }
             if !model.isGuest {
-                Tab("Teraz", systemImage: "photo.fill", value: Screen.now) { NowView() }
+                Tab("Ramka", systemImage: "photo.fill", value: Screen.now) { NowView() }
             }
             Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }
-            if !model.isGuest {
-                Tab("Ramka", systemImage: "slider.horizontal.3", value: Screen.frame) { FrameTabView() }
-            }
             Tab("Szukaj", systemImage: "magnifyingglass", value: Screen.search, role: .search) { SearchView() }
         }
+        // In Galeria the bar folds to one button as the works move on
+        // (Mateusz 2026-11-23); elsewhere it stays as it was.
+        .tabBarMinimizeBehavior(tab == .gallery ? .onScrollDown : .automatic)
         // Cards and the send bar, in a window above the app (over sheets too).
         .background { NoticeWindowInstaller(model: model) }
         // "Teraz" shows the full send bar under the picture.
         .onChange(of: tab, initial: true) { _, tab in model.notices.nowTabOpen = tab == .now }
-        // A guest lands on Odkrywaj (their phone may have opened on "Teraz").
+        // A guest lands on Galeria (their phone may have opened on "Ramka").
         .onChange(of: model.isGuest, initial: true) { _, guest in
-            if guest, tab == .now || tab == .frame { tab = .discover }
+            if guest, tab == .now { tab = .gallery }
         }
         // A held artist's or museum's name: their works on Szukaj.
         .onChange(of: model.artistSearch != nil || model.placeSearch != nil || model.likeSearch != nil) { _, held in
@@ -137,7 +148,11 @@ struct RootView: View {
             case "artist" where !argument.isEmpty:
                 model.artistSearch = argument  // Szukaj opens on the artist
             case "now" where !model.isGuest: tab = .now
-            case "frame", "server": if !model.isGuest { tab = .frame }
+            case "frame", "server":
+                if !model.isGuest {
+                    tab = .now
+                    model.frameSettingsOpened += 1
+                }
             default: break
             }
         }

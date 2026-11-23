@@ -104,6 +104,10 @@ final class AppModel {
     /// Bumped when the Teraz tab is tapped while already open: back to the
     /// picture on the frame, like the "Teraz" button.
     var nowTabTapped = 0
+    /// Bumped to open the frame's settings on "Ramka" (they were a tab of
+    /// their own until Galeria, Mateusz 2026-11-23): a notification about
+    /// the frame or the server.
+    var frameSettingsOpened = 0
     /// A theme to open in Discover (the artist of the week, from a notification).
     var themeOpened: String?
     var themeOpenings = 0

@@ -234,6 +234,19 @@ struct NowView: View {
                 }
             }
             .toolbar {
+                // The frame's state and settings, once a tab of their own
+                // (Mateusz 2026-11-23: "przekierowanie do karty Ramka").
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        path.append(FrameSettingsRoute())
+                    } label: {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.headline)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Stan i ustawienia ramki")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingSend = true
@@ -255,6 +268,19 @@ struct NowView: View {
             }
             .navigationDestination(for: DailyRoute.self) { route in
                 DailyView(route: route)
+            }
+            .navigationDestination(for: FrameSettingsRoute.self) { _ in
+                FrameTabView(embedded: true)
+            }
+            .onChange(of: model.frameSettingsOpened) {
+                path = NavigationPath()
+                path.append(FrameSettingsRoute())
+            }
+            .onAppear {
+                // CI screenshots of the frame's pages.
+                if RootView.Screen.frameScreens.contains(LaunchRoute.screen), path.isEmpty {
+                    path.append(FrameSettingsRoute())
+                }
             }
             .sheet(isPresented: $showingSend) {
                 SendSheet()
@@ -1340,3 +1366,6 @@ struct ShownMarkLabel: View {
         return Text("\(icon) \(Text(bound: when).foregroundStyle(Theme.inkSoft))")
     }
 }
+
+/// The frame's state and settings, pushed on "Ramka" (`FrameTabView`).
+struct FrameSettingsRoute: Hashable {}
