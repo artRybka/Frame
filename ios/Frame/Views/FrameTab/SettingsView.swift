@@ -491,9 +491,6 @@ struct SettingsPageView: View {
             MuseumCropSection()
                 .id("crop")
             LooksSection()
-            if !model.demoMode {
-                ScanTrialSection()
-            }
         }
     }
 

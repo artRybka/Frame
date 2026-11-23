@@ -6,7 +6,8 @@
   a odciski wyglądu robi tylko SigLIP na serwerze, bez Google; stare
   odciski Gemini skasowane. W Konfiguracji bez zadania „Kadrowanie”
   i przełącznika „Szukanie wyglądem”, postęp odcisków w Diagnostyce.
-  W „Do sprawdzenia” „Popraw kadr” zamiast „Przytnij”.
+  W „Do sprawdzenia” „Popraw kadr” zamiast „Przytnij”. Z Diagnostyki
+  zniknęła próba „Składanie skanu na iPhonie”.
 
 ## 1.145.352
 
