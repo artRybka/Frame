@@ -7,13 +7,16 @@ prostokątów prawie na wprost”): what the model's answer comes to
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 
 import cv2
 import numpy as np
 from fastapi.testclient import TestClient
+from PIL import Image
 from test_ai import FakeAnthropic, fake  # noqa: F401  (fixture)
-from test_crops import TRUE, H, W, _work, photo
+from test_crops import TRUE, H, W, _near, _work, photo
 
 from frame_server.imaging import crop_model as cm
 from frame_server.service import FrameService
@@ -265,3 +268,113 @@ def test_he_tells_at_a_glance_whether_a_painting_wants_a_cut_and_a_frame(
         client.post("/api/crops/teach/mnw:3", json={"answer": "framed"})
         told_of = {t["id"]: t["told"] for t in client.get("/api/crops/told").json()}
         assert told_of == {"mnw:1": "framed", "mnw:3": "cut"}
+
+
+# -- a print's sheet cut down round its impression (Mateusz 2026-11-24) ---------------
+
+
+def _print(service: FrameService, item_id: str, impression: tuple[int, int, int, int]) -> None:
+    from test_crop_plate import print_photo
+
+    picture = Image.fromarray(print_photo(impression))
+    _work(service, item_id, picture=picture, pooled=True, medium="akwaforta, papier")
+
+
+def test_a_prints_wide_sheet_is_cut_round_its_impression(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    from test_crop_plate import SHEET, corners
+
+    _print(service, "mnw:1", (250, 200, 650, 500))
+    _print(service, "mnw:2", (140, 120, 760, 580))  # a narrow margin
+    _print(service, "mnw:3", (250, 200, 650, 500))
+    sheet = corners(SHEET)
+    with _client(service) as client:
+        # An older app sends the sheet: the server cuts it down.
+        cut = _found("mnw:1", client, work=sheet, surround=None)["item"]["cut"]
+        x0, y0, x1, y1 = 250 - 24, 200 - 24, 650 + 24, 500 + 24
+        assert _near(cut["work"], corners((x0, y0, x1, y1)), 4 / W)
+        assert _near(cut["plate"], corners((250, 200, 650, 500)), 4 / W)
+        # A narrow margin: the sheet stays.
+        kept = _found("mnw:2", client, work=sheet, surround=None)["item"]["cut"]
+        assert _near(kept["work"], sheet, 0.002) and kept["plate"] is None
+        # The app that cuts it itself says so: what it sent is kept.
+        mine = [[0.3, 0.3], [0.7, 0.3], [0.7, 0.7], [0.3, 0.7]]
+        alone = [[0.32, 0.32], [0.68, 0.32], [0.68, 0.68], [0.32, 0.68]]
+        given = {"work": mine, "sheet": sheet, "plate": alone, "plates": cm.PLATE}
+        cut = _found("mnw:3", client, surround=None, **given)["item"]["cut"]
+        assert cut["work"] == mine and cut["plate"] == alone
+        # The model is taught the sheet it found.
+        assert client.post("/api/crops/review/mnw:3/fine").status_code == 200
+        (lesson,) = client.get("/api/crops/lessons").json()
+        assert _near(lesson["work"], sheet, 0.002)
+        assert lesson["model"]["work"] == mine
+
+
+def test_prints_cut_before_are_cut_round_their_impression_once(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    from test_crop_plate import SHEET, corners
+
+    impression = (250, 200, 650, 500)
+    sheet = corners(SHEET)
+    grown = corners((226, 176, 674, 524))
+    for n in range(1, 6):
+        _print(service, f"mnw:{n}", impression)
+    _print(service, "mnw:6", (140, 120, 760, 580))
+    phone = service.phone_crops
+    with _client(service) as client:
+        # Looked at before prints were cut down: the sheet, as kept then.
+        for n in (1, 2, 3):
+            _found(f"mnw:{n}", client, work=sheet, surround=None, sheet=sheet, plates=cm.PLATE)
+        # His own: the impression alone (of a sheet the model found), the
+        # impression and some of the paper, the sheet with a narrow margin.
+        tight = [[0.2833, 0.2914], [0.7167, 0.2914], [0.7167, 0.7086], [0.2833, 0.7086]]
+        wide = corners((150, 120, 750, 580))
+        for item_id, mine in (("mnw:2", tight), ("mnw:4", wide), ("mnw:6", sheet)):
+            answer = client.put(f"/api/library/items/{item_id}/cut", json={"corners": mine})
+            assert answer.status_code == 200, answer.text
+    done = phone.plates_again()
+    assert done == {"auto": 2, "owner": 2, "owner_impression": 1, "looked": 5}
+    for item_id in ("mnw:1", "mnw:2", "mnw:3", "mnw:4"):
+        cut = service.library.get(item_id).cut  # type: ignore[union-attr]
+        assert cut is not None and _near(cut.work or [], grown, 4 / W), item_id
+        assert cut.by == ("owner" if item_id in ("mnw:2", "mnw:4") else "auto")
+    # The model's cut is still the model's on "Kadrowane", as cut now.
+    assert "mnw:1" in [i.id for i in phone.review()[0]]
+    assert _near(phone._state()["looked"]["mnw:1"]["sheet"], sheet, 0.002)
+    # His narrow one, and a work never cut, stay; nothing happens twice.
+    assert _near(service.library.get("mnw:6").cut.work, sheet, 0.002)  # type: ignore[union-attr]
+    assert service.library.get("mnw:5").cut is None  # type: ignore[union-attr]
+    assert phone.plates_again() == {}
+
+
+def test_the_server_looks_at_night_as_the_phone_would(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-24 10:53 UTC, „Na serwerze w nocy”: the same models,
+    # what was found kept as the phone's is; the phone passes over it.
+    from frame_server.night import Night, tasks
+
+    _work(service, "mnw:1", pooled=True, medium="olej, płótno")
+    _print(service, "mnw:2", (250, 200, 650, 500))
+    _work(service, "upload:9", pooled=True)
+    rgb = np.asarray(photo())
+    logits, sure = service.phone_crops.looker.ask(rgb, 0)
+    assert logits.shape == (2, cm.SIDE, cm.SIDE) and 0 <= sure <= 1
+    (task,) = [t for t in tasks(service) if t.name == "crops"]
+    assert not task.paid and task.group == "duplicates"
+    night = Night(stop=threading.Event(), deadline=time.monotonic() + 600, asked=True)
+    done = task.run(night)
+    assert done.count == 2  # type: ignore[attr-defined]
+    looked = service.phone_crops._state()["looked"]
+    assert set(looked) == {"mnw:1", "mnw:2"}
+    assert looked["mnw:1"]["m"] == cm.PAINTING_MODEL and looked["mnw:1"]["night"]
+    assert looked["mnw:2"]["m"] == cm.MODEL and looked["mnw:2"]["pl"] == cm.PLATE
+    with _client(service) as client:
+        assert not client.get("/api/crops/phone/mnw:1").json()["look"]
+        assert client.get("/api/crops/phone/waiting").json()["left"] == 0
+    assert fake.asked == []

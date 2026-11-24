@@ -13,6 +13,32 @@ final class MuseumCropTests: XCTestCase {
     static let work: [[Double]] = [[0.20133, 0.21007], [0.79534, 0.20912], [0.79534, 0.78583], [0.20133, 0.78583]]
     static let surround: [[Double]] = [[0.13333, 0.125], [0.86333, 0.125], [0.86333, 0.87083], [0.13333, 0.87083]]
 
+    /// What `crop_model.plate` makes of the made-up print's sheet.
+    static let printSheet: [[Double]] = [[0.1, 0.08333333333333333], [0.9, 0.08333333333333333], [0.9, 0.9166666666666666], [0.1, 0.9166666666666666]]
+    static let printCut: [[Double]] = [[0.30217, 0.25271], [0.69605, 0.25271], [0.69605, 0.74507], [0.30217, 0.74507]]
+    static let printPlate: [[Double]] = [[0.32933, 0.28667], [0.66889, 0.28667], [0.66889, 0.71111], [0.32933, 0.71111]]
+
+    /// A sheet of paper on a dark board, an etching's lines on it: 300 × 240.
+    static func print() -> MuseumCrop.Pixels {
+        let rows = 240, columns = 300
+        var photo = [UInt8](repeating: 50, count: rows * columns * 3)
+        for y in 20 ..< 220 {
+            for x in 30 ..< 270 {
+                photo[(y * columns + x) * 3] = 236
+                photo[(y * columns + x) * 3 + 1] = 230
+                photo[(y * columns + x) * 3 + 2] = 216
+            }
+        }
+        for y in 70 ..< 170 {
+            for x in 100 ..< 200 where (x * 3 + y * 7) % 19 < 8 {
+                photo[(y * columns + x) * 3] = 70
+                photo[(y * columns + x) * 3 + 1] = 60
+                photo[(y * columns + x) * 3 + 2] = 50
+            }
+        }
+        return MuseumCrop.Pixels(rows: rows, columns: columns, rgb: photo)
+    }
+
     /// A grey wall, a frame on it, a painting of stripes in the frame:
     /// 300 × 240.
     static func photo() -> MuseumCrop.Pixels {
@@ -63,6 +89,16 @@ final class MuseumCropTests: XCTestCase {
         // Not sure enough: left whole for him; sure it wants none: whole.
         XCTAssertEqual(try MuseumCrop.find(Self.photo(), logits: Self.logits(), sure: 0.5).verdict, "unsure")
         XCTAssertEqual(try MuseumCrop.find(Self.photo(), logits: Self.logits(), sure: 0.05).verdict, "whole")
+    }
+
+    /// A print's wide sheet cut down round its impression as the server
+    /// cuts it (Mateusz 2026-11-24); the sheet of a painting's photograph
+    /// (no paper round anything) stays.
+    func testAPrintsWideSheetIsCutRoundItsImpression() throws {
+        let made = try XCTUnwrap(MuseumCrop.plate(Self.print(), sheet: Self.printSheet))
+        near(made.cut, Self.printCut)
+        near(made.plate, Self.printPlate)
+        XCTAssertNil(try MuseumCrop.plate(Self.photo(), sheet: Self.work))
     }
 
     func testThePhotographIsLetterboxedForTheModel() throws {

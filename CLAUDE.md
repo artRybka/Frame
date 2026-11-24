@@ -90,8 +90,16 @@ uv run mypy src
   the core (`core/scan/src/scan_crop.cpp`, checked with `tools/crop.py`;
   its numbers through `tools/constants.py`; the app's numbers and a fixture
   held by `tests/test_scan_core.py`). A new model is a new `MODEL` (both
-  sides): its works are looked at again. `phone_crops.py` keeps what the
-  phone found, the owner's list "Kadrowane" and the lessons for retraining.
+  sides): its works are looked at again. A print's sheet is cut down
+  round its impression where the paper is wide (`crop_model.plate`, the
+  core's `frame_crop_plate`, checked with `tools/crop.py … plates`): a
+  change of it raises `PLATE`, and the prints cut before are cut again
+  once. `phone_crops.py` keeps what the phone found, the owner's list
+  "Kadrowane" and the lessons for retraining. The server has the same
+  weights in ONNX (`imaging/models/kadr-*.onnx`, `crop_night.py`) and
+  looks at night at what the phone has not (Mateusz 2026-11-24, „Na
+  serwerze w nocy”): a new model is exported there too (its name and the
+  app's weights are held by `tests/test_scan_core.py`).
 - "Barwy" in "Podobne do" (`library/palettes.py`): works by their bars'
   palettes. A photograph's palette is made on the phone the same way
   (`ios/…/PhonePalette.swift`); `tests/test_palettes.py` holds the two

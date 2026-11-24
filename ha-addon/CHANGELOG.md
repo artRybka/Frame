@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.362
+
+- Grafika: gdy wokół odbitki jest bardzo dużo papieru (margines ponad 15%),
+  kadr to odbitka z równym marginesem 8%; dotyczy też ręcznych kadrów.
+- Kadrowanie zdjęć dzieł także w nocy na serwerze, tym samym modelem co
+  w aplikacji (zadanie w „Powtórki i jakość”).
+
 ## 1.145.361
 
 - Galeria: siatka gotowa z dużym zapasem i bez skoków, dzieło oddala się
