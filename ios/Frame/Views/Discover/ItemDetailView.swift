@@ -138,6 +138,9 @@ struct ItemDetailView: View {
     /// Where the work lies on the card, for its way there.
     @State private var arrivalHome: CGRect?
     @State private var arrivalStarted = false
+    /// Going back to Galeria the way the card came (`leaveToGallery`).
+    @State private var leavingCard = false
+    @State private var arrivalPlace = ArrivalPlace()
     /// The colours of the work's edges glowing out behind it, as behind the
     /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
     /// tło „łuny” za dziełem").
@@ -247,6 +250,17 @@ struct ItemDetailView: View {
             }
         }
         .paperPage(glow: edgeGlow == nil ? glow : [], lift: scrolled)
+        // From Galeria the way back is the way in turned round: its own
+        // back button, and the swipe from the left edge.
+        .navigationBarBackButtonHidden(arrival?.back != nil)
+        .toolbar {
+            if arrival?.back != nil {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Wróć", systemImage: "chevron.backward") { leaveToGallery() }
+                }
+            }
+        }
+        .gesture(SideSwipe(fromEdge: true) { leaveToGallery() })
         .onAppear { CardArrival.pending[itemID] = nil }
         .task(id: itemID) { await makeEdgeGlow() }
         .navigationBarTitleDisplayMode(.inline)
@@ -1328,6 +1342,7 @@ struct ItemDetailView: View {
     /// The work on its way from Galeria to its place here.
     private var arriving: ArrivingPicture {
         ArrivingPicture(pending: arrival, arrived: arrived, home: arrivalHome) { rect in
+            if rect.width > 60 { arrivalPlace.rect = rect }
             // Its place followed till the way starts: the first measure can
             // come before the box has its width (at the left, small), and a
             // way from there ran on a slant (Mateusz 2026-11-24 10:48:
@@ -1346,7 +1361,26 @@ struct ItemDetailView: View {
 
     /// The rest of the card, appearing once the work is on its way.
     private var restOfCard: RestOfCard {
-        RestOfCard(shown: arrived, animation: arrival.map(CardArrival.rest) ?? .default)
+        RestOfCard(
+            shown: arrived,
+            animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default
+        )
+    }
+
+    /// Back to Galeria the way the card came, turned round (Mateusz
+    /// 2026-11-24 14:06: "Powrót z karty dzieła do „całego dzieła”
+    /// odwrócona animacją wejścia"): the rest of the card goes, the work
+    /// moves back to where it lay there, on Galeria's ground, and Galeria
+    /// is there again under it with no slide.
+    private func leaveToGallery() {
+        guard let arrival, let back = arrival.back, !leavingCard else { return }
+        if let rect = arrivalPlace.rect { arrivalHome = rect }
+        leavingCard = true
+        withAnimation(arrival.from == nil ? CardArrival.sink : CardArrival.move) { arrived = false }
+        Task { @MainActor in
+            try? await Task.sleep(for: CardArrival.leaving(arrival))
+            back()
+        }
     }
 
     /// The glow behind the work: Galeria's own when it made one, else made

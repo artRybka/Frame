@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.363
+
+- Galeria: siatka z dużym zapasem miniatur i rozpędem ostatniego machnięcia,
+  płynny powrót z siatki i z karty dzieła; pewniejsze machnięcia.
+
 ## 1.145.362
 
 - Grafika: gdy wokół odbitki jest bardzo dużo papieru (margines ponad 15%),
