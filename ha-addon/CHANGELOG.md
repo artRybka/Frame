@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.362
+
+- Galeria: siatka przychodzi szybciej, po czterech szybko przewiniętych
+  dziełach.
+
 ## 1.145.361
 
 - Galeria: siatka gotowa z dużym zapasem i bez skoków, dzieło oddala się
