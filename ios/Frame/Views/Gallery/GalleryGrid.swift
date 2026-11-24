@@ -47,7 +47,7 @@ struct GalleryGrid: View {
     /// The whole works' cards: two columns, this far apart (`MasonryGrid`).
     static let cardGap: CGFloat = 16
     /// How near the end more works are asked for (tiles).
-    static let ahead = 60
+    static let ahead = 80
     /// The line between the works seen and those coming.
     static let line = "gallery.grid.line"
 
@@ -61,7 +61,12 @@ struct GalleryGrid: View {
                     Color.clear
                         .frame(height: before.isEmpty ? 0 : (whole ? Self.cardGap : Self.gap))
                         .id(Self.line)
-                    if whole { cards } else { tiles(works, ahead: true) }
+                    if whole {
+                        cards
+                        waitingCards
+                    } else {
+                        tiles(works, ahead: true)
+                    }
                 }
                 .padding(.top, Self.top)
                 .padding(.bottom, 24)
@@ -128,8 +133,51 @@ struct GalleryGrid: View {
                 .modifier(Placed(id: work.id, frames: frames))
                 .onAppear { if ahead, index >= some.count - Self.ahead { more() } }
             }
+            if ahead {
+                ForEach(0 ..< Self.waiting, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(waitingColour(index).gradient)
+                        .aspectRatio(1 / tall, contentMode: .fit)
+                        .onAppear { if index == 0 { more() } }
+                }
+            }
         }
         .padding(.horizontal, Theme.gutter)
+    }
+
+    /// Past the last work come, while the next are on their way: places in
+    /// the last works' colours, not the black (14:32: "placeholdery w
+    /// kolorze kolejnych miniatur - to będzie lepiej wyglądać niż czarna
+    /// pustka").
+    static let waiting = 24
+
+    private var waitingColours: [Color] {
+        let colours = works.suffix(12).flatMap { $0.item.colors.prefix(2) }.compactMap { Color(hexString: $0.hex) }
+        return colours.isEmpty ? [Theme.mat] : colours
+    }
+
+    private func waitingColour(_ index: Int) -> Color {
+        let colours = waitingColours
+        return colours[(index * 7) % colours.count].opacity(whole ? 0.35 : 0.55)
+    }
+
+    /// The same for the cards: two columns of places, a little uneven.
+    private var waitingCards: some View {
+        HStack(alignment: .top, spacing: Self.cardGap) {
+            ForEach(0 ..< 2, id: \.self) { side in
+                VStack(spacing: Self.cardGap) {
+                    ForEach(0 ..< 4, id: \.self) { row in
+                        let index = row * 2 + side
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(waitingColour(index).gradient)
+                            .aspectRatio([0.8, 1.2, 0.7, 1][(index + side) % 4], contentMode: .fit)
+                            .onAppear { if index == 0 { more() } }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Theme.gutter)
+        .padding(.top, Self.cardGap)
     }
 
     private var cards: some View {

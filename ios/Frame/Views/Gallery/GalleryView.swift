@@ -268,7 +268,7 @@ struct GalleryView: View {
     static let gridPixel: CGFloat = 420
     /// Works the grid has ready ahead of the one shown when it comes
     /// (14:06: "Powinien być też większy - teraz ściana szybko się kończy").
-    static let gridReady = 120
+    static let gridReady = 160
     /// Works asked for at once while the grid is up.
     static let gridBatch = 40
 
@@ -389,7 +389,7 @@ struct GalleryView: View {
 
     /// Plenty of works ahead for the grid, their thumbnails fetched.
     private func stockUp(from at: Int) async {
-        for _ in 0 ..< 6 where works.count - at < Self.gridReady {
+        for _ in 0 ..< 8 where works.count - at < Self.gridReady {
             if loading { try? await Task.sleep(for: .milliseconds(200)) }
             await more(count: Self.gridBatch)
         }
