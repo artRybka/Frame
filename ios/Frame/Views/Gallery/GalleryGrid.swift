@@ -221,7 +221,11 @@ private struct GridPicture: View {
             for attempt in 0 ..< 3 where loaded == nil && !Task.isCancelled {
                 if attempt > 0 { try? await Task.sleep(for: .seconds(Double(attempt) * 1.5)) }
                 do {
-                    loaded = try await ImageLoader.shared.image(for: request, maxPixel: GalleryView.gridPixel)
+                    // Before the stock fetched ahead: a tile on the screen
+                    // waited in its line, seconds after a sweep.
+                    loaded = try await ImageLoader.shared.image(
+                        for: request, maxPixel: GalleryView.gridPixel, priority: .high
+                    )
                 } catch {
                     if !Task.isCancelled { GalleryLog.note("tile \(work.id): no picture, \(error)") }
                 }
