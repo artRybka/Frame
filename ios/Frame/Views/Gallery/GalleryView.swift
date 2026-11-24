@@ -80,9 +80,9 @@ struct GalleryView: View {
                 ForEach(Array(works.enumerated()), id: \.element.id) { index, work in
                     GalleryPage(
                         work: work, current: work.id == shown?.id, whole: whole,
-                        leaving: leaving == work.id,
                         above: index > 0 ? works[index - 1] : nil,
                         below: index + 1 < works.count ? works[index + 1] : nil,
+                        leaving: leaving == work.id,
                         flip: { flip(work) }, open: { open(work) }
                     )
                         .containerRelativeFrame([.horizontal, .vertical])
