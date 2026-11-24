@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.365
+
+- Galeria: siatka historii po powolnym przeciągnięciu w dół; bez machnięcia
+  w prawo.
+
 ## 1.145.364
 
 - Galeria: siatka z dużym zapasem miniatur i rozpędem ostatniego machnięcia,
