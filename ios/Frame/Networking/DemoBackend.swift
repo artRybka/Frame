@@ -111,7 +111,6 @@ actor DemoBackend: FrameBackend {
             AiCost(key: "curator", label: "Propozycje kuratora", daysUsd: 0.27, periodUsd: 0.48),
             AiCost(key: "gatekeeper", label: "Strażnik katalogu", daysUsd: 0.09, periodUsd: 0.16),
             AiCost(key: "twins_judge", label: "Sędzia powtórek", daysUsd: 0.02, periodUsd: 0.05),
-            AiCost(key: "crops", label: "Kadrowanie zdjęć dzieł", daysUsd: 0.43, periodUsd: 0.43),
             AiCost(key: "varnish_blue", label: "Błękit pod werniksem", daysUsd: 0.004, periodUsd: 0.004),
             AiCost(key: "audit", label: "Nocny przegląd", daysUsd: 0.06, periodUsd: 0.11),
             AiCost(key: "study_refresh", label: "Uzupełnianie starszych studiów", daysUsd: 0, periodUsd: 5.15),
