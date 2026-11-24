@@ -279,7 +279,7 @@ struct GalleryView: View {
         let tile: CGRect
         if whole {
             let column = (width - side * 2 - 16) / 2
-            let aspect = CGFloat((0.45...2.2).clamp(works[at].summary.aspectRatio))
+            let aspect = CGFloat(min(max(works[at].summary.aspectRatio, 0.45), 2.2))
             tile = CGRect(x: side, y: GalleryGrid.top, width: column, height: column / aspect)
         } else {
             let gap = GalleryGrid.gap
