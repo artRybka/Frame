@@ -39,6 +39,8 @@ struct GalleryView: View {
     /// (14:26: "długie przeciągnięcie (nie krótkie machnięcie) wstecz to
     /// dzieło się zmniejsza i przechodzę do siatki (historii tego co było)").
     @State private var pull: CGFloat = 0
+    /// A slow drag down under way: the scroll gives way to it.
+    @State private var pulling = false
     @State private var speed = SwipeSpeed()
     @State private var gridFrames = GridFrames()
     @State private var stock = GridStock()
@@ -100,6 +102,7 @@ struct GalleryView: View {
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pagesArea = $0 }
                 .clipShape(RoundedRectangle(cornerRadius: pull > 0 ? 24 * pull : 0, style: .continuous))
                 .scaleEffect(1 - Self.pullShrink * pull)
+                .offset(y: pull * pagesArea.height * Self.pullFollow)
                 // Drawn back with the grid, into the work's tile (Mateusz
                 // 2026-11-24 10:48: "musi skalować (jakby oddalać i płynnie
                 // przechodzić z pełnego dzieła do siatki"): cut to the
@@ -175,16 +178,18 @@ struct GalleryView: View {
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
                         .onTapGesture { flip(work) }
-                        // A swipe from left to right shows the whole work
-                        // too (Mateusz 2026-11-24), and a hold (2026-11-23
-                        // 21:41: "Do ekranu całego dzieła wchodzi także
-                        // przytrzymanie. Nie ma już menu po przytrzymaniu"):
-                        // UIKit's, beside the scroll, never holding it back
-                        // (14:06: "nie łapie machnięcia palca").
-                        .gesture(SideDrag(
+                        // UIKit's gestures, beside the scroll, never holding
+                        // it back (14:06: "nie łapie machnięcia palca").
+                        // A slow drag down: the work shrinks and the grid of
+                        // the works seen comes (16:29; no swipe to the right
+                        // any more: "Machniecie w prawo w ogóle zlikwidujmy").
+                        .gesture(PullDown(
+                            began: { pulling = !grid },
                             changed: { move in pulled(move) },
-                            ended: { move, speed, seconds in released(work, move: move, speed: speed, seconds: seconds) }
+                            ended: { move in released(move) }
                         ))
+                        // A hold shows the whole work (2026-11-23 21:41: "Do
+                        // ekranu całego dzieła wchodzi także przytrzymanie").
                         .gesture(GalleryHold {
                             guard !whole else { return }
                             flip(work)
@@ -205,7 +210,7 @@ struct GalleryView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
-        .scrollDisabled(pull > 0 || grid)
+        .scrollDisabled(pulling || grid)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in flow.note(y) }
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
@@ -248,7 +253,7 @@ struct GalleryView: View {
     }
 
     /// The works whole, or cut to the screen again: a tap on it or on its
-    /// title, a hold or a swipe to the right to see it whole (Mateusz
+    /// title or a hold to see it whole (Mateusz
     /// 2026-11-23 21:41, 2026-11-24).
     private func flip(_ work: RemoteItem) {
         // The page melts one into the other with its own timings
@@ -475,32 +480,32 @@ struct GalleryView: View {
 
     // MARK: The long drag back
 
-    /// How much smaller the work is at the end of the drag.
+    /// How much smaller the work is at the end of the drag, and how far it
+    /// follows the finger down (of the screen's height).
     static let pullShrink: CGFloat = 0.3
-    /// How far the drag must go (of the screen's width) for the grid.
-    static let pullFar: CGFloat = 0.33
+    static let pullFollow: CGFloat = 0.25
+    /// How far the drag must go (of the screen's height) for the grid.
+    static let pullFar: CGFloat = 0.25
 
     private func pulled(_ move: CGFloat) {
-        guard !grid else { return }
-        let width = max(pagesArea.width, 1)
-        // A short swipe stays a swipe: the work shrinks only past it.
-        let share = min(max((move - 36) / width, 0), 1)
+        guard pulling, !grid else { return }
+        let height = max(pagesArea.height, 1)
+        let share = min(max(move / height, 0), 1)
         let quiet = Self.quiet
         withTransaction(quiet) { pull = share }
     }
 
-    /// The drag let go: far and not flicked, the grid of the works seen;
-    /// a short swipe on the cut work, the whole one (as before); else back.
-    private func released(_ work: RemoteItem, move: CGFloat, speed: CGFloat, seconds: Double) {
+    /// The drag let go: far enough, the grid of the works seen; else the
+    /// work grows back.
+    private func released(_ move: CGFloat) {
+        guard pulling else { return }
+        pulling = false
         guard !grid else { return }
-        let width = max(pagesArea.width, 1)
-        let flicked = seconds < 0.3 && move < width * 0.5
-        if move > width * Self.pullFar, !flicked {
+        if move > max(pagesArea.height, 1) * Self.pullFar {
             openGrid(back: true)
             return
         }
         withAnimation(.smooth(duration: 0.3)) { pull = 0 }
-        if !whole, move > 50 || speed > 500 { flip(work) }
     }
 
     /// The work's page picture and the point it is cut around, in memory,

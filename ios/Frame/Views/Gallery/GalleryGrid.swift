@@ -472,8 +472,6 @@ struct SideSwipe: UIGestureRecognizerRepresentable {
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         let fromEdge: Bool
-        /// When the drag began (`SideDrag`).
-        var began: CFTimeInterval = 0
 
         init(fromEdge: Bool) { self.fromEdge = fromEdge }
 
@@ -493,16 +491,20 @@ struct SideSwipe: UIGestureRecognizerRepresentable {
     }
 }
 
-/// A drag from left to right, beside the scroll: told as it goes, and
-/// how far, how fast and how long once let go (a short swipe shows the
-/// whole work, a long drag the grid of the works seen; 14:26).
-struct SideDrag: UIGestureRecognizerRepresentable {
+/// A slow drag down, beside the scroll (14:26, 16:29: "długie
+/// przeciągnięcie (nie krótkie machnięcie) wstecz", "Miałem na myśli
+/// przeciągnięcie w dół"): a drag that starts slowly is the pull to the
+/// grid of the works seen, and the scroll gives way to it; one that starts
+/// quickly is the scroll's swipe to the work before, as always.
+struct PullDown: UIGestureRecognizerRepresentable {
+    let began: () -> Void
     let changed: (CGFloat) -> Void
-    let ended: (_ move: CGFloat, _ speed: CGFloat, _ seconds: Double) -> Void
+    let ended: (_ move: CGFloat) -> Void
 
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> SideSwipe.Coordinator {
-        SideSwipe.Coordinator(fromEdge: false)
-    }
+    /// Points a second: a drag starting faster is a swipe.
+    static let slowest: CGFloat = 650
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
 
     func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
         let pan = UIPanGestureRecognizer()
@@ -512,19 +514,31 @@ struct SideDrag: UIGestureRecognizerRepresentable {
     }
 
     func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        let move = recognizer.translation(in: recognizer.view).x
+        let move = recognizer.translation(in: recognizer.view).y
         switch recognizer.state {
         case .began:
-            context.coordinator.began = CACurrentMediaTime()
+            began()
         case .changed:
             changed(move)
         case .ended:
-            ended(move, recognizer.velocity(in: recognizer.view).x, CACurrentMediaTime() - context.coordinator.began)
+            ended(move)
         case .cancelled, .failed:
-            ended(0, 0, 0)
+            ended(0)
         default:
             break
         }
+    }
+
+    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
+            let speed = pan.velocity(in: pan.view)
+            return speed.y > 0 && speed.y > abs(speed.x) * 1.5 && speed.y < PullDown.slowest
+        }
+
+        func gestureRecognizer(
+            _ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+        ) -> Bool { true }
     }
 }
 
