@@ -12,7 +12,7 @@ from frame_server.config import Settings
 from frame_server.fsutil import dir_bytes
 from frame_server.library import Item, ItemKind
 from frame_server.service import FrameService
-from frame_server.storage import StorageUpdate
+from frame_server.storage import StorageStore, StorageUpdate
 from frame_server.web import create_app
 
 
@@ -137,7 +137,7 @@ def test_the_one_limit_of_old_becomes_two(service: FrameService) -> None:
     """Up to add-on 0.28 the app set one limit, split 2:1 with the old 500 MB
     default for originals; the catalogue keeps its part, the originals get
     the larger of theirs and the new default."""
-    from frame_server.storage import OLD_KEY, StorageStore
+    from frame_server.storage import OLD_KEY
 
     service.library.set_state(OLD_KEY, 3000)
     store = StorageStore(service.settings, service.library, service.images, service.store)
@@ -155,6 +155,18 @@ def test_the_one_limit_of_old_becomes_two(service: FrameService) -> None:
 def test_saving_one_limit_leaves_the_other(service: FrameService) -> None:
     service.storage.save(StorageUpdate(catalogue_mb=900))
     assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (900, 3000)
+
+
+def test_the_app_s_largest_limits_are_kept_whole(service: FrameService) -> None:
+    # Konfiguracja offers 100 GB for both (Mateusz 2026-11-24): nothing cuts
+    # them back to an older maximum, also after a restart.
+    service.storage.save(StorageUpdate(catalogue_mb=100000, originals_mb=100000))
+    assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (100000, 100000)
+    view = service.storage.view()
+    assert (view.catalogue_mb, view.originals_mb) == (100000, 100000)
+    settings = _settings(service.settings.data_dir)
+    StorageStore(settings, service.library, service.images, service.store)
+    assert (settings.catalogue_mb, settings.image_cache_mb) == (100000, 100000)
 
 
 def test_the_view_says_when_the_catalogue_is_full(service: FrameService) -> None:

@@ -25,6 +25,9 @@ struct AiReviewView: View {
     @State private var polishing: FixEditing?
     /// "Inna kopia": the work whose copies are open.
     @State private var copiesFor: Item?
+    /// "Popraw kadr": the work in the cut's editor, its picture's problem
+    /// done once saved (Opus cut it until 2026-11-23: "Przytnij").
+    @State private var cutting: Item?
     /// Works whose corrected values are being asked for, and those asked.
     @State private var suggesting: Set<String> = []
     @State private var asked: Set<String> = []
@@ -105,6 +108,9 @@ struct AiReviewView: View {
             PolishFixSheet(editing: editing) { updated in
                 withAnimation(.snappy) { review = updated }
             }
+        }
+        .fullScreenCover(item: $cutting) { item in
+            CutEditor(item: item) { update in await saveCut(item.id, update) }
         }
         .sheet(item: $copiesFor) { item in
             CopiesSheet(item: item) { _ in
@@ -240,9 +246,7 @@ struct AiReviewView: View {
                 Button("Popraw opis") { polishing = FixEditing(entry: entry, problem: problem) }
             } else if problem.field == "picture" {
                 HStack(spacing: 8) {
-                    Button("Przytnij") {
-                        act(key) { try await model.backend.cutReviewed(itemID: itemID) }
-                    }
+                    Button("Popraw kadr") { openCut(itemID) }
                     Button("Inna kopia") { openCopies(itemID) }
                 }
             }
@@ -288,6 +292,32 @@ struct AiReviewView: View {
             guard let updated = try? await model.backend.suggestReviewFixes(itemID: entry.item.id) else { continue }
             withAnimation(.snappy) { self.review = updated }
         }
+    }
+
+    private func openCut(_ id: String) {
+        guard opening == nil else { return }
+        opening = id
+        Task {
+            defer { opening = nil }
+            do {
+                cutting = try await model.backend.item(id: id)
+            } catch {
+                model.notices.warn("Nie udało się otworzyć kadru", error.localizedDescription)
+            }
+        }
+    }
+
+    private func saveCut(_ id: String, _ update: CutUpdate) async -> Bool {
+        do {
+            _ = try await model.backend.setCut(itemID: id, update: update)
+        } catch {
+            model.show(error)
+            return false
+        }
+        act("audit:" + id + "|picture") {
+            try await model.backend.dropReviewProblem(itemID: id, field: "picture")
+        }
+        return true
     }
 
     private func openCopies(_ id: String) {

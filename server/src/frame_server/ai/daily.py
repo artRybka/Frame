@@ -1436,25 +1436,7 @@ class DailyJob(NoteJob):
     def context(self, item: Item) -> Context:
         return replace(self.sources(item), candidates=self.candidates(item))
 
-    #: The work's photograph cut down to the work before a page is asked
-    #: about it (``Crops.soon``, set by the service): the model reads the
-    #: painting, not its gilt frame and the easel (the audit of 2026-11-15).
-    cutting: Callable[[Item], Any] | None = None
-
-    def cut_first(self, item: Item) -> Item:
-        """``item`` after its photograph was looked at for a frame, an
-        easel or a board around the work, and cut down to it if so (a work
-        looked at before is not asked again); as it was when that fails."""
-        if self.cutting is None:
-            return item
-        try:
-            self.cutting(item)
-        except Exception as err:  # no key, the limit, a timeout: the page goes on
-            log.info("cut of %s before its page: %s", item.id, err)
-        return self.library.get(item.id) or item
-
     def params(self, item: Item) -> dict[str, Any]:
-        item = self.cut_first(item)
         img = picture(self.images, item)
         context = replace(self.context(item), size=img.size, web=tuple(self.web_facts(item)))
         self._sources[item.id] = context

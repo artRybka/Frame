@@ -83,7 +83,7 @@ actor DemoBackend: FrameBackend {
     ]
     private var aiValue = AiSettings(
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
-        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, looks: true, journey: true, webFacts: true, crops: true, stages: true, varnishBlue: true,
+        keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, journey: true, webFacts: true, stages: true, varnishBlue: true,
         reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
         plTextProgress: nil, error: nil,
@@ -111,14 +111,12 @@ actor DemoBackend: FrameBackend {
             AiCost(key: "curator", label: "Propozycje kuratora", daysUsd: 0.27, periodUsd: 0.48),
             AiCost(key: "gatekeeper", label: "Strażnik katalogu", daysUsd: 0.09, periodUsd: 0.16),
             AiCost(key: "twins_judge", label: "Sędzia powtórek", daysUsd: 0.02, periodUsd: 0.05),
-            AiCost(key: "crops", label: "Kadrowanie zdjęć dzieł", daysUsd: 0.43, periodUsd: 0.43),
             AiCost(key: "varnish_blue", label: "Błękit pod werniksem", daysUsd: 0.004, periodUsd: 0.004),
             AiCost(key: "audit", label: "Nocny przegląd", daysUsd: 0.06, periodUsd: 0.11),
             AiCost(key: "study_refresh", label: "Uzupełnianie starszych studiów", daysUsd: 0, periodUsd: 5.15),
         ],
         geminiCosts: [
             AiCost(key: "drawn", label: "Arkusze kompozycji", daysUsd: 0.9, periodUsd: 1.2),
-            AiCost(key: "looks", label: "Szukanie wyglądem", daysUsd: 0.02, periodUsd: 0.05),
             AiCost(key: "restorer", label: "Restauracja dzieł", daysUsd: 0.1, periodUsd: 0.1),
         ]
     )
@@ -671,11 +669,6 @@ actor DemoBackend: FrameBackend {
             artistNote: item.artistBio, written: "note", sources: ["dane muzeum", "obraz"]
         )
         return PolishView(status: "ready", text: text)
-    }
-
-    /// Nothing is cut in the demo by itself: its pictures are bundled whole.
-    func checkCut(itemID: String, wait: Int) async throws -> CutView {
-        CutView(changed: false, item: try await item(id: itemID))
     }
 
     func setCut(itemID: String, update: CutUpdate) async throws -> Item {
@@ -1694,7 +1687,7 @@ actor DemoBackend: FrameBackend {
 
     func looksStatus() async throws -> LooksStatus {
         let works = items.filter { $0.kind == .artwork }.count
-        return LooksStatus(enabled: aiValue.looks != false, ready: works > 0, done: works, total: works)
+        return LooksStatus(enabled: true, ready: works > 0, done: works, total: works)
     }
 
     /// The demo has no model: a photograph is "like" a third of the
@@ -1705,7 +1698,6 @@ actor DemoBackend: FrameBackend {
     }
 
     func looksLike(itemID: String, limit: Int) async throws -> LooksAnswer {
-        guard aiValue.looks != false else { return LooksAnswer(items: [], scores: []) }
         return Self.answer(Array(alike(itemID).prefix(limit)))
     }
 
@@ -2204,7 +2196,6 @@ actor DemoBackend: FrameBackend {
             row("Art Institute of Chicago", counts(96), counts(702)),
             row("Rijksmuseum", counts(41), counts(388, failed: 2)),
             row("Paris Musées", counts(23), counts(240), quota: SourceRequests.Quota(spent: 23, of: 1000, background: 600, hours: 24)),
-            row("Library of Congress", counts(4, throttled: 1, refused: 6), counts(52, throttled: 1, refused: 6), resting: 2_400),
             row("Louvre", counts(0), counts(0)),
             row("J. Paul Getty Museum", counts(0), counts(0)),
             row(nil, counts(12), counts(80)),
@@ -2237,7 +2228,6 @@ actor DemoBackend: FrameBackend {
             ("audit", "Nocny przegląd dzieł", true, 380, 30, "duplicates"),
             ("kept originals", "Oryginały Twoich dzieł", false, 95, 0, "catalogue"),
             ("tile sets", "Kafle „Pod lupą”", false, 140, 6, "catalogue"),
-            ("crops", "Kadrowanie zdjęć dzieł", true, 240, 25, "duplicates"),
             ("artist people", "Kim są artyści", false, 64, 18, "descriptions"),
             ("museum places", "Miasta muzeów", false, 3.1, 0, "descriptions"),
             ("media", "Technika dzieł", false, 48, 220, "descriptions"),
@@ -2421,10 +2411,8 @@ actor DemoBackend: FrameBackend {
         if let value = update.curator { aiValue.curator = value }
         if let value = update.twinsJudge { aiValue.twinsJudge = value }
         if let value = update.gatekeeper { aiValue.gatekeeper = value }
-        if let value = update.crops { aiValue.crops = value }
         if let value = update.varnishBlue { aiValue.varnishBlue = value }
         if let value = update.audit { aiValue.audit = value }
-        if let value = update.looks { aiValue.looks = value }
         if let value = update.journey { aiValue.journey = value }
         if let value = update.webFacts { aiValue.webFacts = value }
         if let value = update.stages { aiValue.stages = value }
@@ -2589,12 +2577,6 @@ actor DemoBackend: FrameBackend {
 
     func applyReviewFix(itemID: String, field: String, value: String, valuePl: String?) async throws -> AiReview {
         dropProblem(itemID, field)
-        return reviewValue
-    }
-
-    func cutReviewed(itemID: String) async throws -> AiReview {
-        try await Task.sleep(for: .seconds(1))
-        dropProblem(itemID, "picture")
         return reviewValue
     }
 
@@ -2851,14 +2833,6 @@ extension DemoBackend {
             tonight: 2000, tonightUsd: 1.8, nowEachUsd: 0.0018, when: .rest,
             aNightChoices: [250, 500, 1000, 2000, 5000, 10000], nightUsd: 2,
             mode: .batch, modes: [.batch, .normal], periodSpentUsd: 0
-        ),
-        LeftoverUse(
-            key: "crops", label: "Kadrowanie",
-            about: "Zdjęcia z muzeów przycięte do samego dzieła, bez ramy, sztalugi i tektury wokół, najpierw Ulubione i playlisty.",
-            on: true, able: true, waiting: 412, eachUsd: 0.01, waitingUsd: 4.12, aNight: 540,
-            done: 1080, doneUsd: 10.8, nowEachUsd: 0.0204, when: .night,
-            aNightChoices: [100, 270, 540, 1000, 2000], nightUsd: 3, mode: .batch, modes: [.batch, .normal],
-            periodSpentUsd: 10.8, moreAtEnd: true
         ),
         LeftoverUse(
             key: "tidy", label: "Porządki katalogu",

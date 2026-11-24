@@ -108,11 +108,8 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
     for n in range(1, 5):
         _work(service, f"mnw:{n}", pooled=True, medium="olej, płótno")
     _work(service, "upload:9", pooled=True)
-    assert service.crops.on_phone()
     with _client(service) as client:
-        # The card opened: the server asks nobody, the phone is to look.
-        seen = client.post("/api/library/items/mnw:1/cut/check?wait=5").json()
-        assert not seen["changed"]
+        # The server asks nobody, the phone is to look.
         ask = client.get("/api/crops/phone/mnw:1").json()
         # A painting: its own model since 2026-11-21 („Tak, wymień dla malarstwa”).
         assert ask["look"] and ask["kind"] == 0 and ask["model"] == cm.PAINTING_MODEL
@@ -159,8 +156,6 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         assert lessons["mnw:2"]["model"]["v"] == "unsure"
         # His own works are not the phone's.
         assert not client.get("/api/crops/phone/upload:9").json()["look"]
-    assert not service.crops.order()
-    assert service.crops.waiting_claims() == 0 and service.crops.claims_waiting() == []
     assert fake.batches == {} and fake.asked == []
 
 

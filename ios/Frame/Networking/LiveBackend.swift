@@ -196,17 +196,7 @@ struct LiveBackend: FrameBackend {
         return try await perform(req, patient: true)
     }
 
-    func checkCut(itemID: String, wait: Int) async throws -> CutView {
-        var req = request(
-            "/api/library/items/\(escape(itemID))/cut/check", method: "POST",
-            query: [URLQueryItem(name: "wait", value: String(wait))]
-        )
-        req.timeoutInterval = TimeInterval(wait + 30)
-        return try await perform(req, patient: true)
-    }
-
     func setCut(itemID: String, update: CutUpdate) async throws -> Item {
-        // "Pokaż bez marginesu" the first time asks Opus for the print's edge.
         var req = request("/api/library/items/\(escape(itemID))/cut", method: "PUT")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try Self.encoder().encode(update)
@@ -1205,10 +1195,6 @@ struct LiveBackend: FrameBackend {
             "/api/ai/review/\(escape(itemID))/fix", method: "POST",
             body: Body(field: field, value: value, valuePl: valuePl)
         )
-    }
-
-    func cutReviewed(itemID: String) async throws -> AiReview {
-        try await send("/api/ai/review/\(escape(itemID))/cut", method: "POST")
     }
 
     func dropReviewProblem(itemID: String, field: String) async throws -> AiReview {

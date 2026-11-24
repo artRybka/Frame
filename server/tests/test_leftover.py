@@ -227,7 +227,6 @@ def test_the_uses_keep_the_owners_order_and_take_in_new_ones(tmp_path: Path) -> 
         "pl_text",
         "audit",
         "refresh",
-        "crops",
     ]
     assert dict(found)["studies"] is False and dict(found)["audit"] is True
 
@@ -282,20 +281,10 @@ def test_the_rest_is_spent_from_the_top_keeping_the_coming_nights(tmp_path: Path
     assert "keywords" not in [c[0] for c in calls]
 
 
-def test_the_crops_and_the_audit_take_more_a_night_until_the_period_ends(
+def test_the_audit_takes_more_a_night_until_the_period_ends(
     tmp_path: Path,
 ) -> None:
     _, svc, _ = _claude(tmp_path)
-    crops = svc.crops
-    assert crops.limit(True) == crops.critic_per_night
-    crops.give_extra(100, 40, date(2026, 12, 1))
-    today = date(2026, 11, 28)
-    assert crops.extra(True, today) == 40 and crops.extra(False, today) == 100
-    assert crops.extra(True, date(2026, 12, 1)) == 0  # its period is over
-    crops._extra_used(True, crops.critic_per_night + 15)
-    assert crops.extra(True, today) == 25
-    crops._extra_used(True, crops.critic_per_night - 5)  # its own share only
-    assert crops.extra(True, today) == 25
     svc.audit.give_extra(70, 0, date(2026, 12, 1))
     svc.audit.cared = dict
     assert svc.audit.limit(False) == svc.audit.per_night + svc.audit.extra(False)
@@ -319,14 +308,14 @@ def test_the_app_orders_the_uses(tmp_path: Path) -> None:
             "/api/ai",
             json={
                 "leftover_order": ["studies", *[k for k in leftover_module.USES if k != "studies"]],
-                "leftover_off": ["crops"],
+                "leftover_off": ["keywords"],
             },
             headers=headers,
         ).json()
         uses = got["leftover_state"]["uses"]
         assert uses[1]["key"] == "studies"
         on = {u["key"]: u["on"] for u in uses}
-        assert on["crops"] is False and on["audit"] is True
+        assert on["keywords"] is False and on["audit"] is True
 
 
 def test_the_catalogues_texts_count_every_work_without_them(tmp_path: Path) -> None:

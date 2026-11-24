@@ -17,28 +17,26 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
-from test_crops import CORNERS, H, W, photo
+from test_crops import CORNERS, FRAME_EDGE, TRUE, H, W, photo
 
 from frame_server.ai.client import OPUS, SONNET
 from frame_server.library.models import ItemKind, ItemSummary
 from frame_server.service import FrameService
 
 
-@pytest.fixture(autouse=True)
-def _claude_cuts(request: pytest.FixtureRequest) -> None:
-    """Here Opus finds his works in their photographs, as before the
-    phone did (``test_the_phone_finds_the_work_and_opus_is_asked_nothing``)."""
-    if "service" in request.fixturenames:
-        from frame_server.ai.config import AiConfigUpdate
-
-        service = request.getfixturevalue("service")
-        service.ai_config.update(AiConfigUpdate(crops_on_phone=False))
-
-
 def _jpeg(img: Image.Image) -> bytes:
     out = io.BytesIO()
     img.save(out, "JPEG", quality=95)
     return out.getvalue()
+
+
+def _found(client: TestClient, token: str, **also: object) -> dict[str, object]:
+    """What the phone found in the photograph (the painting, in its frame),
+    sent as the app sends it; what the server knows of it after."""
+    body = {"corners": [list(c) for c in TRUE], "surround": [list(c) for c in FRAME_EDGE]}
+    sent = client.post(f"/api/own/photos/{token}/found", json=body | also)
+    assert sent.status_code == 200, sent.text
+    return client.post(f"/api/own/photos/{token}/find").json()  # type: ignore[no-any-return]
 
 
 def _client(service: FrameService) -> TestClient:
@@ -74,13 +72,12 @@ def test_a_photograph_becomes_a_work_cut_out_of_its_frame(
         assert (sent.json()["width"], sent.json()["height"]) == (W, H)
         assert sent.json()["corners"] is None  # not asked yet
 
-        found = client.post(f"/api/own/photos/{token}/find").json()
-        assert [p["model"] for p in fake.asked] == [OPUS]
-        assert "owner took with a phone" in fake.asked[0]["messages"][0]["content"][-1]["text"]
-        assert found["shape"] == "rectangle"
+        # The phone finds the work; the server asks nobody.
+        assert client.post(f"/api/own/photos/{token}/find").json()["corners"] is None
+        found = _found(client, token)
+        assert fake.asked == [] and found["shape"] == "rectangle"
         corners = found["corners"]
-        assert corners is not None
-        # Snapped onto the frame's opening, as for a museum's photograph.
+        assert isinstance(corners, list)
         assert abs(corners[0][0] - 180 / W) < 0.02 and abs(corners[2][1] - 570 / H) < 0.02
 
         added = client.post(
@@ -140,9 +137,6 @@ def test_the_phone_finds_the_work_and_opus_is_asked_nothing(
 ) -> None:
     # Mateusz 2026-11-21 20:44 UTC: „kadrowanie moich własnych dzieł na
     # pewno chce robić na iPhone, bez Opus”.
-    from frame_server.ai.config import AiConfigUpdate
-
-    service.ai_config.update(AiConfigUpdate(crops_on_phone=True))
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
     with _client(service) as client:
         sent = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))})
@@ -172,7 +166,7 @@ def test_the_frame_he_sets_in_kadr_is_kept_over_what_was_found(
 ) -> None:
     # Mateusz 2026-11-22: „Dlaczego gdy dodaję własne dzieło to kadrowane
     # jest tylko dzieło a rama obrazu nie?” — "Dzieło / Rama / Bez ramy"
-    # in the own work's "Kadr": what he set goes, over Opus's answer too.
+    # in the own work's "Kadr": what he set goes, over what the phone found.
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
     frame = [[0.05, 0.05], [0.95, 0.05], [0.95, 0.95], [0.05, 0.95]]
     with _client(service) as client:
@@ -180,12 +174,9 @@ def test_the_frame_he_sets_in_kadr_is_kept_over_what_was_found(
             token = client.post(
                 "/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))}
             ).json()["token"]
-            found = client.post(f"/api/own/photos/{token}/find").json()
+            found = _found(client, token)
             assert found["looked"] and found["surround"] is not None
             corners = found["corners"]
-            # Without his word Opus's answer stands; with it, his.
-            client.post(f"/api/own/photos/{token}/found", json={"corners": corners})
-            assert client.post(f"/api/own/photos/{token}/find").json()["surround"] is not None
             body: dict[str, object] = {"corners": corners, "owner": True}
             if his is not None:
                 body["surround"] = his
@@ -223,7 +214,7 @@ def test_the_frame_about_a_work_of_his_own_holds_it_in_the_shape_of_his_size(
         token = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))}).json()[
             "token"
         ]
-        found = client.post(f"/api/own/photos/{token}/find").json()
+        found = _found(client, token)
         added = client.post(
             "/api/own/works",
             json={"token": token, "corners": found["corners"], "shape": "rectangle", "text": text},
@@ -401,7 +392,9 @@ def test_without_a_key_nothing_is_found_and_old_photographs_go(service: FrameSer
         token = client.post("/api/own/photos", files={"file": ("p.jpg", _jpeg(photo()))}).json()[
             "token"
         ]
-        assert client.post(f"/api/own/photos/{token}/find").status_code == 503
+        # The phone finds the work: nothing to find here, key or none.
+        found = client.post(f"/api/own/photos/{token}/find").json()
+        assert found["phone_cuts"] and found["corners"] is None
         assert client.post("/api/own/hints", json={"token": token}).status_code == 503
     path = service.own_works.path(token)
     old = time.time() - 2 * 24 * 3600
@@ -1178,18 +1171,20 @@ def test_the_work_is_looked_for_once_in_a_scan(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811
 ) -> None:
-    """With no corners from the phone the merge asks Opus for them, and
-    the phone's own asking after it costs nothing more."""
+    """The merge goes by what the phone found, asking nobody (Opus found
+    the work here until 2026-11-23), and the phone's own asking after it
+    gives the same."""
     fake.messages.create = lambda **params: (fake.asked.append(params), _message(CORNERS))[1]
     first = _jpeg(photo())
     with _client(service) as client:
         token = client.post("/api/own/photos", files={"file": ("p.jpg", first)}).json()["token"]
+        _found(client, token)
         client.post(f"/api/own/photos/{token}/sides", files={"file": ("s.jpg", first)})
         merged = client.post(f"/api/own/photos/{token}/merge").json()
         assert merged["corners"] is not None and merged["shape"] == "rectangle"
         found = client.post(f"/api/own/photos/{token}/find").json()
         assert found["corners"] == merged["corners"]
-        assert len(fake.asked) == 1
+        assert fake.asked == []
 
 
 def test_the_white_balance_he_sets_is_the_works_and_stays_when_it_is_scanned_again(

@@ -525,7 +525,7 @@ def _utc_now() -> str:
 def tasks(service: FrameService) -> list[NightTask]:
     """The night's tasks, in order: first what changes the catalogue, then
     what is worked out from it."""
-    from .library import courtauld, dumps, loc_index, louvre, met_index, nga, rijks_index
+    from .library import courtauld, dumps, louvre, met_index, nga, rijks_index
     from .notifications import births_at_night
     from .web import discover_api
 
@@ -755,12 +755,6 @@ def tasks(service: FrameService) -> list[NightTask]:
             "Spis Metropolitan Museum",
             group=idx,
         ),
-        NightTask(
-            "loc",
-            lambda night: loc_index.refresh_at_night(service.settings.data_dir),
-            "Spis Biblioteki Kongresu",
-            group=idx,
-        ),
         *(
             NightTask(f"{key} dump", dump(key), dump_labels.get(key, ""), group=idx)
             for key in dumps.DUMPS
@@ -840,17 +834,6 @@ def tasks(service: FrameService) -> list[NightTask]:
             paid=True,
             group=dup,
             ahead=service.audit.ahead,
-        ),
-        # Museum photographs cut down to the work: Haiku picks the works
-        # with a frame, an easel or a board around them, Opus sets the
-        # corners (ai/crops.py).
-        NightTask(
-            "crops",
-            critic_night(service.crops, ("przycięte", "przycięte", "przyciętych")),
-            "Kadrowanie zdjęć dzieł",
-            paid=True,
-            group=dup,
-            ahead=service.crops.ahead,
         ),
         # Once a month: Commons' files with a tile set ("Pod lupą").
         NightTask("tile sets", service.player.tile_sets_at_night, "Kafle „Pod lupą”", group=cat),
