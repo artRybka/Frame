@@ -25,6 +25,8 @@ struct GalleryView: View {
     @State private var loading = false
     @State private var failed = false
     @State private var path: [String] = []
+    /// The end page's glow over the first new work as it fades away.
+    @State private var surfacing = false
     /// The cut work whose card is opening (`GalleryPage.leaving`).
     @State private var leaving: String?
     /// Double taps given, for the corner heart's flash.
@@ -35,11 +37,22 @@ struct GalleryView: View {
     @MainActor private static var looked: Set<String> = []
 
     /// Works asked for at once, and how near the end the next are asked for.
-    private static let batch = 12
-    private static let ahead = 4
+    /// Asked for well before the end (Mateusz 2026-11-24: "niech aplikacja
+    /// wcześniej prosi o kolejne"), so the end is seldom reached.
+    private static let batch = 16
+    private static let ahead = 8
+    /// The page after the last work, while more are on their way.
+    static let endID = "gallery.end"
 
     private var shown: RemoteItem? {
-        works.first { $0.id == position } ?? works.first
+        if position == Self.endID { return nil }
+        return works.first { $0.id == position } ?? works.first
+    }
+
+    /// The glow the end page and a work coming out of it are made of: the
+    /// last works' colours.
+    private var endColours: [Color] {
+        works.suffix(4).compactMap { $0.item.colors.first?.hex }.compactMap { Color(hexString: $0) }
     }
 
     var body: some View {
@@ -54,6 +67,15 @@ struct GalleryView: View {
                 .overlay {
                     if works.isEmpty { emptyState }
                 }
+                .overlay {
+                    // The first of the new works coming out of the glow.
+                    if surfacing {
+                        GalleryWaiting(colours: endColours)
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                    }
+                }
                 .animation(.easeInOut(duration: 0.2), value: shown?.id)
                 .toolbarVisibility(.hidden, for: .navigationBar)
                 .toolbarVisibility(whole || !path.isEmpty ? .visible : .hidden, for: .tabBar)
@@ -64,6 +86,14 @@ struct GalleryView: View {
         }
         .task { if works.count < Self.batch { await more() } }
         .onChange(of: path) { _, now in if now.isEmpty { leaving = nil } }
+        .task(id: position == Self.endID) {
+            // On the end page: asked again till the works come.
+            while position == Self.endID, !Task.isCancelled {
+                await more()
+                guard position == Self.endID else { return }
+                try? await Task.sleep(for: .seconds(4))
+            }
+        }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
             Self.remember(Array(works.dropFirst(index + 1)))
@@ -107,6 +137,14 @@ struct GalleryView: View {
                         }
                         .sensoryFeedback(.impact(weight: .light), trigger: whole)
                         .id(work.id)
+                }
+                // At the end of what came, only the glow, flowing, till the
+                // next works are here (Mateusz 2026-11-24: "łuny … tańczą
+                // organicznie"; "Bez kwadracików i tekstu - sama łuna").
+                if !works.isEmpty {
+                    GalleryWaiting(colours: endColours)
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(Self.endID)
                 }
             }
             .scrollTargetLayout()
@@ -215,7 +253,20 @@ struct GalleryView: View {
             let next = try await model.backend.gallery(count: Self.batch)
             failed = false
             let have = Set(works.map(\.id))
-            works += next.filter { !have.contains($0.id) }
+            let fresh = next.filter { !have.contains($0.id) }
+            works += fresh
+            // Waiting at the end: the first new one takes its place at once,
+            // the glow fading off it.
+            if position == Self.endID, let first = fresh.first {
+                surfacing = true
+                var quiet = Transaction(animation: nil)
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { position = first.id }
+                Task {
+                    try? await Task.sleep(for: .seconds(0.35))
+                    withAnimation(.easeOut(duration: 0.8)) { surfacing = false }
+                }
+            }
             if position == nil { position = works.first?.id }
             let at = works.firstIndex { $0.id == position } ?? 0
             Self.remember(Array(works.dropFirst(at + 1)))
@@ -808,11 +859,14 @@ private struct GalleryCaption: View {
                 .buttonStyle(.plain)
             // As the app's black buttons (21:43: "jak czarne guziki w
             // aplikacji"), on the cut work too (2026-11-24: "Na pełnym
-            // ekranie także dodajmy guzik „karta dzieła”").
+            // ekranie także dodajmy guzik „karta dzieła”"), black there
+            // whatever the phone's mode ("na pełnym ekranie guzik „karta
+            // dzieła” czarny").
             Button(action: open) {
                 Label("Karta dzieła".bound, systemImage: "text.below.photo")
             }
             .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
+            .environment(\.colorScheme, whole ? scheme : .light)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.gutter + 2)
@@ -868,5 +922,40 @@ private struct GalleryCaption: View {
     private func nonEmpty(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
         return text
+    }
+}
+
+/// The glow alone, its colours drifting slowly into one another: the page
+/// after the last work while more are on their way.
+private struct GalleryWaiting: View {
+    let colours: [Color]
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            Canvas { canvas, size in
+                canvas.fill(Path(CGRect(origin: .zero, size: size)), with: .color(ground))
+                canvas.addFilter(.blur(radius: size.width * 0.22))
+                let spots = colours.isEmpty ? [Color.gray] : colours
+                for (index, colour) in spots.enumerated() {
+                    let i = Double(index)
+                    // Each its own slow ways, none of them in step.
+                    let a = time * (0.11 + 0.023 * i) + i * 1.7
+                    let x = size.width * (0.5 + 0.28 * cos(a) + 0.08 * sin(a * 1.31 + i))
+                    let y = size.height * (0.42 + 0.17 * sin(a * 0.83 + i * 2))
+                    let r = size.width * (0.3 + 0.06 * sin(a * 1.7 + i))
+                    let rect = CGRect(x: x - r, y: y - r * 1.2, width: r * 2, height: r * 2.4)
+                    canvas.fill(Path(ellipseIn: rect), with: .color(colour.opacity(scheme == .light ? 0.45 : 0.7)))
+                }
+            }
+        }
+        .background(ground)
+        .accessibilityHidden(true)
+    }
+
+    private var ground: Color {
+        GalleryPage.toned(UIColor(colours.last ?? .black), light: scheme == .light)
     }
 }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.359
+
+- Galeria: kolejne dzieła dociągane wcześniej, na końcu partii płynąca
+  łuna zamiast czarnego pasa; czarny guzik „Karta dzieła” na pełnym ekranie.
+
 ## 1.145.358
 
 - Karta dzieła: łuna z kolorów krawędzi za dziełem, jak w Galerii;
