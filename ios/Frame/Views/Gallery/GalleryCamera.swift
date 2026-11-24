@@ -293,7 +293,8 @@ enum SwipeZone {
 
     @MainActor private static var starts: [Double] = (UserDefaults.standard.array(forKey: key) as? [Double]) ?? []
 
-    @MainActor static var line: Double { line(starts) }
+    /// The line as learnt so far.
+    @MainActor static var current: Double { line(starts) }
 
     /// A swipe up started at this share of the screen's height.
     @MainActor static func note(_ share: Double) {
@@ -308,11 +309,10 @@ enum SwipeZone {
 /// Galeria did and when, a line each.
 enum GalleryLog {
     @MainActor private static let path = UserDefaults.standard.string(forKey: "galleryLog")
-    @MainActor private static let began = CACurrentMediaTime()
-
     @MainActor static func note(_ what: @autoclosure () -> String) {
         guard let path else { return }
-        let line = String(format: "%8.3f %@\n", CACurrentMediaTime() - began, what())
+        // The clock's own time, as the probe's steps and the film have it.
+        let line = String(format: "%.3f %@\n", Date().timeIntervalSince1970, what())
         guard let data = line.data(using: .utf8) else { return }
         if let file = FileHandle(forWritingAtPath: path) {
             file.seekToEndOfFile()

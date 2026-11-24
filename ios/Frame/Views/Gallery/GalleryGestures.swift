@@ -113,7 +113,7 @@ struct DownSwipe: UIGestureRecognizerRepresentable {
                 SwipeZone.note(share)
                 return false
             }
-            return share < SwipeZone.line
+            return share < SwipeZone.current
         }
 
         func gestureRecognizer(
