@@ -252,15 +252,7 @@ struct ItemDetailView: View {
         .paperPage(glow: edgeGlow == nil ? glow : [], lift: scrolled)
         // From Galeria the way back is the way in turned round: its own
         // back button, and the swipe from the left edge.
-        .navigationBarBackButtonHidden(arrival?.back != nil)
-        .toolbar {
-            if arrival?.back != nil {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Wróć", systemImage: "chevron.backward") { leaveToGallery() }
-                }
-            }
-        }
-        .gesture(SideSwipe(fromEdge: true) { leaveToGallery() })
+        .modifier(GalleryWayBack(on: arrival?.back != nil) { leaveToGallery() })
         .onAppear { CardArrival.pending[itemID] = nil }
         .task(id: itemID) { await makeEdgeGlow() }
         .navigationBarTitleDisplayMode(.inline)
@@ -2101,6 +2093,26 @@ extension View {
 /// Debug builds (tests): the last frame on screen of the probed views.
 enum FramePositionProbe {
     nonisolated(unsafe) static var frames: [String: CGRect] = [:]
+}
+
+/// The card's own way back to Galeria (`leaveToGallery`): a back button
+/// of its own and the swipe from the left edge, in place of the pop's.
+private struct GalleryWayBack: ViewModifier {
+    let on: Bool
+    let leave: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .navigationBarBackButtonHidden(on)
+            .toolbar {
+                if on {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Wróć", systemImage: "chevron.backward", action: leave)
+                    }
+                }
+            }
+            .gesture(SideSwipe(fromEdge: true, action: leave))
+    }
 }
 
 /// What follows the work on the card, appearing after it from Galeria.
