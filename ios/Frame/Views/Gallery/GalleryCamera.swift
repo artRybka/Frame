@@ -309,6 +309,13 @@ enum SwipeZone {
 /// Galeria did and when, a line each.
 enum GalleryLog {
     @MainActor private static let path = UserDefaults.standard.string(forKey: "galleryLog")
+    /// Every frame of a move, with `-galleryTrace YES` beside the log.
+    @MainActor private static let traced = UserDefaults.standard.bool(forKey: "galleryTrace")
+
+    @MainActor static func trace(_ what: @autoclosure () -> String) {
+        if traced { note(what()) }
+    }
+
     @MainActor static func note(_ what: @autoclosure () -> String) {
         guard let path else { return }
         // The clock's own time, as the probe's steps and the film have it.

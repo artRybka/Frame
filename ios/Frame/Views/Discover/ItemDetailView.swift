@@ -138,6 +138,8 @@ struct ItemDetailView: View {
     /// Where the work lies on the card, for its way there.
     @State private var arrivalHome: CGRect?
     @State private var arrivalStarted = false
+    /// When the work set off for its place here.
+    @State private var arrivedAt: ContinuousClock.Instant?
     /// Going back to Galeria the way the card came (`leaveToGallery`).
     @State private var leavingCard = false
     @State private var arrivalPlace = ArrivalPlace()
@@ -501,6 +503,7 @@ struct ItemDetailView: View {
                 // Written already (it was on the frame): the card opens with it.
                 showPolish(view, animated: false)
             }
+            await arrivalSettled()
             item = fresh
             if fresh.kind == .artwork { model.cardShows(fresh) }
             holding = false
@@ -1355,9 +1358,23 @@ struct ItemDetailView: View {
             Task { @MainActor in
                 // A couple of frames for the card's layout to settle.
                 try? await Task.sleep(for: .milliseconds(70))
+                arrivedAt = .now
                 withAnimation(arrival.from == nil ? CardArrival.surface : CardArrival.move) { arrived = true }
                 GalleryLog.note("card: the work on its way to its place")
             }
+        }
+    }
+
+    /// From Galeria the work is on its way to its place here for a moment:
+    /// what is loaded takes the place of what the tile knew only once the
+    /// work is there. Coming across the way, the two were seen one over
+    /// the other, each at its own place (the film of 2026-11-24).
+    private func arrivalSettled() async {
+        guard arrival != nil else { return }
+        let until = ContinuousClock.now + .milliseconds(1500)
+        while !Task.isCancelled, ContinuousClock.now < until {
+            if let arrivedAt, ContinuousClock.now - arrivedAt > .milliseconds(460) { return }
+            try? await Task.sleep(for: .milliseconds(30))
         }
     }
 
@@ -1371,8 +1388,10 @@ struct ItemDetailView: View {
         if let from = arrival?.from, let home = arrivalHome {
             rise = from.maxY - home.maxY
             // There at once under the work, where Galeria had the card's
-            // head: the title never goes while the card comes.
-            placed = !leavingCard
+            // head: the title never goes while the card comes. Not by a
+            // place the card's first layout passes through (above the
+            // screen, for one).
+            placed = !leavingCard && home.minY >= 0 && rise > -1
         }
         return RestOfCard(
             shown: arrived, placed: placed,

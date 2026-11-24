@@ -415,7 +415,6 @@ struct GalleryView: View {
         let left = max(CGFloat(index) * height - flow.y, 0)
         hand = .sweep
         let laid = layGrid(at: index, top: left - fast * gone(zoom))
-        withTransaction(Self.quiet) { bars = true }
         let screen = area, id = works[index].id
         GalleryLog.note("sweep to \(index): speed \(Int(flow.speed)) taken as \(Int(fast)), \(Int(left)) left")
         var began: CFTimeInterval?
@@ -431,6 +430,8 @@ struct GalleryView: View {
             guard let began0 = began ?? (track.ready || seconds > 0.05 ? seconds : nil) else { return true }
             if began == nil {
                 began = began0
+                // With the work's first step back, not over it while it waits.
+                withTransaction(Self.quiet) { bars = true }
                 if track.ready {
                     // Where the grid really is.
                     start = track.offset
@@ -456,6 +457,7 @@ struct GalleryView: View {
                 )
                 camera.hero = hero
                 camera.window = hero.offsetBy(dx: 0, dy: -inner * scale)
+                GalleryLog.trace("sweep \(Int(t * 1000)) ms: top \(Int(hero.minY)), wide \(Int(width)), page \(Int(inner)) left")
                 return true
             }
             if !settled {
@@ -464,7 +466,12 @@ struct GalleryView: View {
                 gridSettled(on: id)
                 Task { await stockUp(from: index) }
             }
-            track.scroll?(min(max(start + swift * (gone(t) - gone(zoom)), 0), track.most))
+            let to = min(max(start + swift * (gone(t) - gone(zoom)), 0), track.most)
+            // Where the tile is now, and where the scroll was a frame ago.
+            GalleryLog.trace(
+                "sweep \(Int(t * 1000)) ms: top \(Int(tile.minY - (to - start))), grid at \(Int(track.offset)) to \(Int(to))"
+            )
+            track.scroll?(to)
             return t < slowing * 6
         }
     }
@@ -703,7 +710,11 @@ struct GalleryView: View {
         guard let image = try? await ImageLoader.shared.image(for: request, maxPixel: pixel) else {
             return (id, nil, .center)
         }
-        let focus = await SubjectFocus.shared.point(in: image, key: ImageLoader.pictureKey(request), subject: true)
+        // After the pictures on the screen, and waited for: the stock keeps
+        // the point the page will cut it about, never a guess.
+        let focus = await SubjectFocus.shared.point(
+            in: image, key: ImageLoader.pictureKey(request), subject: true, patience: 30, ahead: false
+        )
         return (id, image, focus)
     }
 

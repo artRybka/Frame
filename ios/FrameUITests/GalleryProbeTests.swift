@@ -107,7 +107,7 @@ final class GalleryProbeTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-demo", "YES", "-screen", "gallery", "-gallerySweep", "YES",
-            "-galleryLog", "\(Self.folder)/gallery-sweep.log",
+            "-galleryLog", "\(Self.folder)/gallery-sweep.log", "-galleryTrace", "YES",
         ]
         app.launch()
         mark(app, "sweep: launched")
