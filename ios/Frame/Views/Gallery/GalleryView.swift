@@ -37,6 +37,11 @@ struct GalleryView: View {
     /// into it (`gridOpen`): the tab bar is there then.
     @State private var grid = false
     @State private var gridOpen = false
+    /// The tab bar and the status bar, the grid's own: there from the
+    /// moment the work is let go into the grid, and never brought in by an
+    /// animation (the bar's shade then flew down the screen to its place;
+    /// the film of 2026-11-24).
+    @State private var bars = false
     /// The first work in the grid, the empty cells before it, and how far
     /// the grid is scrolled when it comes (`layGrid`).
     @State private var gridFirst = 0
@@ -153,8 +158,8 @@ struct GalleryView: View {
             .animation(.easeInOut(duration: 0.2), value: shown?.id)
             .sensoryFeedback(.impact(weight: .medium), trigger: ticks)
             .toolbarVisibility(.hidden, for: .navigationBar)
-            .toolbarVisibility(gridOpen || !path.isEmpty ? .visible : .hidden, for: .tabBar)
-            .statusBarHidden(!gridOpen)
+            .toolbarVisibility(bars || !path.isEmpty ? .visible : .hidden, for: .tabBar)
+            .statusBarHidden(!bars)
             .navigationDestination(for: String.self) { id in
                 ItemDetailView(itemID: id)
             }
@@ -339,8 +344,10 @@ struct GalleryView: View {
     /// The grid laid out under the pages, unseen yet: the work at `index`
     /// in its middle column, its row's top `top` points below the screen's
     /// (above it, when less than 0), the works seen before it above. The
-    /// camera stands on the page still.
-    private func layGrid(at index: Int, top: CGFloat) {
+    /// camera stands on the page still. Gives how far the grid is scrolled
+    /// when it lies so.
+    @discardableResult
+    private func layGrid(at index: Int, top: CGFloat) -> CGFloat {
         let metrics = metrics
         let seen = min(index, Self.seen)
         // The work in the middle column: (seen + lead) is one past a row's start.
@@ -366,6 +373,7 @@ struct GalleryView: View {
         withAnimation(.easeOut(duration: 0.15)) { heartShown = false }
         stockFor(index)
         GalleryLog.note("grid laid at \(index): top \(Int(top)), start \(Int(cell.minY - top)), lead \(lead)")
+        return cell.minY - top
     }
 
     /// The work's tile where the grid has it now.
@@ -406,27 +414,36 @@ struct GalleryView: View {
         let fast = min(max(flow.speed, Self.least), max(most, Self.least))
         let left = max(CGFloat(index) * height - flow.y, 0)
         hand = .sweep
-        layGrid(at: index, top: left - fast * gone(zoom))
+        let laid = layGrid(at: index, top: left - fast * gone(zoom))
+        withTransaction(Self.quiet) { bars = true }
         let screen = area, id = works[index].id
         GalleryLog.note("sweep to \(index): speed \(Int(flow.speed)) taken as \(Int(fast)), \(Int(left)) left")
         var began: CFTimeInterval?
         var from: CGFloat = 0
         var swift = fast
         var tile = camera.tile
-        var start = gridStart
+        var start = laid
         var settled = false
         coast.run { seconds in
-            // Till the grid lies where it is to: a frame or two.
-            guard let began0 = began ?? (track.ready || seconds > 0.25 ? seconds : nil) else { return true }
+            // Till the grid lies where it is to: a frame or two, no more
+            // (the work is on its way; it draws back over the black then,
+            // towards where the grid is to lie).
+            guard let began0 = began ?? (track.ready || seconds > 0.05 ? seconds : nil) else { return true }
             if began == nil {
                 began = began0
-                // Where the grid really is, and the page by now.
-                start = track.offset
-                tile = self.tile(of: index)
-                camera.tile = tile
+                if track.ready {
+                    // Where the grid really is.
+                    start = track.offset
+                    tile = self.tile(of: index)
+                    camera.tile = tile
+                }
+                // The page by now.
                 from = max(CGFloat(index) * height - flow.y, 0)
                 swift = (from - (tile.minY - screen.minY)) / gone(zoom)
-                GalleryLog.note("sweep began after \(Int(seconds * 1000)) ms: \(Int(from)) left, tile at \(Int(tile.minY))")
+                GalleryLog.note(
+                    "sweep began after \(Int(seconds * 1000)) ms, grid \(track.ready ? "ready" : "to come"): "
+                        + "\(Int(from)) left, tile at \(Int(tile.minY))"
+                )
             }
             let t = CGFloat(seconds - began0)
             if t < zoom {
@@ -538,6 +555,7 @@ struct GalleryView: View {
         let to: CGFloat = toGrid ? 1 : 0
         let seconds = seconds * Double(max(abs(to - from), 0.4))
         let id = returning ?? shown?.id
+        if toGrid { withTransaction(Self.quiet) { bars = true } }
         coast.run { now in
             let t = min(CGFloat(now / seconds), 1)
             let done = curve(t)
@@ -554,13 +572,14 @@ struct GalleryView: View {
         camera.pose(1)
         withTransaction(Self.quiet) {
             windowShown = false
+            bars = true
             if let id, position != id, hand == .sweep { position = id }
         }
         hand = .idle
         pulling = false
         gridLocked = false
         returning = nil
-        withAnimation(GalleryPage.toWhole) { gridOpen = true }
+        gridOpen = true
         GalleryLog.note("grid open at \(Int(track.offset))")
     }
 
@@ -577,10 +596,12 @@ struct GalleryView: View {
             }
             withTransaction(Self.quiet) {
                 windowShown = true
-                grid = false
                 gridOpen = false
+                bars = false
                 returning = nil
             }
+            // Not quietly: the page's caption comes back in gently.
+            grid = false
             camera.on = false
             hand = .idle
             pulling = false
@@ -615,7 +636,8 @@ struct GalleryView: View {
             windowShown = readyPage == work.id && position == work.id
             position = work.id
         }
-        withAnimation(GalleryPage.toWhole) { gridOpen = false }
+        gridOpen = false
+        withAnimation(GalleryPage.toWhole) { bars = false }
         GalleryLog.note("aimed at \(index), tile at \(Int(camera.tile.minY)), page \(windowShown ? "ready" : "to come")")
         return true
     }
@@ -701,6 +723,7 @@ struct GalleryView: View {
         pull.up = 0
         ticks += 1
         withAnimation(GalleryPage.toWhole) { peek = shown.id }
+        GalleryLog.note("held")
     }
 
     /// The finger drawn up from the hold: the work follows a little, and
@@ -713,6 +736,7 @@ struct GalleryView: View {
         guard up > Self.cardPull, let work = works.first(where: { $0.id == id }) else { return }
         engaged = true
         ticks += 1
+        GalleryLog.note("pulled up \(Int(up)): the card")
         open(work)
     }
 
@@ -724,6 +748,7 @@ struct GalleryView: View {
             peek = nil
             pull.up = 0
         }
+        GalleryLog.note("let go")
     }
 
     /// The card without the push's slide: it takes the work from where it
@@ -1340,8 +1365,19 @@ struct Glow: View {
         // Small is enough for a blur this wide.
         let long = CGFloat(max(cg.width, cg.height))
         let scale = min(1, 200 / long)
-        let small = CIImage(cgImage: cg).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-        let extent = small.extent
+        // On whole pixels: where the small picture ended within a pixel,
+        // its last row was clear, and drawn out it left that whole side
+        // (the top of a wide work, the right of a tall one) without glow.
+        let extent = CGRect(
+            x: 0, y: 0,
+            width: max((CGFloat(cg.width) * scale).rounded(.down), 1),
+            height: max((CGFloat(cg.height) * scale).rounded(.down), 1)
+        )
+        let small = CIImage(cgImage: cg)
+            .transformed(by: CGAffineTransform(
+                scaleX: (extent.width + 0.01) / CGFloat(cg.width), y: (extent.height + 0.01) / CGFloat(cg.height)
+            ))
+            .cropped(to: extent)
         let pad = max(extent.width, extent.height) * reach
         let outer = extent.insetBy(dx: -pad, dy: -pad)
         let glow = small.clampedToExtent()

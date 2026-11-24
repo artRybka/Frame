@@ -214,7 +214,21 @@ private struct GridPicture: View {
         }
         .task(id: work.id) {
             guard image == nil, let request = model.backend.request(for: .thumb(work.id)) else { return }
-            guard let got = try? await ImageLoader.shared.image(for: request, maxPixel: GalleryView.gridPixel) else { return }
+            // Asked again when it does not come: a tile left empty stayed
+            // so for as long as it was on the screen.
+            var loaded: UIImage?
+            let asked = ContinuousClock.now
+            for attempt in 0 ..< 3 where loaded == nil && !Task.isCancelled {
+                if attempt > 0 { try? await Task.sleep(for: .seconds(Double(attempt) * 1.5)) }
+                do {
+                    loaded = try await ImageLoader.shared.image(for: request, maxPixel: GalleryView.gridPixel)
+                } catch {
+                    if !Task.isCancelled { GalleryLog.note("tile \(work.id): no picture, \(error)") }
+                }
+            }
+            guard let got = loaded, !Task.isCancelled else { return }
+            let waited = (ContinuousClock.now - asked) / .seconds(1)
+            if waited > 2 { GalleryLog.note("tile \(work.id): its picture after \(Int(waited)) s") }
             let point = await SubjectFocus.shared.point(in: got, key: ImageLoader.pictureKey(request), subject: true)
             stock.images[work.id] = got
             stock.focus[work.id] = point

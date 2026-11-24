@@ -257,7 +257,10 @@ struct ItemDetailView: View {
         // From Galeria the way back is the way in turned round: its own
         // back button, and the swipe from the left edge.
         .modifier(GalleryWayBack(on: arrival?.back != nil) { leaveToGallery() })
-        .onAppear { CardArrival.pending[itemID] = nil }
+        .onAppear {
+            if CardArrival.pending[itemID] != nil { GalleryLog.note("card: appeared") }
+            CardArrival.pending[itemID] = nil
+        }
         .task(id: itemID) { await makeEdgeGlow() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -1348,10 +1351,12 @@ struct ItemDetailView: View {
             arrivalHome = rect
             guard let arrival, !arrivalStarted else { return }
             arrivalStarted = true
+            GalleryLog.note("card: its work's place known, at \(Int(rect.minY))")
             Task { @MainActor in
                 // A couple of frames for the card's layout to settle.
                 try? await Task.sleep(for: .milliseconds(70))
                 withAnimation(arrival.from == nil ? CardArrival.surface : CardArrival.move) { arrived = true }
+                GalleryLog.note("card: the work on its way to its place")
             }
         }
     }
@@ -1362,9 +1367,15 @@ struct ItemDetailView: View {
     /// kartę dzieła").
     private var restOfCard: RestOfCard {
         var rise: CGFloat = 0
-        if let from = arrival?.from, let home = arrivalHome { rise = from.maxY - home.maxY }
+        var placed = false
+        if let from = arrival?.from, let home = arrivalHome {
+            rise = from.maxY - home.maxY
+            // There at once under the work, where Galeria had the card's
+            // head: the title never goes while the card comes.
+            placed = !leavingCard
+        }
         return RestOfCard(
-            shown: arrived,
+            shown: arrived, placed: placed,
             animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default,
             rise: rise
         )
@@ -2144,6 +2155,9 @@ private struct GalleryWayBack: ViewModifier {
 /// What follows the work on the card, appearing after it from Galeria.
 private struct RestOfCard: ViewModifier {
     let shown: Bool
+    /// Seen before it is `shown`, below its place by `rise`: under the
+    /// work held in Galeria, which had the card's head there.
+    var placed = false
     let animation: Animation
     /// How far below its place it starts (and leaves): as far as the work
     /// is from its own.
@@ -2153,7 +2167,7 @@ private struct RestOfCard: ViewModifier {
         content
             .offset(y: shown ? 0 : rise)
             .animation(CardArrival.move, value: shown)
-            .opacity(shown ? 1 : 0)
+            .opacity(shown || placed ? 1 : 0)
             .animation(animation, value: shown)
     }
 }
