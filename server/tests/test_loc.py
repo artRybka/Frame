@@ -166,9 +166,8 @@ def test_a_search_of_one_collection() -> None:
         assert "q" not in asked[0].url.params
 
 
-def test_only_a_search_for_photographs_asks_it(tmp_path: Path) -> None:
+def test_it_is_retired_and_asked_nowhere(tmp_path: Path) -> None:
+    """Mateusz 2026-11-24: "To źródło to chyba trup - też można usunąć"."""
     importer = Importer(Library(tmp_path / "lib.db"), None, None)  # type: ignore[arg-type]
-    assert "loc" in importer.sources()
-    assert "loc" not in importer.asked_sources()
-    assert "loc" not in importer.asked_sources("painting")
-    assert "loc" in importer.asked_sources("photograph")
+    assert "loc" not in importer.sources()
+    assert "loc" not in importer.asked_sources("photograph")

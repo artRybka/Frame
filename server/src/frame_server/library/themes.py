@@ -1138,16 +1138,9 @@ OTHER_ART_THEMES: list[Theme] = [
         "Pierwsze kolory",
         "Prokudin-Gorski, fotochromy, autochromy i kolorowe slajdy FSA.",
         PHOTOGRAPHY,
-        # Whole collections of the Library of Congress (loc.COLLECTION): its
-        # words alone found 2 of them (Mateusz 2026-11-06). Prokudin-Gorsky's
-        # without words: its words take 17 s and its second page is a 404;
-        # his black-and-white album prints fail EARLY_COLOUR.
-        ("loc", "collection:prokudin-gorskii"),
-        ("loc", "collection:photochrom-prints"),
-        ("loc", "autochrome"),
-        ("loc", "collection:fsa-owi-color-photographs"),
-        # The same collections on Wikimedia Commons, which answers while the
-        # LoC rests (2026-11-07; categories checked from the home address).
+        # The Library of Congress's collections on Wikimedia Commons (the LoC
+        # itself retired 2026-11-24; categories checked from the home
+        # address 2026-11-07).
         ("wmc", 'deepcat:"Photographs by Sergey Prokudin-Gorsky"'),
         ("wmc", "Category:Photochrom pictures from the Library of Congress"),
         ("wmc", "Category:Color photographs from the Farm Security Administration"),
@@ -1162,8 +1155,8 @@ OTHER_ART_THEMES: list[Theme] = [
         "Ameryka w obiektywie",
         "Dorothea Lange, Lewis Hine, Walker Evans i Stieglitz.",
         PHOTOGRAPHY,
-        ("loc", "Dorothea Lange"),
-        ("loc", "Lewis Hine"),
+        ("met", "Dorothea Lange"),
+        ("met", "Lewis Hine"),
         ("cma", "Walker Evans"),
         ("met", "Walker Evans"),
         ("cma", "Stieglitz"),

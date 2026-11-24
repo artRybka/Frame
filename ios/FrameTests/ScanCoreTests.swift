@@ -119,15 +119,6 @@ final class ScanCoreTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(back["built"] as? String).hasPrefix("OpenCV"))
     }
 
-    func testTheTrialsWordsInPolish() {
-        XCTAssertEqual(ScanTrialText.seconds(5.234), "5,2 s")
-        XCTAssertEqual(ScanTrialText.seconds(12), "12,0 s")
-        XCTAssertEqual(ScanTrialText.name(nil), "Skan")
-        XCTAssertTrue(ScanTrialText.name(Date(timeIntervalSince1970: 1_795_000_000)).hasPrefix("Skan z "))
-        XCTAssertEqual(ScanTrialText.stage(.merging), "Składam")
-        XCTAssertEqual(ScanTrialText.stage(.failed("x")), "Nie udało się")
-    }
-
     /// The head of a `.npy` file of rows × columns × 3 bytes, as NumPy writes it.
     private static func npyHead(rows: Int, columns: Int) -> Data {
         var head = "{'descr': '|u1', 'fortran_order': False, 'shape': (\(rows), \(columns), 3), }"

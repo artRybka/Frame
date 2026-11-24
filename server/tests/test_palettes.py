@@ -178,8 +178,8 @@ def test_a_photographs_palette_comes_with_its_numbers_or_is_made_here(
     service: FrameService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     looks = service.looks
-    monkeypatch.setattr(looks, "local", lambda: True)
-    monkeypatch.setattr(looks, "_asked", lambda: type("A", (), {"size": 4})())
+    monkeypatch.setattr(looks, "enabled", lambda: True)
+    monkeypatch.setattr(looks.seen, "index", type("A", (), {"size": 4})())
     rows = P.colours_of(P.picture(_made_up()))
     key = looks.photo_numbers(np.ones(4, dtype=np.float32), rows)
     kept = looks.photo_palette(key)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.355
+
+- Porządki: zdjęć z muzeów nie kadruje już Opus (robi to iPhone),
+  a odciski wyglądu robi tylko SigLIP na serwerze, bez Google; stare
+  odciski Gemini skasowane. W Konfiguracji bez zadania „Kadrowanie”
+  i przełącznika „Szukanie wyglądem”, postęp odcisków w Diagnostyce.
+  W „Do sprawdzenia” „Popraw kadr” zamiast „Przytnij”. Z Diagnostyki
+  zniknęła próba „Składanie skanu na iPhonie”. Library of Congress
+  wyłączona jako źródło (jej zdjęcia przychodzą z Wikimedia Commons;
+  dzieła już w bibliotece zostają).
+
 ## 1.145.354
 
 - Miejsce na serwerze: katalog (miniatury) może mieć do 50 i 100 GB,

@@ -111,7 +111,6 @@ def test_every_task_has_a_package(service: FrameService) -> None:
         "gatekeeper",
         "twins judge",
         "audit",
-        "crops",
     ]
 
 

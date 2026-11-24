@@ -391,6 +391,7 @@ def _loc_result(number: str, title: str, year: str, collection: str = "") -> dic
 def test_the_loc_s_collections_are_read_at_home(tmp_path: Path) -> None:
     """www.loc.gov blocked the home address two mornings running."""
     from frame_server.library import loc_index
+    from frame_server.library.hosts import Resting
     from frame_server.library.loc import LibraryOfCongress
     from frame_server.library.museums import Access, Discovery
 
@@ -427,10 +428,10 @@ def test_the_loc_s_collections_are_read_at_home(tmp_path: Path) -> None:
     # A draw from the background: the kept collections only.
     total, items = loc.discover(Discovery(kind="photograph", year_to=1900), limit=10, page=2)
     assert [i.source_id for i in items] == ["2008678001"]
-    # Words over all its photographs: the LoC's own search, for the app only.
-    with pytest.raises(httpx.TransportError):
+    # Words over all its photographs: never asked since it was retired
+    # (2026-11-24), for the app neither.
+    with pytest.raises(Resting):
+        loc.search("Dorothea Lange")
+    with urgently(), pytest.raises(Resting):
         loc.search("Dorothea Lange")
     assert asked == []
-    with urgently(), pytest.raises(httpx.HTTPStatusError):
-        loc.search("Dorothea Lange")
-    assert len(asked) == 1

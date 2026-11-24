@@ -737,18 +737,12 @@ struct ItemDetailView: View {
             && item.sharper?.isRestored != true
     }
 
-    /// The card opened: a work not looked at yet is looked at (a frame, an
-    /// easel, a board around it), and cut down to the work; the card takes
-    /// the cut picture as it comes. A museum's work is looked at here, by
-    /// the phone's own model (`MuseumCrop`, Mateusz 2026-11-20), when the
-    /// server says so; his own photographs by the server.
+    /// The card opened: a museum's work not looked at yet is looked at (a
+    /// frame, an easel, a board around it) by the phone's own model
+    /// (`MuseumCrop`, Mateusz 2026-11-20) when the server says so, and cut
+    /// down to the work; the card takes the cut picture as it comes.
     private func checkCut() async {
         guard let id = described, id == itemID, let item, item.kind == .artwork, Self.canCut(item) else { return }
-        if let view = try? await model.backend.checkCut(itemID: id, wait: 60),
-           !Task.isCancelled, id == itemID, view.changed {
-            cutChanged(view.item)
-            return
-        }
         guard model.isOwner, !item.isOwnWork, !Task.isCancelled,
               let found = try? await MuseumCrop.look(itemID: id, backend: model.backend)
         else { return }

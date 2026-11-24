@@ -1,7 +1,7 @@
 """Works of the owner's own in the catalogue ("Dodaj własne dzieło",
 Mateusz 2026-11-15): a photograph taken with the phone (or from its
 library), the work found in it and cut out of its frame and mount as a
-museum's photograph is (:meth:`..ai.crops.Crops.home_corners`), a few lines
+museum's photograph is (by the phone's model, :meth:`OwnWorks.phone_found`), a few lines
 read off the picture to start the description with (:meth:`OwnWorks.hints`),
 and what the owner wrote: author, date, technique, size, where it hangs,
 where it came from, a note.
@@ -13,6 +13,7 @@ picture goes to Google for "Szukaj zdjęciem" too, Mateusz 2026-11-15)."""
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import io
 import json
@@ -26,13 +27,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import anthropic
 from PIL import Image
 from pydantic import BaseModel, Field
 
 from . import build_version
-from .ai.client import SONNET, AiUnavailable, request
-from .ai.crops import _block
+from .ai.client import SONNET, request
 from .imaging.cut import Quad, valid, warp
 from .imaging.layout import load_image
 from .library import Item, ItemKind
@@ -52,6 +51,14 @@ if TYPE_CHECKING:
     from .sizes import Sizes
 
 log = logging.getLogger(__name__)
+
+
+def _block(img: Image.Image) -> dict[str, Any]:
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=88)
+    data = base64.standard_b64encode(out.getvalue()).decode("ascii")
+    return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": data}}
+
 
 #: How long a photograph waits for the owner to add its work.
 KEEP_SECONDS = 24 * 3600
@@ -258,8 +265,8 @@ class Incoming(BaseModel):
     surround_kind: str = ""
     #: Whether Opus answered (``surround`` asked).
     looked: bool = False
-    #: The phone is to find the work in it itself (``AiConfig.crops_on_phone``):
-    #: Opus was not asked, its model and Vision are (``MuseumCrop``).
+    #: The phone is to find the work in it itself: its model and Vision
+    #: (``MuseumCrop``; Opus until 2026-11-23).
     phone_cuts: bool = False
     #: The phone may make the scan of this photograph itself and send it
     #: (:meth:`OwnWorks.merged_by_phone`): not where a chart set its
@@ -692,8 +699,7 @@ class OwnWorks:
     ) -> Merged:
         """The first photograph without the reflections its side ones do
         not share, kept in its place. Within the work's ``corners`` (the
-        phone's; else Opus is asked, and :meth:`find` answers the same
-        after) the veil over the glass and what is mirrored in it go
+        phone's; else what :meth:`find` kept) the veil over the glass and what is mirrored in it go
         (:mod:`.imaging.reflections`); with no corners only a lamp's glare
         is replaced (:mod:`.imaging.glare`). Unchanged when no side one
         could be laid over it. The photographs as they came are kept two
@@ -703,10 +709,8 @@ class OwnWorks:
         first photograph was taken (Mateusz 2026-11-16: "kadrowanie -
         rozumiem że teraz robi je model? czy to potrzebne skoro mamy już
         dane z iPhone?"). It is the largest rectangle there, most often
-        the frame's outer edge, so Opus is still asked for the work within
-        the frame and the mount; where Opus has no answer (no key, or it
-        found none: three of his first five scans) the outline is where
-        the reflections are taken out.
+        the frame's outer edge; where no corners are known the outline is
+        where the reflections are taken out.
 
         ``choice``: the phone shows him the scan and the first photograph
         to choose between. The scan is then made also of photographs that
@@ -727,13 +731,8 @@ class OwnWorks:
             return seen
         quad = valid(corners) if corners is not None else None
         if quad is None:
-            try:
-                found = self.find(token)
-            except (AiUnavailable, anthropic.APIError) as err:
-                log.info("own photograph %s: the work not looked for: %s", token, err)
-                found = None
-            if found is not None:
-                quad, seen.shape = found.corners, found.shape
+            found = self.find(token)
+            quad, seen.shape = found.corners, found.shape
             if quad is None and outline is not None:
                 quad = valid(outline)
         seen.corners = quad
@@ -1226,10 +1225,10 @@ class OwnWorks:
         return (folder / name).stat().st_size
 
     def find(self, token: str) -> Incoming:
-        """The work found in the photograph by Opus (``corners`` None when
-        nothing was, or no key); with ``crops_on_phone`` by none here
-        (``phone_cuts``: the phone finds it). Asked once of a photograph: :meth:`merge`
-        asks first, and the phone after it."""
+        """What is known of the photograph before the phone finds the work
+        in it (``phone_cuts``; Opus found it here until 2026-11-23, and its
+        answers kept from then are read as they were). Read once of a
+        photograph: :meth:`merge` asks first, and the phone after it."""
         path = self.path(token)
         known = path.with_suffix(FOUND)
         try:
@@ -1247,36 +1246,10 @@ class OwnWorks:
                 tables=chart is not None,
                 straight=LensBend.of(self._waiting_bend(token)),
             )
-            size = img.size
-            if self.crops.on_phone():
-                # The phone finds the work itself, with no Claude (Mateusz
-                # 2026-11-21 20:44 UTC: „kadrowanie moich własnych dzieł na
-                # pewno chce robić na iPhone, bez Opus”): nothing is asked
-                # here, nor kept, so it is asked should the switch go off.
-                seen.phone_cuts = True
-                return seen
-            img.draft("RGB", (LOOK_SIDE, LOOK_SIDE))
-            img.load()
-            found = self.crops.home_corners(img)
-        if found is not None:
-            seen.looked = True
-            seen.surround = found.get("surround")
-            seen.surround_kind = str(found.get("surround_kind") or "") if seen.surround else ""
-            seen.shape = str(found.get("shape") or "")
-            if seen.shape == "rectangle" or not seen.shape:
-                seen.corners = found["work"] or found["plate"]
-            done = self._straightened(token)
-            if done is not None:
-                # Looked for in the scan the phone had straightened
-                # already: corners are said as on the photograph taken.
-                from .imaging import lens
-
-                if seen.corners:
-                    seen.corners = lens.bent(seen.corners, *size, done)
-                if seen.surround:
-                    seen.surround = lens.bent(seen.surround, *size, done)
-        with contextlib.suppress(OSError):
-            known.write_text(seen.model_dump_json())
+        # The phone finds the work itself, with no Claude (Mateusz
+        # 2026-11-21 20:44 UTC: „kadrowanie moich własnych dzieł na pewno
+        # chce robić na iPhone, bez Opus”): nothing is asked here, nor kept.
+        seen.phone_cuts = True
         return seen
 
     def phone_found(

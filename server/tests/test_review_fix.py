@@ -9,9 +9,9 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 from test_ai import FakeAnthropic, _message, fake  # noqa: F401  (fixture)
-from test_crops import CORNERS, _work
+from test_crops import _work
 
-from frame_server.ai.client import HAIKU, OPUS
+from frame_server.ai.client import HAIKU
 from frame_server.library.models import Note
 from frame_server.service import FrameService
 
@@ -142,40 +142,6 @@ def test_a_date_mended_gives_the_year_and_the_last_problem_leaves_the_list(
         assert after["findings"] == []
     item = service.library.get("mnk:1")
     assert item is not None and item.date_text == "ok. 1897" and item.year == 1897
-
-
-def test_przytnij_asks_opus_told_what_the_audit_saw_and_keeps_the_owners_cut(
-    service: FrameService,
-    fake: FakeAnthropic,  # noqa: F811
-) -> None:
-    _work(service, "mnk:1", title="Geneigter Mädchenkopf", pooled=True)
-    _found(service)
-    _answers(fake, CORNERS)
-    with _client(service) as client:
-        review = client.post("/api/ai/review/mnk:1/cut").json()
-        (left,) = review["findings"][0]["problems"]
-        assert left["field"] == "title"
-    (asked,) = fake.asked
-    assert asked["model"] == OPUS
-    assert "linijka w dolnej części" in str(asked["messages"])
-    item = service.library.get("mnk:1")
-    assert item is not None and item.cut is not None and item.cut.by == "owner"
-    assert item.cut_shown() is not None
-    assert not service.crops.now(item)  # never cut again by itself
-
-
-def test_przytnij_says_so_when_nothing_is_found(
-    service: FrameService,
-    fake: FakeAnthropic,  # noqa: F811
-) -> None:
-    _work(service, "mnk:1", pooled=True)
-    _found(service)
-    _answers(fake, {**CORNERS, "layers": [], "work": None})
-    with _client(service) as client:
-        answer = client.post("/api/ai/review/mnk:1/cut")
-        assert answer.status_code == 422
-        assert "Popraw kadr" in answer.json()["detail"]
-    assert len(service.audit.written()[0]["problems"]) == 2  # still waits
 
 
 def test_ukryj_and_a_problem_done_elsewhere(

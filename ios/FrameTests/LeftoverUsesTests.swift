@@ -98,12 +98,12 @@ final class LeftoverUsesTests: XCTestCase {
     func testTheDemoMovesAndSwitchesTheUses() async throws {
         let demo = DemoBackend()
         var update = AiSettingsUpdate()
-        update.leftoverOrder = ["studies", "refresh", "crops", "text_review", "keywords", "pl_text", "audit"]
-        update.leftoverOff = ["crops"]
+        update.leftoverOrder = ["studies", "refresh", "text_review", "keywords", "pl_text", "audit"]
+        update.leftoverOff = ["keywords"]
         let got = try await demo.saveAiSettings(update)
         let uses = try XCTUnwrap(got.leftoverState?.uses)
         XCTAssertEqual(uses.first?.key, "studies")
-        XCTAssertEqual(uses.first { $0.key == "crops" }?.on, false)
+        XCTAssertEqual(uses.first { $0.key == "keywords" }?.on, false)
         XCTAssertEqual(uses.first { $0.key == "audit" }?.on, true)
     }
 

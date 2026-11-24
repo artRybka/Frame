@@ -265,8 +265,6 @@ struct OnDemandSheet: View {
             return "Polski tytuł i opis dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. " + common
         case "descriptions":
             return "Słowa kluczowe i polskie opisy dzieł katalogu, które ich jeszcze nie mają, najpierw Ulubione i playlisty. " + common
-        case "crops":
-            return "Najpierw dzieła, przy których Haiku już coś zobaczył i które czekają na Opusa, potem kolejne (ocena Haiku, a gdy trzeba, Opus). " + common
         default:
             return common
         }

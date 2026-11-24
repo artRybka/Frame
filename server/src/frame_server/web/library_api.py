@@ -838,14 +838,6 @@ async def sharpen_item(
     )
 
 
-class CutView(BaseModel):
-    """The work after its card asked whether its photograph is cut down to
-    the work (``ai.crops``): ``changed`` when it was just now."""
-
-    changed: bool
-    item: Item
-
-
 class CutUpdate(BaseModel):
     """The owner's cut ("Popraw kadr"): the corners of the work as shown
     (top-left, top-right, bottom-right, bottom-left, as fractions of the
@@ -870,27 +862,6 @@ async def _kept_work(svc: FrameService, item_id: str) -> Item:
     if not svc.crops.wanted(stored) and not own:
         raise HTTPException(422, "only a museum work's photograph is cut")
     return stored
-
-
-@router.post("/library/items/{item_id:item}/cut/check", response_model=CutView)
-async def check_cut(
-    item_id: str, svc: Svc, wait: Annotated[float, Query(ge=0, le=90)] = 0
-) -> CutView:
-    """The card opened: a work not looked at yet is looked at in the
-    background, and cut down to the work when something is around it.
-    ``wait``: seconds to wait for it."""
-    item = await _work(svc, item_id)
-    stored = svc.library.get(item.id)
-    if stored is None:  # a museum work only looked at: pooled (Kauffmann, MNW, 2026-11-14)
-        if not svc.crops.wanted(item):
-            return CutView(changed=False, item=item)
-        stored = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
-    future = svc.crops.soon(stored)
-    if wait:
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
-    changed = future.done() and future.exception() is None and bool(future.result())
-    return CutView(changed=changed, item=svc.library.get(item.id) or stored)
 
 
 @router.get("/library/items/{item_id:item}/framed")
@@ -952,8 +923,7 @@ async def item_full(
 @router.put("/library/items/{item_id:item}/cut", response_model=Item)
 async def put_cut(item_id: str, update: CutUpdate, svc: Svc) -> Item:
     """ "Popraw kadr": the owner's corners, or the print with its paper or
-    without ("bez marginesu": Opus finds the print's edge when it is not
-    known yet)."""
+    without ("bez marginesu", where its plate is known)."""
     stored = await _kept_work(svc, item_id)
     corners = None
     if update.corners is not None:
