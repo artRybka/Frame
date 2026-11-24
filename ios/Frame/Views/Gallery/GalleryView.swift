@@ -74,9 +74,11 @@ struct GalleryView: View {
     private var pages: some View {
         ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
-                ForEach(works) { work in
+                ForEach(Array(works.enumerated()), id: \.element.id) { index, work in
                     GalleryPage(
                         work: work, current: work.id == shown?.id, whole: whole,
+                        above: index > 0 ? works[index - 1] : nil,
+                        below: index + 1 < works.count ? works[index + 1] : nil,
                         flip: { flip(work) }, open: { open(work) }
                     )
                         .containerRelativeFrame([.horizontal, .vertical])
@@ -250,6 +252,11 @@ private struct GalleryPage: View {
     var current = false
     /// Tapped: drawn back to the whole of it, the caption right under it.
     var whole = false
+    /// The works before and after it, whose grounds its own flows into at
+    /// its top and foot (Mateusz 2026-11-24: "na łączeniu tła przy
+    /// przewijaniu widać ostrą krawędź. Zróbmy tam płynne przejście").
+    var above: RemoteItem?
+    var below: RemoteItem?
     /// The title tapped: the work whole, or cut again.
     var flip: () -> Void = {}
     /// "Karta dzieła" under the whole work's caption.
@@ -305,7 +312,7 @@ private struct GalleryPage: View {
                     .clipped()
                     .blur(radius: whole ? Self.melt : 0)
                     .opacity(whole ? 0 : 1)
-                    .animation(whole ? .easeIn(duration: 0.26) : .easeOut(duration: 0.3).delay(0.08), value: whole)
+                    .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: 0.2).delay(0.05), value: whole)
                     .allowsHitTesting(!whole)
                     ZStack {
                         if let glow {
@@ -317,7 +324,7 @@ private struct GalleryPage: View {
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .opacity(whole ? 1 : 0)
-                    .animation(whole ? .easeOut(duration: 0.3) : .easeIn(duration: 0.22), value: whole)
+                    .animation(whole ? .easeOut(duration: 0.2) : .easeIn(duration: 0.14), value: whole)
                     ZStack {
                         ZStack {
                             if let thumb { picture(thumb, size: place.size, offset: place.offset, rounded: true) }
@@ -330,14 +337,20 @@ private struct GalleryPage: View {
                     .frame(width: geo.size.width, height: geo.size.height)
                     .scaleEffect(whole ? 1 : 0.96, anchor: UnitPoint(x: 0.5, y: 0.5 + place.offset.height / max(geo.size.height, 1)))
                     .opacity(whole ? 1 : 0)
-                    .animation(whole ? .easeOut(duration: 0.34).delay(0.12) : .easeIn(duration: 0.18), value: whole)
+                    .animation(whole ? .easeOut(duration: 0.22).delay(0.07) : .easeIn(duration: 0.12), value: whole)
                     .allowsHitTesting(whole)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
             .task(id: current && geo.size.width > 0) { await drawBack(geo.size) }
         }
-        .background(whole ? behind : placeholder)
+        .background {
+            ZStack {
+                placeholder
+                ground.opacity(whole ? 1 : 0)
+            }
+            .ignoresSafeArea()
+        }
         .task(id: work.id) { await load() }
         .task(id: current) { if current { await loadPolish() } }
         // Made while the work is shown, before any tap: ready for it.
@@ -371,10 +384,33 @@ private struct GalleryPage: View {
     /// In light mode a paper in the work's colour, light and nearly grey
     /// (Mateusz 2026-11-23 21:43: "Podkład jasny w trybie jasnym i ciemny w
     /// trybie ciemnym").
-    private var behind: Color {
-        let hex = work.item.colors.first?.hex ?? ""
+    private var behind: Color { behind(work) }
+
+    private func behind(_ other: RemoteItem) -> Color {
+        let hex = other.item.colors.first?.hex ?? ""
         return Self.toned(UIColor(Color(hexString: hex) ?? .black), light: scheme == .light)
     }
+
+    /// Its own ground, meeting each neighbour's halfway at the seam: both
+    /// pages are the same colour there, so scrolling shows no edge.
+    private var ground: LinearGradient {
+        let own = behind
+        let top = above.map { own.mix(with: behind($0), by: 0.5) } ?? own
+        let foot = below.map { own.mix(with: behind($0), by: 0.5) } ?? own
+        return LinearGradient(
+            stops: [
+                .init(color: top, location: 0),
+                .init(color: own, location: Self.seam),
+                .init(color: own, location: 1 - Self.seam),
+                .init(color: foot, location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+    }
+
+    /// How much of the page's height, top and foot, its ground takes to
+    /// turn into the halfway colour.
+    static let seam: CGFloat = 0.3
 
     static func toned(_ color: UIColor, light: Bool = false) -> Color {
         var hue: CGFloat = 0, saturation: CGFloat = 0, brightness: CGFloat = 0, alpha: CGFloat = 0
@@ -488,9 +524,10 @@ private struct GalleryPage: View {
         withAnimation(.easeInOut(duration: Self.drawBack)) { pan = to }
     }
 
-    /// To the whole work and back, for what has no timing of its own
+    /// To the whole work and back, for what has no timing of its own; all
+    /// of it quicker (Mateusz 2026-11-24: "Przejście … szybsze")
     /// (the background, the tab bar).
-    static let toWhole = Animation.easeInOut(duration: 0.4)
+    static let toWhole = Animation.easeInOut(duration: 0.25)
 
     /// How far a work drifts sideways while it draws back (points), at most.
     static let drift: CGFloat = 22
@@ -728,15 +765,13 @@ private struct GalleryCaption: View {
         VStack(alignment: .leading, spacing: 18) {
             Button(action: flip) { words }
                 .buttonStyle(.plain)
-            if whole {
-                // As the app's black buttons (21:43: "jak czarne guziki w
-                // aplikacji").
-                Button(action: open) {
-                    Label("Karta dzieła".bound, systemImage: "text.below.photo")
-                }
-                .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
-                .transition(.opacity)
+            // As the app's black buttons (21:43: "jak czarne guziki w
+            // aplikacji"), on the cut work too (2026-11-24: "Na pełnym
+            // ekranie także dodajmy guzik „karta dzieła”").
+            Button(action: open) {
+                Label("Karta dzieła".bound, systemImage: "text.below.photo")
             }
+            .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.gutter + 2)

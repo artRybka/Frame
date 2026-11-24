@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.357
+
+- Galeria: płynne przejście tła między całymi dziełami, guzik
+  „Karta dzieła” także na pełnym ekranie, szybsze przejście do całego dzieła.
+
 ## 1.145.356
 
 - Galeria: widok całego dzieła zostaje przy przewijaniu do kolejnych,
