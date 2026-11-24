@@ -216,7 +216,7 @@ struct GalleryGrid: View {
 
     private func card(_ work: RemoteItem) -> some View {
         Button { coast.stop(); pick(work) } label: {
-            GridCard(work: work, stock: stock, frames: frames)
+            GalleryGridCard(work: work, stock: stock, frames: frames)
         }
         .buttonStyle(.plain)
     }
@@ -286,7 +286,7 @@ private struct GridPicture: View {
 }
 
 /// A whole work as in Szukaj: its picture, its title and artist.
-private struct GridCard: View {
+private struct GalleryGridCard: View {
     let work: RemoteItem
     let stock: GridStock
     let frames: GridFrames
@@ -529,7 +529,7 @@ struct SideDrag: UIGestureRecognizerRepresentable {
 }
 
 /// A hold, beside the scroll: a finger that moves is a scroll, not a hold.
-struct Hold: UIGestureRecognizerRepresentable {
+struct PressHold: UIGestureRecognizerRepresentable {
     let action: () -> Void
 
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
