@@ -1,11 +1,12 @@
 import SwiftUI
 
 /// How a work's card comes in from Galeria, with no slide of its own
-/// (Mateusz 2026-11-24 07:36): from the whole work, the work moves up to its
-/// place on the card and the rest of the card appears ("dzieło podsuwa się
-/// do góry na miejsce w karcie dzieła i pojawia się reszta treści"); from
-/// the cut one, the card's work surfaces as the whole one does ("jak z
-/// pełnego ekranu do całe dzieło").
+/// (Mateusz 2026-11-24 07:36): from the whole work, held there, the work
+/// moves up to its place on the card and the rest of the card rides up
+/// from under it ("dzieło podsuwa się do góry na miejsce w karcie dzieła i
+/// pojawia się reszta treści"; 18:51: "pociągnięcie w górę otwiera płynnie
+/// kartę dzieła"). Where the work's place there is not known, the card's
+/// work surfaces instead.
 enum CardArrival {
     struct Pending {
         /// Where the whole work lay on the screen; nil from the cut one.
@@ -27,7 +28,7 @@ enum CardArrival {
     static let surface = Animation.easeOut(duration: 0.22)
     /// The rest of the card, once the work is on its way.
     static func rest(_ pending: Pending) -> Animation {
-        .easeOut(duration: 0.3).delay(pending.from == nil ? 0.08 : 0.2)
+        pending.from == nil ? .easeOut(duration: 0.3).delay(0.08) : .easeOut(duration: 0.22)
     }
     /// Galeria's ground giving way to the paper.
     static let ground = Animation.easeInOut(duration: 0.4)

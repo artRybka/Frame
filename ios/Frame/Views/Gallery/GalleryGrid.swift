@@ -1,248 +1,195 @@
 import SwiftUI
 import UIKit
 
-/// Galeria drawn back to the works coming, when they are swiped past
-/// faster than they can be looked at (Mateusz 2026-11-24 08:52: "A, ale
-/// bez tekstu u góry … na pełnym ekranie [siatka z kadrami], na całym
-/// dziele raczej jak siatka przy szukaj"): the cut works as small screens,
-/// the whole ones as Szukaj's cards. A tap goes back to that work. Above
-/// the work shown, the works seen before it (14:26: "fajnie gdyby siatkę
-/// dało się 'cofnąć' - pokazać miniatury poprzednio pokazywanych dzieł").
+/// Galeria's other view (Mateusz 2026-11-24 18:31: "przejście w siatkę z
+/// pełnego ekranu niech będzie siatką miniatur"): the works as small
+/// screens, three to a row from edge to edge, the works seen above the
+/// one shown and the works coming below it. A tap goes into that work.
+///
+/// Every tile lies where `GridMetrics` says, to the pixel, and only the
+/// rows about the screen are there at all: the way between a page and its
+/// tile is reckoned, not measured (10:48: "siatka nie może skakać i
+/// przeskakiwać - musi być ułożona"). It is laid out for some rows above
+/// the screen's top too (`GridMetrics.rowsAbove`).
 struct GalleryGrid: View {
-    /// The works seen before, oldest first, above the line.
-    let before: [RemoteItem]
-    /// The works from the line on: the work shown among the first.
+    /// Empty cells before the first work: the work shown lies in the
+    /// middle column.
+    let lead: Int
     let works: [RemoteItem]
-    /// Whole works (Szukaj's cards) or cut ones (tiles).
-    let whole: Bool
-    /// Where each work lies on the screen, for the way back into it. A box,
-    /// not state: kept while scrolling without drawing anything again.
-    let frames: GridFrames
+    let metrics: GridMetrics
+    /// How far it is scrolled when it comes.
+    let start: CGFloat
     /// The thumbnails fetched ahead, held here and not only in the loader's
     /// memory, where the full pictures pushed them out (14:06: "Zapas
     /// miniatur nie działa na siatce pełnego ekranu").
     let stock: GridStock
-    /// A tile's height in its widths: the screen's (14:26: "dzieła powinny
-    /// być w proporcji ekranu i lekko przybliżone").
-    let tall: CGFloat
-    /// Set once the grid lies where it is to be: it flows from then on.
-    let going: Bool
-    /// How fast the works were swiped when the grid came (points a
-    /// second; less than 0 back up, into the works seen before): it flows
-    /// on as fast and slows as a flicked list does (14:06: "Prędkość
-    /// powinna być zgodna z ostatnim machnięciem").
-    let speed: CGFloat
+    let track: GridTrack
+    /// Fingers spread on a tile: no scrolling meanwhile.
+    let locked: Bool
     let pick: (RemoteItem) -> Void
     /// Asked for when the grid comes near its end: well ahead (10:48:
-    /// "Musi to robić ze zdecydowanie większym zapasem"; 14:06: "Powinien
-    /// być też większy - teraz ściana szybko się kończy").
+    /// "Musi to robić ze zdecydowanie większym zapasem").
     let more: () -> Void
 
     @State private var scroll = ScrollPosition(edge: .top)
-    @State private var coast = Coast()
+    /// The row at the screen's top.
+    @State private var row: Int
+    /// Scrolled to `start`: shown from then on.
+    @State private var set = false
 
-    static let columns = 3
-    static let gap: CGFloat = 6
-    static let top: CGFloat = 8
-    /// The whole works' cards: two columns, this far apart (`MasonryGrid`).
-    static let cardGap: CGFloat = 16
-    /// How near the end more works are asked for (tiles).
+    /// Places past the last work come, while the next are on their way.
+    static let waiting = 24
+    /// How near the end more works are asked for.
     static let ahead = 80
-    /// The line between the works seen and those coming.
-    static let line = "gallery.grid.line"
+    /// Room under the last row, for the tab bar.
+    static let foot: CGFloat = 140
+
+    init(
+        lead: Int, works: [RemoteItem], metrics: GridMetrics, start: CGFloat, stock: GridStock, track: GridTrack,
+        locked: Bool, pick: @escaping (RemoteItem) -> Void, more: @escaping () -> Void
+    ) {
+        self.lead = lead
+        self.works = works
+        self.metrics = metrics
+        self.start = start
+        self.stock = stock
+        self.track = track
+        self.locked = locked
+        self.pick = pick
+        self.more = more
+        _row = State(initialValue: Int(max(start, 0) / max(metrics.pitch, 1)))
+    }
+
+    private struct Cell: Identifiable {
+        let id: String
+        let n: Int
+        let work: RemoteItem?
+    }
+
+    private var cells: Int { lead + works.count + Self.waiting }
+
+    /// The cells of the rows about the screen.
+    private var shown: [Cell] {
+        let columns = GridMetrics.columns
+        let below = Int((metrics.area.height / max(metrics.pitch, 1)).rounded(.up)) + 1
+        let first = max(row - GridMetrics.rowsAbove - 1, 0) * columns
+        let last = min((row + below + 1) * columns, cells)
+        guard first < last else { return [] }
+        return (first ..< last).map { n in
+            let at = n - lead
+            if at >= 0, at < works.count { return Cell(id: works[at].id, n: n, work: works[at]) }
+            return Cell(id: at < 0 ? "lead.\(n)" : "waiting.\(at - works.count)", n: n, work: nil)
+        }
+    }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    if !before.isEmpty {
-                        if whole { seenCards } else { tiles(before, ahead: false) }
-                    }
-                    Color.clear
-                        .frame(height: before.isEmpty ? 0 : (whole ? Self.cardGap : Self.gap))
-                        .id(Self.line)
-                    if whole {
-                        cards
-                        waitingCards
-                    } else {
-                        tiles(works, ahead: true)
-                    }
-                }
-                .padding(.top, Self.top)
-                .padding(.bottom, 24)
+        let above = metrics.above
+        let rows = (cells + GridMetrics.columns - 1) / GridMetrics.columns
+        ScrollView {
+            ZStack(alignment: .topLeading) {
+                ForEach(shown) { cell in tile(cell) }
             }
-            .scrollPosition($scroll)
-            .scrollIndicators(.hidden)
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
-                frames.offset = y
-            }
-            .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height - $0.containerSize.height } action: { _, most in
-                frames.most = max(most, 0)
-            }
-            // A finger on the grid: the flow from the swipe stops.
-            .onScrollPhaseChange { _, phase in
-                if phase == .interacting { coast.stop() }
-            }
-            .onAppear {
-                var quiet = Transaction(animation: nil)
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { proxy.scrollTo(Self.line, anchor: .top) }
-            }
-            .onChange(of: going) { _, now in if now { flowOn() } }
-            .onDisappear { coast.stop() }
+            .frame(
+                width: metrics.area.width, height: above + CGFloat(rows) * metrics.pitch + Self.foot,
+                alignment: .topLeading
+            )
         }
+        .scrollPosition($scroll)
+        .scrollIndicators(.hidden)
+        .scrollDisabled(locked)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
+            track.offset = y
+            if !set, abs(y - start) < 1 {
+                set = true
+                track.ready = true
+            }
+        }
+        .onScrollGeometryChange(for: Int.self) { Int(max($0.contentOffset.y, 0) / max(metrics.pitch, 1)) } action: { _, now in
+            row = now
+            if (now + 6) * GridMetrics.columns >= lead + works.count - Self.ahead { more() }
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height - $0.containerSize.height } action: { _, most in
+            track.most = max(most, 0)
+        }
+        // A finger on the grid: the flow from the swipe stops.
+        .onScrollPhaseChange { _, phase in
+            if phase == .interacting { track.touched?() }
+        }
+        .onAppear {
+            track.scroll = { y in scroll.scrollTo(y: y) }
+            var quiet = Transaction(animation: nil)
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { scroll.scrollTo(y: start) }
+            if start < 1 {
+                set = true
+                track.ready = true
+            }
+            if works.count < Self.ahead { more() }
+        }
+        .onDisappear { track.scroll = nil }
+        .task {
+            // Shown whatever comes of the scroll to `start`.
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !set else { return }
+            GalleryLog.note("grid never reached \(Int(start)), at \(Int(track.offset))")
+            set = true
+            track.ready = true
+        }
+        .opacity(set ? 1 : 0)
+        // Laid out for the rows above the screen's top as well.
+        .padding(.top, -above)
     }
 
-    /// The flick's slowing: a flicked list's (`UIScrollView`'s usual), so
-    /// far as the speed carries it, at least a little.
-    static let slowing: CGFloat = 0.5
-    static let least: CGFloat = 700
-    static let most: CGFloat = 7000
-
-    private func flowOn() {
-        let way: CGFloat = speed < 0 ? -1 : 1
-        let speed = min(max(abs(speed), Self.least), Self.most) * way
-        let slowing = Self.slowing
-        let frames = frames
-        let from = frames.offset
-        coast.run { seconds in
-            let t = CGFloat(seconds)
-            let y = from + speed * slowing * (1 - exp(-t / slowing))
-            scroll.scrollTo(y: min(max(y, 0), frames.most))
-            return t < slowing * 6
-        }
-    }
-
-    /// Small screens, each the screen's shape and cut as the page cuts it,
-    /// a little closer (14:26): nothing in them moves once they are laid
-    /// out (10:48: "siatka nie może skakać i przeskakiwać - musi być
-    /// ułożona"). No outline round the work shown (14:26).
-    private func tiles(_ some: [RemoteItem], ahead: Bool) -> some View {
-        LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: Self.gap), count: Self.columns),
-            spacing: Self.gap
-        ) {
-            ForEach(Array(some.enumerated()), id: \.element.id) { index, work in
-                Button { coast.stop(); pick(work) } label: {
-                    Color.clear
-                        .aspectRatio(1 / tall, contentMode: .fit)
-                        .overlay { GridPicture(work: work, stock: stock, screen: true) }
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+    /// A small screen, cut as the page cuts it; past the last work, a
+    /// place in the last works' colours, not the black (14:32:
+    /// "placeholdery w kolorze kolejnych miniatur").
+    @ViewBuilder
+    private func tile(_ cell: Cell) -> some View {
+        let rect = metrics.cell(cell.n)
+        Group {
+            if let work = cell.work {
+                Button {
+                    track.touched?()
+                    pick(work)
+                } label: {
+                    GridPicture(work: work, stock: stock)
+                        .frame(width: rect.width, height: rect.height)
+                        .clipped()
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .modifier(Placed(id: work.id, frames: frames))
-                .onAppear { if ahead, index >= some.count - Self.ahead { more() } }
-            }
-            if ahead {
-                ForEach(0 ..< Self.waiting, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(waitingColour(index).gradient)
-                        .aspectRatio(1 / tall, contentMode: .fit)
-                        .onAppear { if index == 0 { more() } }
-                }
+                .accessibilityLabel(work.item.displayTitle)
+            } else if cell.n >= lead {
+                Rectangle().fill(waitingColour(cell.n).gradient)
+            } else {
+                Color.clear
             }
         }
-        .padding(.horizontal, Theme.gutter)
-    }
-
-    /// Past the last work come, while the next are on their way: places in
-    /// the last works' colours, not the black (14:32: "placeholdery w
-    /// kolorze kolejnych miniatur - to będzie lepiej wyglądać niż czarna
-    /// pustka").
-    static let waiting = 24
-
-    private var waitingColours: [Color] {
-        let colours = works.suffix(12).flatMap { $0.item.colors.prefix(2) }.compactMap { Color(hexString: $0.hex) }
-        return colours.isEmpty ? [Theme.mat] : colours
+        .frame(width: rect.width, height: rect.height)
+        .offset(x: rect.minX, y: metrics.above + rect.minY)
     }
 
     private func waitingColour(_ index: Int) -> Color {
-        let colours = waitingColours
-        return colours[(index * 7) % colours.count].opacity(whole ? 0.35 : 0.55)
-    }
-
-    /// The same for the cards: two columns of places, a little uneven.
-    private var waitingCards: some View {
-        HStack(alignment: .top, spacing: Self.cardGap) {
-            ForEach(0 ..< 2, id: \.self) { side in
-                VStack(spacing: Self.cardGap) {
-                    ForEach(0 ..< 4, id: \.self) { row in
-                        let index = row * 2 + side
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(waitingColour(index).gradient)
-                            .aspectRatio([0.8, 1.2, 0.7, 1][(index + side) % 4], contentMode: .fit)
-                            .onAppear { if index == 0 { more() } }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, Theme.gutter)
-        .padding(.top, Self.cardGap)
-    }
-
-    private var cards: some View {
-        let ids = Dictionary(works.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let byID = Dictionary(works.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return MasonryGrid(items: works.map(\.summary), spacing: Self.cardGap) { summary in
-            if let work = byID[summary.id] {
-                card(work)
-                    .onAppear { if (ids[summary.id] ?? 0) >= works.count - Self.ahead { more() } }
-            }
-        }
-        .padding(.horizontal, Theme.gutter)
-    }
-
-    /// The whole works seen before: laid out at once, not lazily, so the
-    /// line under them lies where it is to be from the first frame and
-    /// nothing moves above it as they come into view.
-    private var seenCards: some View {
-        var columns: [[RemoteItem]] = [[], []]
-        var heights: [CGFloat] = [0, 0]
-        for work in before {
-            let side = heights[0] <= heights[1] ? 0 : 1
-            columns[side].append(work)
-            heights[side] += 1 / Self.cardAspect(work) + 0.3
-        }
-        return HStack(alignment: .top, spacing: Self.cardGap) {
-            ForEach(0 ..< 2, id: \.self) { side in
-                VStack(spacing: Self.cardGap) {
-                    ForEach(columns[side], id: \.id) { card($0) }
-                }
-                .frame(maxWidth: .infinity, alignment: .top)
-            }
-        }
-        .padding(.horizontal, Theme.gutter)
-    }
-
-    private func card(_ work: RemoteItem) -> some View {
-        Button { coast.stop(); pick(work) } label: {
-            GalleryGridCard(work: work, stock: stock, frames: frames)
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// A whole work's card's picture shape, as `MasonryGrid` gives it.
-    static func cardAspect(_ work: RemoteItem) -> CGFloat {
-        CGFloat(min(max(work.summary.aspectRatio, 0.45), 2.2))
+        let colours = works.suffix(12).flatMap { $0.item.colors.prefix(2) }.compactMap { Color(hexString: $0.hex) }
+        guard !colours.isEmpty else { return Theme.mat.opacity(0.55) }
+        return colours[(index * 7) % colours.count].opacity(0.55)
     }
 }
 
 /// A work's thumbnail in the grid: from the stock at once when it was
-/// fetched ahead, else fetched now and kept there. As a small screen, cut
-/// about the point its page is cut about and a little closer, as the page
-/// starts (`Fill`, `GalleryView.closer`).
+/// fetched ahead, else fetched now and kept there. Cut about the point its
+/// page is cut about and a little closer, as the page starts (`Fill`,
+/// `GalleryView.closer`): the tile is its page, small.
 private struct GridPicture: View {
     @Environment(AppModel.self) private var model
     let work: RemoteItem
     let stock: GridStock
-    var screen = false
     @State private var image: UIImage?
     @State private var focus: UnitPoint
 
-    init(work: RemoteItem, stock: GridStock, screen: Bool = false) {
+    init(work: RemoteItem, stock: GridStock) {
         self.work = work
         self.stock = stock
-        self.screen = screen
         _image = State(initialValue: stock.images[work.id])
         _focus = State(initialValue: stock.focus[work.id] ?? .center)
     }
@@ -251,74 +198,51 @@ private struct GridPicture: View {
         ZStack {
             Rectangle().fill(work.summary.placeholderColor.gradient)
             if let image {
-                Group {
-                    if screen {
-                        GeometryReader { geo in
-                            let layout = Fill(picture: image.size, box: geo.size, focus: focus)
-                            ZStack {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .frame(width: layout.size.width, height: layout.size.height)
-                                    .offset(layout.offset)
-                            }
-                            .scaleEffect(GalleryView.closer, anchor: layout.anchor)
-                            .frame(width: geo.size.width, height: geo.size.height)
-                        }
-                    } else {
+                GeometryReader { geo in
+                    let layout = Fill(picture: image.size, box: geo.size, focus: focus)
+                    ZStack {
                         Image(uiImage: image)
                             .resizable()
-                            .scaledToFill()
+                            .frame(width: layout.size.width, height: layout.size.height)
+                            .offset(layout.offset)
                     }
+                    .scaleEffect(GalleryView.closer, anchor: layout.anchor)
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
                 .transition(.opacity)
             }
         }
         .task(id: work.id) {
             guard image == nil, let request = model.backend.request(for: .thumb(work.id)) else { return }
-            guard let got = try? await ImageLoader.shared.image(for: request, maxPixel: GalleryView.gridPixel) else { return }
-            let point = await SubjectFocus.shared.point(in: got, key: ImageLoader.pictureKey(request), subject: true)
+            // Asked again when it does not come: a tile left empty stayed
+            // so for as long as it was on the screen.
+            var loaded: UIImage?
+            let asked = ContinuousClock.now
+            for attempt in 0 ..< 3 where loaded == nil && !Task.isCancelled {
+                if attempt > 0 { try? await Task.sleep(for: .seconds(Double(attempt) * 1.5)) }
+                do {
+                    // Before the stock fetched ahead: a tile on the screen
+                    // waited in its line, seconds after a sweep.
+                    loaded = try await ImageLoader.shared.image(
+                        for: request, maxPixel: GalleryView.gridPixel, priority: .high
+                    )
+                } catch {
+                    if !Task.isCancelled { GalleryLog.note("tile \(work.id): no picture, \(error)") }
+                }
+            }
+            guard let got = loaded, !Task.isCancelled else { return }
+            let waited = (ContinuousClock.now - asked) / .seconds(1)
+            if waited > 2 { GalleryLog.note("tile \(work.id): its picture after \(Int(waited)) s") }
+            let found = await SubjectFocus.shared.point(in: got, key: ImageLoader.pictureKey(request), subject: true)
+            guard !Task.isCancelled else { return }
+            // Its page's, where that found one first: the two are one picture.
+            let point = stock.focus[work.id] ?? found
             stock.images[work.id] = got
             stock.focus[work.id] = point
             focus = point
             withAnimation(.easeOut(duration: 0.2)) { image = got }
         }
     }
-}
-
-/// A whole work as in Szukaj: its picture, its title and artist.
-private struct GalleryGridCard: View {
-    let work: RemoteItem
-    let stock: GridStock
-    let frames: GridFrames
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Color.clear
-                .aspectRatio(GalleryGrid.cardAspect(work), contentMode: .fit)
-                .overlay { GridPicture(work: work, stock: stock) }
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .shadow(color: .black.opacity(0.14), radius: 8, x: 0, y: 5)
-                .modifier(Placed(id: work.id, frames: frames))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(bound: work.summary.shownTitle.isEmpty ? "Bez tytułu" : work.summary.shownTitle)
-                    .font(.serif(15, weight: .medium))
-                    .foregroundStyle(Theme.ink)
-                    .lineLimit(2)
-                Text(bound: ArtCard.byline(work.summary))
-                    .font(.caption)
-                    .foregroundStyle(Theme.inkSoft)
-                    .lineLimit(1)
-            }
-        }
-    }
-}
-
-/// Where the grid's works lie on the screen, and how far it can scroll.
-@MainActor final class GridFrames {
-    var frames: [String: CGRect] = [:]
-    var most: CGFloat = .infinity
-    /// How far it is scrolled now.
-    var offset: CGFloat = 0
 }
 
 /// The grid's thumbnails, fetched ahead.
@@ -334,237 +258,14 @@ private struct GalleryGridCard: View {
     }
 }
 
-/// Keeps where a work lies on the screen.
-private struct Placed: ViewModifier {
-    let id: String
-    let frames: GridFrames
-
-    func body(content: Content) -> some View {
-        content.onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames[id] = $0 }
-    }
-}
-
-/// The grid coming out of the work shown and going back into the one
-/// picked: grown about that work's tile and moved so the tile lies where
-/// the work lay, the same size, so the work seems to shrink into its tile
-/// and to grow out of it again (14:06: "w obydwu wypadkach jest skok i
-/// przesunięcie dzieła").
-struct GridZoom: ViewModifier {
-    let scale: CGFloat
-    let anchor: UnitPoint
-    let shift: CGSize
-    let opacity: Double
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(scale, anchor: anchor)
-            .offset(shift)
-            .opacity(opacity)
-    }
-}
-
-/// How fast the pages were last swiped (points a second, down the works),
-/// for the grid to flow on as fast (14:06: "Prędkość powinna być zgodna z
-/// ostatnim machnięciem").
-@MainActor final class SwipeFlow {
-    private var samples: [(time: CFTimeInterval, speed: CGFloat)] = []
-    private var last: (time: CFTimeInterval, y: CGFloat)?
-
-    func note(_ y: CGFloat) {
-        let now = CACurrentMediaTime()
-        if let last, now - last.time > 0.001 {
-            samples.append((now, (y - last.y) / CGFloat(now - last.time)))
-            samples.removeAll { now - $0.time > Self.window }
-        }
-        last = (now, y)
-    }
-
-    /// The fastest of the last moments, down the works (0 the other way).
-    var recent: CGFloat {
-        let now = CACurrentMediaTime()
-        return samples.filter { now - $0.time <= Self.window }.map(\.speed).max().map { max($0, 0) } ?? 0
-    }
-
-    private static let window: CFTimeInterval = 0.45
-}
-
-/// The grid flowing on after the swipe and slowing as a flicked list does,
-/// a step each frame of the screen.
-@MainActor final class Coast: NSObject {
-    private var link: CADisplayLink?
-    private var start: CFTimeInterval = 0
-    private var step: ((CFTimeInterval) -> Bool)?
-
-    /// `step` is given the seconds since the start; false ends it.
-    func run(_ step: @escaping (CFTimeInterval) -> Bool) {
-        stop()
-        self.step = step
-        start = CACurrentMediaTime()
-        let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
-        link.add(to: .main, forMode: .common)
-        self.link = link
-    }
-
-    func stop() {
-        link?.invalidate()
-        link = nil
-        step = nil
-    }
-
-    @objc private func tick(_ link: CADisplayLink) {
-        guard let step, step(link.targetTimestamp - start) else {
-            stop()
-            return
-        }
-    }
-}
-
-/// Telling swiping past from looking: so many works in a row, each left
-/// this soon (Mateusz 2026-11-24 08:30: "nie pojedyncze dzieło tylko
-/// serię"). Each left within a second and a half: no work is looked at
-/// that soon (12:06: "dzieła nie da się obejrzeć w 0,8 sekundy"; six
-/// under 0.8 s was too slow to come). Eight of them: four came too soon
-/// (17:23: "po 2x większej ilości szybkooglądanych dzieł niż teraz").
-struct SwipeSpeed {
-    static let run = 8
-    static let quick: TimeInterval = 1.5
-
-    private var times: [Date] = []
-
-    /// A work reached; true when the run is quick enough for the grid.
-    mutating func reached(at now: Date = .now) -> Bool {
-        times.append(now)
-        if times.count > Self.run { times.removeFirst(times.count - Self.run) }
-        guard times.count == Self.run else { return false }
-        return zip(times, times.dropFirst()).allSatisfy { $1.timeIntervalSince($0) < Self.quick }
-    }
-
-    mutating func reset() { times = [] }
-}
-
-/// A swipe from left to right, told apart from the scroll at once and
-/// never in its way (14:06: "Bywa ze zarówno na pełnym ekranie jak i całym
-/// dziele nie łapie machnięcia palca": SwiftUI's own drag and hold on the
-/// pages held the scroll back now and then).
-struct SideSwipe: UIGestureRecognizerRepresentable {
-    /// Only from the screen's left edge (the card's way back).
-    var fromEdge = false
-    let action: () -> Void
-
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
-        Coordinator(fromEdge: fromEdge)
-    }
-
-    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
-        let pan = UIPanGestureRecognizer()
-        pan.delegate = context.coordinator
-        pan.cancelsTouchesInView = false
-        return pan
-    }
-
-    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        guard recognizer.state == .ended else { return }
-        let move = recognizer.translation(in: recognizer.view)
-        let speed = recognizer.velocity(in: recognizer.view)
-        guard move.x > 50 || speed.x > 500, move.x > abs(move.y) * 1.5 else { return }
-        action()
-    }
-
-    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        let fromEdge: Bool
-
-        init(fromEdge: Bool) { self.fromEdge = fromEdge }
-
-        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
-            let speed = pan.velocity(in: pan.view)
-            if fromEdge {
-                let start = pan.location(in: pan.view).x - pan.translation(in: pan.view).x
-                if start > 44 { return false }
-            }
-            return speed.x > 0 && speed.x > abs(speed.y) * 1.5
-        }
-
-        func gestureRecognizer(
-            _ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool { true }
-    }
-}
-
-/// A slow drag down, beside the scroll (14:26, 16:29: "długie
-/// przeciągnięcie (nie krótkie machnięcie) wstecz", "Miałem na myśli
-/// przeciągnięcie w dół"): a drag that starts slowly is the pull to the
-/// grid of the works seen, and the scroll gives way to it; one that starts
-/// quickly is the scroll's swipe to the work before, as always.
-struct PullDown: UIGestureRecognizerRepresentable {
-    let began: () -> Void
-    let changed: (CGFloat) -> Void
-    let ended: (_ move: CGFloat) -> Void
-
-    /// Points a second: a drag starting faster is a swipe.
-    static let slowest: CGFloat = 650
-
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
-
-    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
-        let pan = UIPanGestureRecognizer()
-        pan.delegate = context.coordinator
-        pan.cancelsTouchesInView = false
-        return pan
-    }
-
-    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        let move = recognizer.translation(in: recognizer.view).y
-        switch recognizer.state {
-        case .began:
-            began()
-        case .changed:
-            changed(move)
-        case .ended:
-            ended(move)
-        case .cancelled, .failed:
-            ended(0)
-        default:
-            break
-        }
-    }
-
-    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-            guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
-            let speed = pan.velocity(in: pan.view)
-            return speed.y > 0 && speed.y > abs(speed.x) * 1.5 && speed.y < PullDown.slowest
-        }
-
-        func gestureRecognizer(
-            _ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool { true }
-    }
-}
-
-/// A hold, beside the scroll: a finger that moves is a scroll, not a hold.
-struct GalleryHold: UIGestureRecognizerRepresentable {
-    let action: () -> Void
-
-    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
-
-    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
-        let hold = UILongPressGestureRecognizer()
-        hold.minimumPressDuration = 0.35
-        hold.allowableMovement = 10
-        hold.cancelsTouchesInView = false
-        hold.delegate = context.coordinator
-        return hold
-    }
-
-    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
-        if recognizer.state == .began { action() }
-    }
-
-    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        func gestureRecognizer(
-            _ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
-        ) -> Bool { true }
-    }
+/// How far the grid is scrolled and can be, and the way to scroll it:
+/// kept beside it without drawing anything again.
+@MainActor final class GridTrack {
+    var offset: CGFloat = 0
+    var most: CGFloat = .infinity
+    /// It lies where it was to come.
+    var ready = false
+    var scroll: ((CGFloat) -> Void)?
+    /// A finger on it.
+    var touched: (() -> Void)?
 }

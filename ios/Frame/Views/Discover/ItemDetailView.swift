@@ -138,6 +138,8 @@ struct ItemDetailView: View {
     /// Where the work lies on the card, for its way there.
     @State private var arrivalHome: CGRect?
     @State private var arrivalStarted = false
+    /// When the work set off for its place here.
+    @State private var arrivedAt: ContinuousClock.Instant?
     /// Going back to Galeria the way the card came (`leaveToGallery`).
     @State private var leavingCard = false
     @State private var arrivalPlace = ArrivalPlace()
@@ -145,6 +147,9 @@ struct ItemDetailView: View {
     /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
     /// tło „łuny” za dziełem").
     @State private var edgeGlow: UIImage?
+    /// Coming from the work held in Galeria: the glow that filled the
+    /// screen there, behind the work on its way, fading as it arrives.
+    @State private var farGlow: UIImage?
     @Environment(\.colorScheme) private var scheme
 
     init(itemID: String) {
@@ -153,6 +158,7 @@ struct ItemDetailView: View {
         _arrival = State(initialValue: arrival)
         _arrived = State(initialValue: arrival == nil)
         _edgeGlow = State(initialValue: Glow.kept[itemID])
+        _farGlow = State(initialValue: arrival?.from != nil ? Glow.wide[itemID] : nil)
         let known = ItemPeeks.polish[itemID]
         _item = State(initialValue: ItemPeeks.cards[itemID])
         _polish = State(initialValue: known)
@@ -253,7 +259,10 @@ struct ItemDetailView: View {
         // From Galeria the way back is the way in turned round: its own
         // back button, and the swipe from the left edge.
         .modifier(GalleryWayBack(on: arrival?.back != nil) { leaveToGallery() })
-        .onAppear { CardArrival.pending[itemID] = nil }
+        .onAppear {
+            if CardArrival.pending[itemID] != nil { GalleryLog.note("card: appeared") }
+            CardArrival.pending[itemID] = nil
+        }
         .task(id: itemID) { await makeEdgeGlow() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -494,6 +503,7 @@ struct ItemDetailView: View {
                 // Written already (it was on the frame): the card opens with it.
                 showPolish(view, animated: false)
             }
+            await arrivalSettled()
             item = fresh
             if fresh.kind == .artwork { model.cardShows(fresh) }
             holding = false
@@ -566,6 +576,7 @@ struct ItemDetailView: View {
                             }
                         }
                     }
+                    .background { farGlowBehind }
                     .modifier(arriving)
                     .pictureBox()
                 Picker("Widok", selection: .constant(ViewMode.original)) {
@@ -1343,20 +1354,64 @@ struct ItemDetailView: View {
             arrivalHome = rect
             guard let arrival, !arrivalStarted else { return }
             arrivalStarted = true
+            GalleryLog.note("card: its work's place known, at \(Int(rect.minY))")
             Task { @MainActor in
                 // A couple of frames for the card's layout to settle.
                 try? await Task.sleep(for: .milliseconds(70))
+                arrivedAt = .now
                 withAnimation(arrival.from == nil ? CardArrival.surface : CardArrival.move) { arrived = true }
+                GalleryLog.note("card: the work on its way to its place")
             }
         }
     }
 
-    /// The rest of the card, appearing once the work is on its way.
+    /// From Galeria the work is on its way to its place here for a moment:
+    /// what is loaded takes the place of what the tile knew only once the
+    /// work is there. Coming across the way, the two were seen one over
+    /// the other, each at its own place (the film of 2026-11-24).
+    private func arrivalSettled() async {
+        guard arrival != nil else { return }
+        let until = ContinuousClock.now + .milliseconds(1500)
+        while !Task.isCancelled, ContinuousClock.now < until {
+            if let arrivedAt, ContinuousClock.now - arrivedAt > .milliseconds(460) { return }
+            try? await Task.sleep(for: .milliseconds(30))
+        }
+    }
+
+    /// The rest of the card, appearing once the work is on its way: from
+    /// the work held in Galeria it rides up with the work, from under it
+    /// (Mateusz 2026-11-24 18:51: "pociągnięcie w górę otwiera płynnie
+    /// kartę dzieła").
     private var restOfCard: RestOfCard {
-        RestOfCard(
-            shown: arrived,
-            animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default
+        var rise: CGFloat = 0
+        var placed = false
+        if let from = arrival?.from, let home = arrivalHome {
+            rise = from.maxY - home.maxY
+            // There at once under the work, where Galeria had the card's
+            // head: the title never goes while the card comes. Not by a
+            // place the card's first layout passes through (above the
+            // screen, for one).
+            placed = !leavingCard && home.minY >= 0 && rise > -1
+        }
+        return RestOfCard(
+            shown: arrived, placed: placed,
+            animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default,
+            rise: rise
         )
+    }
+
+    /// Galeria's glow, the screen full of it, behind the work on its way
+    /// here: it fades as the work arrives, the card's own under it.
+    @ViewBuilder
+    private var farGlowBehind: some View {
+        if let farGlow {
+            GeometryReader { box in
+                Glow(edges: farGlow, size: box.size, offset: .zero, spread: Glow.far)
+                    .opacity((scheme == .light ? 0.62 : 1) * (arrived ? 0 : 1))
+                    .animation(CardArrival.ground, value: arrived)
+                    .frame(width: box.size.width, height: box.size.height)
+            }
+        }
     }
 
     /// Back to Galeria the way the card came, turned round (Mateusz
@@ -1460,6 +1515,7 @@ struct ItemDetailView: View {
                     .transition(.opacity)
                 }
             }
+            .background { farGlowBehind }
             .modifier(arriving)
             .pictureBox()
             .layoutProbe("group")
@@ -2118,11 +2174,19 @@ private struct GalleryWayBack: ViewModifier {
 /// What follows the work on the card, appearing after it from Galeria.
 private struct RestOfCard: ViewModifier {
     let shown: Bool
+    /// Seen before it is `shown`, below its place by `rise`: under the
+    /// work held in Galeria, which had the card's head there.
+    var placed = false
     let animation: Animation
+    /// How far below its place it starts (and leaves): as far as the work
+    /// is from its own.
+    var rise: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
-            .opacity(shown ? 1 : 0)
+            .offset(y: shown ? 0 : rise)
+            .animation(CardArrival.move, value: shown)
+            .opacity(shown || placed ? 1 : 0)
             .animation(animation, value: shown)
     }
 }
