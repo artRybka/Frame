@@ -98,24 +98,6 @@ struct GalleryView: View {
     var body: some View {
         NavigationStack(path: $path) {
             pages
-                .background(Color.black)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pagesArea = $0 }
-                .clipShape(RoundedRectangle(cornerRadius: pull > 0 ? 24 * pull : 0, style: .continuous))
-                .scaleEffect(1 - Self.pullShrink * pull)
-                .offset(y: pull * pagesArea.height * Self.pullFollow)
-                // Drawn back with the grid, into the work's tile (Mateusz
-                // 2026-11-24 10:48: "musi skalować (jakby oddalać i płynnie
-                // przechodzić z pełnego dzieła do siatki"): cut to the
-                // tile's shape, and its middle to the tile's.
-                .mask(alignment: .topLeading) {
-                    let shape = gridOpen ? pageMask : wholeMask
-                    RoundedRectangle(cornerRadius: gridOpen ? 6 * gridScale : 0, style: .continuous)
-                        .frame(width: shape.width, height: shape.height)
-                        .offset(x: shape.minX, y: shape.minY)
-                }
-                .scaleEffect(gridOpen ? 1 / gridScale : 1, anchor: pageAnchor)
-                .offset(gridOpen ? pageShift : .zero)
-                .opacity(gridOpen ? 0 : 1)
                 .overlay(alignment: .topTrailing) {
                     // Its own for each work: swiped to a work given a heart
                     // before, the red is there already, not pouring in.
@@ -213,6 +195,30 @@ struct GalleryView: View {
         .scrollDisabled(pulling || grid)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in flow.note(y) }
         .scrollIndicators(.hidden)
+        // All that shapes the pages is set on the whole screen, before the
+        // safe area is let go of: set after it, the mask was only as large
+        // as the safe area and cut the works off under the status bar and
+        // at the foot (Mateusz 2026-11-24 17:23: "Czarne paski od góry i
+        // dołu"), and the work's place was reckoned in another box than
+        // its page's own.
+        .background(Color.black)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pagesArea = $0 }
+        .clipShape(RoundedRectangle(cornerRadius: pull > 0 ? 24 * pull : 0, style: .continuous))
+        .scaleEffect(1 - Self.pullShrink * pull)
+        .offset(y: pull * pagesArea.height * Self.pullFollow)
+        // Drawn back with the grid, into the work's tile (Mateusz
+        // 2026-11-24 10:48: "musi skalować (jakby oddalać i płynnie
+        // przechodzić z pełnego dzieła do siatki"): cut to the tile's
+        // shape, and its middle to the tile's.
+        .mask(alignment: .topLeading) {
+            let shape = gridOpen ? pageMask : wholeMask
+            RoundedRectangle(cornerRadius: gridOpen ? 6 * gridScale : 0, style: .continuous)
+                .frame(width: shape.width, height: shape.height)
+                .offset(x: shape.minX, y: shape.minY)
+        }
+        .scaleEffect(gridOpen ? 1 / gridScale : 1, anchor: pageAnchor)
+        .offset(gridOpen ? pageShift : .zero)
+        .opacity(gridOpen ? 0 : 1)
         .ignoresSafeArea()
     }
 
