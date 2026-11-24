@@ -480,6 +480,7 @@ struct GalleryView: View {
     /// swipes down the works brings the grid.
     private func scrolled(_ y: CGFloat) {
         flow.note(y)
+        if returning != nil { showWindow() }
         guard !grid, hand == .idle, peek == nil, path.isEmpty else { return }
         guard let index = run.scrolled(to: y, height: area.height), works.indices.contains(index) else { return }
         sweep(to: index)
@@ -567,6 +568,12 @@ struct GalleryView: View {
             let t = min(CGFloat(now / seconds), 1)
             let done = curve(t)
             camera.pose(from + (to - from) * done, drop: drop * (1 - done))
+            if !toGrid {
+                GalleryLog.trace(
+                    "to the page \(Int(now * 1000)) ms: pages at \(Int(flow.y)), \(lies(at: id) ? "there" : "not there"), "
+                        + "window \(windowShown ? "shown" : "hidden")"
+                )
+            }
             guard t >= 1 else { return true }
             if toGrid { gridSettled(on: id) } else { pageSettled() }
             return false
@@ -597,9 +604,10 @@ struct GalleryView: View {
         Task { @MainActor in
             if let id {
                 let until = ContinuousClock.now + .milliseconds(600)
-                while readyPage != id, ContinuousClock.now < until {
+                while readyPage != id || !lies(at: id), ContinuousClock.now < until {
                     try? await Task.sleep(for: .milliseconds(16))
                 }
+                GalleryLog.trace("pages at \(Int(flow.y)), \(lies(at: id) ? "there" : "not there")")
             }
             withTransaction(Self.quiet) {
                 windowShown = true
@@ -640,7 +648,7 @@ struct GalleryView: View {
         camera.on = true
         returning = work.id
         withTransaction(Self.quiet) {
-            windowShown = readyPage == work.id && position == work.id
+            windowShown = readyPage == work.id && position == work.id && lies(at: work.id)
             position = work.id
         }
         gridOpen = false
@@ -652,8 +660,22 @@ struct GalleryView: View {
     /// A page has its picture and the point it is cut about.
     private func pageReady(_ id: String) {
         readyPage = id
-        guard returning == id, !windowShown else { return }
+        showWindow()
+    }
+
+    /// The pages seen over the tile that grows: once the page aimed at has
+    /// its picture and the pages lie at it (far down the works they take
+    /// a moment to get there, and were seen on their way: the fifth film
+    /// of 2026-11-24).
+    private func showWindow() {
+        guard let id = returning, !windowShown, readyPage == id, lies(at: id) else { return }
         withAnimation(.easeOut(duration: 0.1)) { windowShown = true }
+    }
+
+    /// The pages are scrolled to this work's own.
+    private func lies(at id: String?) -> Bool {
+        guard let id, area.height > 0, let index = works.firstIndex(where: { $0.id == id }) else { return false }
+        return abs(flow.y - CGFloat(index) * area.height) < 1
     }
 
     // MARK: The grid's stock

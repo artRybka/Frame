@@ -14,7 +14,9 @@ final class GalleryProbeTests: XCTestCase {
     func testTheWaysBetweenTheTwoViews() throws {
         try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
         let app = XCUIApplication()
-        app.launchArguments = ["-demo", "YES", "-screen", "gallery", "-galleryLog", "\(Self.folder)/gallery.log"]
+        app.launchArguments = [
+            "-demo", "YES", "-screen", "gallery", "-galleryLog", "\(Self.folder)/gallery.log", "-galleryTrace", "YES",
+        ]
         app.launch()
         sleep(9)
         let window = app.windows.firstMatch
