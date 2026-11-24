@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.356
+
+- Galeria: widok całego dzieła zostaje przy przewijaniu do kolejnych,
+  machnięcie w prawo na przyciętym dziele pokazuje całe.
+
 ## 1.145.355
 
 - Porządki: zdjęć z muzeów nie kadruje już Opus (robi to iPhone),
