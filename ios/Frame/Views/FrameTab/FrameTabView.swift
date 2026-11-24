@@ -2447,7 +2447,7 @@ struct LibrarySizeSection: View {
                         used: usage.catalogueBytes,
                         limitMb: storage.catalogueMb,
                         defaultMb: storage.catalogueDefaultMb,
-                        options: [500, 1000, 1500, 2000, 3000, 5000, 10000, 20000]
+                        options: [500, 1000, 1500, 2000, 3000, 5000, 10000, 20000, 50000, 100000]
                     ) { mb in await model.setLibraryLimit(catalogueMb: mb) }
                     if storage.isCatalogueFull {
                         Label {
@@ -2470,7 +2470,7 @@ struct LibrarySizeSection: View {
                         used: usage.originalsBytes,
                         limitMb: storage.originalsMb,
                         defaultMb: storage.originalsDefaultMb,
-                        options: [500, 1000, 2000, 3000, 5000, 10000, 20000, 50000]
+                        options: [500, 1000, 2000, 3000, 5000, 10000, 20000, 50000, 100000]
                     ) { mb in await model.setLibraryLimit(originalsMb: mb) }
                     caption("Pełne obrazy dzieł z Ulubionych, playlist i tych, które oglądasz, około 1,5 MB na dzieło. Ponad limit znikają najdawniej oglądane; usunięte serwer pobierze ponownie z muzeum.")
                 }

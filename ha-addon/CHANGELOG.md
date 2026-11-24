@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.354
+
+- Miejsce na serwerze: katalog (miniatury) może mieć do 50 i 100 GB,
+  oryginały dzieł do 100 GB.
+
 ## 1.145.353
 
 - Galeria: przy całym dziele tytuł, autor i guzik u dołu, dzieło
