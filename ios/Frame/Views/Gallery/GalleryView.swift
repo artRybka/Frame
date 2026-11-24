@@ -25,6 +25,8 @@ struct GalleryView: View {
     @State private var loading = false
     @State private var failed = false
     @State private var path: [String] = []
+    /// The cut work whose card is opening (`GalleryPage.leaving`).
+    @State private var leaving: String?
     /// Double taps given, for the corner heart's flash.
     @State private var flashes = 0
     /// The works ahead being cut down to the work, one at a time.
@@ -61,6 +63,7 @@ struct GalleryView: View {
                 }
         }
         .task { if works.count < Self.batch { await more() } }
+        .onChange(of: path) { _, now in if now.isEmpty { leaving = nil } }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
             Self.remember(Array(works.dropFirst(index + 1)))
@@ -79,6 +82,7 @@ struct GalleryView: View {
                         work: work, current: work.id == shown?.id, whole: whole,
                         above: index > 0 ? works[index - 1] : nil,
                         below: index + 1 < works.count ? works[index + 1] : nil,
+                        leaving: leaving == work.id,
                         flip: { flip(work) }, open: { open(work) }
                     )
                         .containerRelativeFrame([.horizontal, .vertical])
@@ -166,9 +170,23 @@ struct GalleryView: View {
         flashes += 1
     }
 
+    /// The card without the push's slide: it takes the work from where it
+    /// lies here (Mateusz 2026-11-24 07:36: "dzieło podsuwa się do góry na
+    /// miejsce w karcie dzieła i pojawia się reszta treści"); from the cut
+    /// work, which melts away first, as on the way to the whole one.
     private func open(_ work: RemoteItem) {
         ItemPeeks.remember(work.summary, thumb: .thumb(work.id))
-        path.append(work.id)
+        let push = {
+            var quiet = Transaction(animation: nil)
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { path.append(work.id) }
+        }
+        guard !whole else { push(); return }
+        withAnimation(.easeIn(duration: 0.16)) { leaving = work.id }
+        Task {
+            try? await Task.sleep(for: .seconds(0.14))
+            push()
+        }
     }
 
     private static let rememberedKey = "gallery.next"
@@ -257,6 +275,9 @@ private struct GalleryPage: View {
     /// przewijaniu widać ostrą krawędź. Zróbmy tam płynne przejście").
     var above: RemoteItem?
     var below: RemoteItem?
+    /// Its card opening from the cut work: the work melts away as it does
+    /// on the way to the whole one, and the card's surfaces out of it.
+    var leaving = false
     /// The title tapped: the work whole, or cut again.
     var flip: () -> Void = {}
     /// "Karta dzieła" under the whole work's caption.
@@ -310,8 +331,8 @@ private struct GalleryPage: View {
                     }
                     .frame(width: geo.size.width, height: geo.size.height)
                     .clipped()
-                    .blur(radius: whole ? Self.melt : 0)
-                    .opacity(whole ? 0 : 1)
+                    .blur(radius: whole || leaving ? Self.melt : 0)
+                    .opacity(whole || leaving ? 0 : 1)
                     .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: 0.2).delay(0.05), value: whole)
                     .allowsHitTesting(!whole)
                     ZStack {
@@ -347,7 +368,8 @@ private struct GalleryPage: View {
         .background {
             ZStack {
                 placeholder
-                ground.opacity(whole ? 1 : 0)
+                ground.opacity(whole || leaving ? 1 : 0)
+                    .animation(.easeOut(duration: 0.16), value: leaving)
             }
             .ignoresSafeArea()
         }
@@ -356,7 +378,9 @@ private struct GalleryPage: View {
         // Made while the work is shown, before any tap: ready for it.
         .task(id: (current || whole) && (thumb ?? full) != nil) {
             guard current || whole, glow == nil, let picture = thumb ?? full else { return }
+            if let made = Glow.kept[work.id] { glow = made; return }
             glow = await Task.detached(priority: .utility) { Glow.edges(of: picture) }.value
+            if let glow { Glow.kept[work.id] = glow }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
@@ -370,7 +394,21 @@ private struct GalleryPage: View {
     /// "Jednak na „całym dziele” tytuł, autor, guzik dajmy u dołu strony").
     private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
         let foot = max(geo.safeAreaInsets.bottom, 34) + (place == nil ? 0 : Whole.tabBar)
-        return GalleryCaption(work: work, polish: polish, whole: place != nil, flip: flip, open: open)
+        let frame = geo.frame(in: .global)
+        let from = place.map {
+            CGRect(
+                x: frame.midX + $0.offset.width - $0.size.width / 2,
+                y: frame.midY + $0.offset.height - $0.size.height / 2,
+                width: $0.size.width, height: $0.size.height
+            )
+        }
+        let ground = behind
+        let id = work.id
+        return GalleryCaption(work: work, polish: polish, whole: place != nil, flip: flip) {
+            // The card takes the work from here (`CardArrival`).
+            CardArrival.pending[id] = CardArrival.Pending(from: from, ground: ground)
+            open()
+        }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
                 if place != nil, abs(height - captionHeight) > 0.5 { captionHeight = height }
             }
@@ -574,7 +612,7 @@ private struct Whole {
 /// ale od krawędzi. Takie łuny koloru"): only what is on each edge, the
 /// edge's own pixels drawn outwards (17:55: "na krawędzi nie ma włosów.
 /// Musimy brać kolor który faktycznie jest na krawędzi").
-private struct Glow: View {
+struct Glow: View {
     let edges: UIImage
     /// Where the work lies: its size and its offset from the middle.
     let size: CGSize
@@ -585,6 +623,9 @@ private struct Glow: View {
     nonisolated static let reach: CGFloat = 0.6
     nonisolated static let softness: CGFloat = 0.12
     nonisolated(unsafe) private static let context = CIContext(options: [.cacheIntermediates: false])
+    /// Made in Galeria, kept for the work's card, which shows the same
+    /// glow behind it (Mateusz 2026-11-24 07:36).
+    @MainActor static var kept: [String: UIImage] = [:]
 
     /// The picture with its edges drawn out by `reach` and blurred; the
     /// work itself sits in its middle.
