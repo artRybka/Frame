@@ -219,6 +219,13 @@ struct GalleryView: View {
         .scrollPosition(id: $position)
         .scrollDisabled(pulling || grid)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in scrolled(y) }
+        .onScrollGeometryChange(for: [CGFloat].self) {
+            [$0.contentInsets.top, $0.contentInsets.bottom, $0.containerSize.height]
+        } action: { _, now in
+            GalleryLog.trace("pages' insets \(Int(now[0])) and \(Int(now[1])), \(Int(now[2])) tall")
+        }
+        .onScrollPhaseChange { _, phase in GalleryLog.trace("pages' scroll \(phase)") }
+        .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .modifier(WindowZoom(camera: camera))
         .opacity(windowShown ? 1 : 0)
@@ -480,6 +487,7 @@ struct GalleryView: View {
     /// swipes down the works brings the grid.
     private func scrolled(_ y: CGFloat) {
         flow.note(y)
+        if grid || camera.on { GalleryLog.trace("pages at \(Int(y))") }
         if returning != nil { showWindow() }
         guard !grid, hand == .idle, peek == nil, path.isEmpty else { return }
         guard let index = run.scrolled(to: y, height: area.height), works.indices.contains(index) else { return }
