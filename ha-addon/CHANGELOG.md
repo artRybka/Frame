@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.363
+
+- Rysunki i grafiki z muzeów kadruje nowy model (kadr-11s, próg 0,795),
+  douczony na jego kadrach kartek; obejrzane starym modelem są oglądane
+  ponownie (na telefonie albo w nocy na serwerze).
+
 ## 1.145.362
 
 - Grafika: gdy wokół odbitki jest bardzo dużo papieru (margines ponad 15%),

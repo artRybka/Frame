@@ -179,7 +179,7 @@ inline constexpr double SQUARE = 16.0;
 inline constexpr double STRENGTH = 25.0;
 inline constexpr double STRIP_DEEPEST = 0.08;
 inline constexpr double STRIP_LINE = 0.15;
-inline constexpr double SURE = 0.9;
+inline constexpr double SURE = 0.795;
 inline constexpr double UPRIGHT = 3.0;
 inline constexpr double WHOLE = 0.1;
 
