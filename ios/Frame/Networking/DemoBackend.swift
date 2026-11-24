@@ -118,7 +118,6 @@ actor DemoBackend: FrameBackend {
         ],
         geminiCosts: [
             AiCost(key: "drawn", label: "Arkusze kompozycji", daysUsd: 0.9, periodUsd: 1.2),
-            AiCost(key: "looks", label: "Szukanie wyglądem", daysUsd: 0.02, periodUsd: 0.05),
             AiCost(key: "restorer", label: "Restauracja dzieł", daysUsd: 0.1, periodUsd: 0.1),
         ]
     )
@@ -2198,7 +2197,6 @@ actor DemoBackend: FrameBackend {
             row("Art Institute of Chicago", counts(96), counts(702)),
             row("Rijksmuseum", counts(41), counts(388, failed: 2)),
             row("Paris Musées", counts(23), counts(240), quota: SourceRequests.Quota(spent: 23, of: 1000, background: 600, hours: 24)),
-            row("Library of Congress", counts(4, throttled: 1, refused: 6), counts(52, throttled: 1, refused: 6), resting: 2_400),
             row("Louvre", counts(0), counts(0)),
             row("J. Paul Getty Museum", counts(0), counts(0)),
             row(nil, counts(12), counts(80)),
