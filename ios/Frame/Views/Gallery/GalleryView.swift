@@ -26,17 +26,40 @@ struct GalleryView: View {
     @State private var failed = false
     @State private var path: [String] = []
     /// Swiped past too fast: the works coming as a grid (`GalleryGrid`).
+    /// `grid` while it is there at all, `gridOpen` once it has grown out of
+    /// the work (and till it goes back into one), `gridGoing` once it lies
+    /// where it is to be and flows on.
     @State private var grid = false
+    @State private var gridOpen = false
+    @State private var gridGoing = false
+    /// The first of the works seen before, shown above the line.
+    @State private var gridBefore = 0
+    /// A long drag from left to right, as a share of the screen's width:
+    /// the work shrinks as it goes, and the grid of the works seen comes
+    /// (14:26: "długie przeciągnięcie (nie krótkie machnięcie) wstecz to
+    /// dzieło się zmniejsza i przechodzę do siatki (historii tego co było)").
+    @State private var pull: CGFloat = 0
     @State private var speed = SwipeSpeed()
     @State private var gridFrames = GridFrames()
-    @State private var gridScroll = ScrollPosition(edge: .top)
+    @State private var stock = GridStock()
+    /// How fast the pages were swiped, for the grid to flow on as fast.
+    @State private var flow = SwipeFlow()
+    @State private var gridSpeed: CGFloat = 0
+    /// Where the grid's content starts below its top (the status bar).
+    @State private var gridInset: CGFloat = 0
     /// The first work in the grid: the one before the work shown, on the
     /// cut works, so that one lands in the middle of the top row.
     @State private var gridStart = 0
-    /// About where the grid grows from and back into (in the grid's own
-    /// frame, and the same point in the pages'), and how far.
+    /// How the grid and the pages meet: the work's tile in the grid
+    /// (`gridAnchor`, its middle in the grid's frame) lies, grown
+    /// `gridScale` times and moved by `gridShift`, where the work lies on
+    /// its page (`pageMask`, in the pages' frame; `pageAnchor` its middle),
+    /// and the page shrinks and moves (`pageShift`) into the tile.
     @State private var gridAnchor = UnitPoint.topLeading
+    @State private var gridShift = CGSize.zero
     @State private var pageAnchor = UnitPoint.center
+    @State private var pageShift = CGSize.zero
+    @State private var pageMask = CGRect.zero
     @State private var gridScale: CGFloat = 3
     @State private var gridArea: CGRect = .zero
     @State private var pagesArea: CGRect = .zero
@@ -74,12 +97,22 @@ struct GalleryView: View {
         NavigationStack(path: $path) {
             pages
                 .background(Color.black)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pagesArea = $0 }
+                .clipShape(RoundedRectangle(cornerRadius: pull > 0 ? 24 * pull : 0, style: .continuous))
+                .scaleEffect(1 - Self.pullShrink * pull)
                 // Drawn back with the grid, into the work's tile (Mateusz
                 // 2026-11-24 10:48: "musi skalować (jakby oddalać i płynnie
-                // przechodzić z pełnego dzieła do siatki").
-                .scaleEffect(grid ? 1 / gridScale : 1, anchor: pageAnchor)
-                .opacity(grid ? 0 : 1)
-                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pagesArea = $0 }
+                // przechodzić z pełnego dzieła do siatki"): cut to the
+                // tile's shape, and its middle to the tile's.
+                .mask(alignment: .topLeading) {
+                    let shape = gridOpen ? pageMask : wholeMask
+                    RoundedRectangle(cornerRadius: gridOpen ? 6 * gridScale : 0, style: .continuous)
+                        .frame(width: shape.width, height: shape.height)
+                        .offset(x: shape.minX, y: shape.minY)
+                }
+                .scaleEffect(gridOpen ? 1 / gridScale : 1, anchor: pageAnchor)
+                .offset(gridOpen ? pageShift : .zero)
+                .opacity(gridOpen ? 0 : 1)
                 .overlay(alignment: .topTrailing) {
                     // Its own for each work: swiped to a work given a heart
                     // before, the red is there already, not pouring in.
@@ -118,7 +151,7 @@ struct GalleryView: View {
         }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
-            if !grid, path.isEmpty, speed.reached() { openGrid() }
+            if !grid, pull == 0, path.isEmpty, speed.reached() { openGrid() }
             Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
             cutAhead()
@@ -143,21 +176,19 @@ struct GalleryView: View {
                         .onTapGesture(count: 2) { heart(work) }
                         .onTapGesture { flip(work) }
                         // A swipe from left to right shows the whole work
-                        // too (Mateusz 2026-11-24).
-                        .simultaneousGesture(
-                            DragGesture(minimumDistance: 24).onEnded { drag in
-                                let move = drag.translation
-                                guard !whole, move.width > 60, move.width > abs(move.height) * 2 else { return }
-                                flip(work)
-                            }
-                        )
-                        // A hold shows the whole work too, no menu (Mateusz
-                        // 2026-11-23 21:41: "Do ekranu całego dzieła wchodzi
-                        // także przytrzymanie. Nie ma już menu po przytrzymaniu").
-                        .onLongPressGesture(minimumDuration: 0.35) {
+                        // too (Mateusz 2026-11-24), and a hold (2026-11-23
+                        // 21:41: "Do ekranu całego dzieła wchodzi także
+                        // przytrzymanie. Nie ma już menu po przytrzymaniu"):
+                        // UIKit's, beside the scroll, never holding it back
+                        // (14:06: "nie łapie machnięcia palca").
+                        .gesture(SideDrag(
+                            changed: { move in pulled(move) },
+                            ended: { move, speed, seconds in released(work, move: move, speed: speed, seconds: seconds) }
+                        ))
+                        .gesture(GalleryHold {
                             guard !whole else { return }
                             flip(work)
-                        }
+                        })
                         .sensoryFeedback(.impact(weight: .light), trigger: whole)
                         .id(work.id)
                 }
@@ -174,6 +205,8 @@ struct GalleryView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
+        .scrollDisabled(pull > 0 || grid)
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in flow.note(y) }
         .scrollIndicators(.hidden)
         .ignoresSafeArea()
     }
@@ -227,111 +260,268 @@ struct GalleryView: View {
 
     // MARK: The grid
 
+    /// How much closer a work starts on its page than the whole of it, and
+    /// its tile in the grid with it.
+    static let closer: CGFloat = 1.06
+
     /// The thumbnails' size in the grid, also fetched ahead.
-    static let gridPixel: CGFloat = 500
-    /// Works the grid has ready ahead of the one shown when it comes.
-    static let gridReady = 48
+    static let gridPixel: CGFloat = 420
+    /// Works the grid has ready ahead of the one shown when it comes
+    /// (14:06: "Powinien być też większy - teraz ściana szybko się kończy").
+    static let gridReady = 160
+    /// Works asked for at once while the grid is up.
+    static let gridBatch = 40
 
     private var gridLayer: some View {
         GeometryReader { geo in
             if grid {
                 GalleryGrid(
-                    works: Array(works.dropFirst(gridStart)), from: position, whole: whole,
-                    frames: gridFrames, scroll: $gridScroll,
+                    before: Array(works[min(gridBefore, gridStart) ..< min(gridStart, works.count)]),
+                    works: Array(works.dropFirst(gridStart)), whole: whole,
+                    frames: gridFrames, stock: stock,
+                    tall: pagesArea.width > 0 ? pagesArea.height / pagesArea.width : 2.17,
+                    going: gridGoing, speed: gridSpeed,
                     pick: { closeGrid(on: $0) },
-                    more: { Task { await more() } }
+                    more: { Task { await more(count: Self.gridBatch) } }
                 )
                 .background((whole ? Theme.paper : Color.black).ignoresSafeArea())
-                .transition(.modifier(
-                    active: GridZoom(scale: gridScale, anchor: gridAnchor, opacity: 0),
-                    identity: GridZoom(scale: 1, anchor: gridAnchor, opacity: 1)
-                ))
+                .modifier(
+                    gridOpen
+                        ? GridZoom(scale: 1, anchor: gridAnchor, shift: .zero, opacity: 1)
+                        : GridZoom(scale: gridScale, anchor: gridAnchor, shift: gridShift, opacity: 0)
+                )
+                .allowsHitTesting(gridOpen)
+                .transition(.identity)
             }
         }
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { gridArea = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { gridInset = $0 }
     }
 
-    /// Where a rect on the screen lies in the grid's frame and the pages'.
-    private func anchors(_ rect: CGRect) -> (grid: UnitPoint, pages: UnitPoint) {
-        (
-            UnitPoint(
-                x: (rect.midX - gridArea.minX) / max(gridArea.width, 1),
-                y: (rect.midY - gridArea.minY) / max(gridArea.height, 1)
-            ),
-            UnitPoint(
-                x: (rect.midX - pagesArea.minX) / max(pagesArea.width, 1),
-                y: (rect.midY - pagesArea.minY) / max(pagesArea.height, 1)
+    /// The pages' own shape, uncut.
+    private var wholeMask: CGRect {
+        guard pagesArea.width > 0 else { return CGRect(x: -4000, y: -4000, width: 8000, height: 8000) }
+        return CGRect(origin: .zero, size: pagesArea.size)
+    }
+
+    private func unit(_ point: CGPoint, in area: CGRect) -> UnitPoint {
+        UnitPoint(x: (point.x - area.minX) / max(area.width, 1), y: (point.y - area.minY) / max(area.height, 1))
+    }
+
+    /// Where a work lies on its page, on the screen: the cut work's middle
+    /// in the tile's shape, or the whole work where its page puts it.
+    private func place(of work: RemoteItem) -> CGRect {
+        let box = pagesArea.size
+        let middle = CGPoint(x: pagesArea.midX, y: pagesArea.midY)
+        if whole {
+            let aspect = CGFloat(max(work.summary.aspectRatio, 0.05))
+            let place = Whole(
+                picture: CGSize(width: aspect, height: 1), box: box,
+                safe: GalleryPage.lastSafe, caption: GalleryPage.lastCaption
             )
-        )
+            return CGRect(
+                x: middle.x - place.size.width / 2, y: middle.y + place.offset.height - place.size.height / 2,
+                width: place.size.width, height: place.size.height
+            )
+        }
+        // The tile is the screen's shape: the whole page goes into it.
+        return pagesArea
+    }
+
+    /// The grid and the pages set to meet: the work on its page (`place`)
+    /// and its tile, each the other's size and in the other's place.
+    private func meet(place: CGRect, tile: CGRect) {
+        gridScale = max(place.width / max(tile.width, 1), 1.01)
+        gridAnchor = unit(CGPoint(x: tile.midX, y: tile.midY), in: gridArea)
+        gridShift = CGSize(width: place.midX - tile.midX, height: place.midY - tile.midY)
+        pageAnchor = unit(CGPoint(x: place.midX, y: place.midY), in: pagesArea)
+        pageShift = CGSize(width: tile.midX - place.midX, height: tile.midY - place.midY)
+        pageMask = place.offsetBy(dx: -pagesArea.minX, dy: -pagesArea.minY)
     }
 
     /// The grid grows out of the work shown: the work draws back into its
     /// tile, in the middle of the top row (cut works) or at the head of
-    /// the left column (whole ones), and the grid then flows on a little,
-    /// as after a quick flick (Mateusz 2026-11-24 10:48: "Raczej do
-    /// środkowego górnego rzędu … i lekko popłynąć inercją").
-    private func openGrid() {
-        guard let at = works.firstIndex(where: { $0.id == position }) else { return }
-        let width = max(gridArea.width, 1)
-        let side = Theme.gutter
+    /// the left column (whole ones), the works seen before above it, and
+    /// the grid flows on as fast as the works were swiped, slowing as a
+    /// flicked list does (Mateusz 2026-11-24 14:06: "rozpęd … powinien
+    /// być większy. Teraz jakby stopuje. Prędkość powinna być zgodna z
+    /// ostatnim machnięciem. Nawet kosztem kilku dzieł"). From a long
+    /// drag back it flows back a little, into the works seen (14:26).
+    /// The grid is laid out first, unseen, and the work goes into its tile
+    /// where the tile really is.
+    private func openGrid(back: Bool = false) {
+        guard !grid, let at = works.firstIndex(where: { $0.id == position }) else { return }
+        let id = works[at].id
         gridStart = !whole && at > 0 ? at - 1 : at
-        let slot = CGFloat(at - gridStart)
-        let tile: CGRect
-        if whole {
-            let column = (width - side * 2 - 16) / 2
-            let aspect = CGFloat(min(max(works[at].summary.aspectRatio, 0.45), 2.2))
-            tile = CGRect(x: side, y: GalleryGrid.top, width: column, height: column / aspect)
-        } else {
-            let gap = GalleryGrid.gap
-            let w = (width - side * 2 - gap * CGFloat(GalleryGrid.columns - 1)) / CGFloat(GalleryGrid.columns)
-            tile = CGRect(x: side + slot * (w + gap), y: GalleryGrid.top, width: w, height: w * GalleryGrid.tall)
-        }
-        let onScreen = tile.offsetBy(dx: gridArea.minX, dy: gridArea.minY)
-        (gridAnchor, pageAnchor) = anchors(onScreen)
-        gridScale = width / max(tile.width, 1)
-        gridScroll = ScrollPosition(edge: .top)
+        gridBefore = max(gridStart - (whole ? Self.seenCards : Self.seenTiles), 0)
+        gridSpeed = back ? -GalleryGrid.least : flow.recent
+        gridFrames.frames = [:]
+        gridScale = 1
+        gridShift = .zero
+        gridOpen = false
+        gridGoing = false
         speed.reset()
-        withAnimation(.smooth(duration: 0.5)) { grid = true }
+        stockFor(at)
+        let quiet = Self.quiet
+        withTransaction(quiet) { grid = true }
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.32))
-            withAnimation(.easeOut(duration: 1.1)) { gridScroll.scrollTo(y: tile.height * 0.55) }
+            // Laid out and set at the line: a few frames at most.
+            for _ in 0 ..< 24 {
+                try? await Task.sleep(for: .milliseconds(16))
+                if let frame = gridFrames.frames[id], frame.width > 0, gridArea.intersects(frame) { break }
+            }
+            let tile = gridFrames.frames[id].flatMap { $0.width > 0 ? $0 : nil }
+                ?? CGRect(x: gridArea.midX - 60, y: gridArea.minY + gridInset, width: 120, height: 120)
+            withTransaction(quiet) { meet(place: place(of: works[at]), tile: tile) }
+            await Task.yield()
+            withAnimation(.smooth(duration: 0.45)) {
+                gridOpen = true
+                pull = 0
+            }
+            gridGoing = true
+            await stockUp(from: at)
         }
-        Task { await stockUp(from: at) }
     }
+
+    /// Works seen before, above the line: tiles, cards.
+    static let seenTiles = 60
+    static let seenCards = 24
 
     /// Plenty of works ahead for the grid, their thumbnails fetched.
     private func stockUp(from at: Int) async {
-        for _ in 0 ..< 3 where works.count - at < Self.gridReady {
-            await more()
+        for _ in 0 ..< 8 where works.count - at < Self.gridReady {
+            if loading { try? await Task.sleep(for: .milliseconds(200)) }
+            await more(count: Self.gridBatch)
         }
-        prefetch(works.dropFirst(at).prefix(Self.gridReady))
+        stockFor(at)
     }
 
-    /// Thumbnails fetched before they are shown, at the grid's size.
+    /// The thumbnails about the work shown kept, those ahead fetched.
+    private func stockFor(_ at: Int) {
+        let kept = works[max(at - Self.seenTiles - 3, 0) ..< min(at + Self.gridReady + 60, works.count)]
+        stock.keep(Set(kept.map(\.id)))
+        prefetch(works.dropFirst(at).prefix(Self.gridReady))
+        prefetch(works[max(at - Self.seenTiles, 0) ..< at].reversed())
+    }
+
+    /// Thumbnails fetched before they are shown, at the grid's size, six at
+    /// a time, and held in the grid's stock.
     private func prefetch(_ some: some Sequence<RemoteItem>) {
-        let requests = some.compactMap { model.backend.request(for: .thumb($0.id)) }
+        let kept = stock
+        let jobs = some.filter { kept.images[$0.id] == nil }
+            .compactMap { work in model.backend.request(for: .thumb(work.id)).map { (work.id, $0) } }
+        guard !jobs.isEmpty else { return }
         let pixel = Self.gridPixel
-        Task.detached(priority: .utility) {
-            for request in requests {
-                _ = try? await ImageLoader.shared.image(for: request, maxPixel: pixel)
+        Task(priority: .utility) {
+            await withTaskGroup(of: (String, UIImage?, UnitPoint).self) { group in
+                var next = jobs.makeIterator()
+                for _ in 0 ..< 6 {
+                    if case let (id, request)? = next.next() { group.addTask { await Self.fetch(id, request, pixel) } }
+                }
+                while case let (done, image, focus)? = await group.next() {
+                    if let image {
+                        kept.images[done] = image
+                        kept.focus[done] = focus
+                    }
+                    if case let (id, request)? = next.next() { group.addTask { await Self.fetch(id, request, pixel) } }
+                }
             }
         }
     }
 
-    /// Back to the work tapped: it is put in place under the grid, and the
-    /// grid grows about its tile till the tile is the screen, fading.
-    private func closeGrid(on work: RemoteItem) {
-        if let frame = gridFrames.frames[work.id], frame.width > 0 {
-            (gridAnchor, pageAnchor) = anchors(frame)
-            gridScale = max(gridArea.width, 1) / frame.width
+    /// A thumbnail for the grid, and the point its page will cut it about
+    /// (found on it once, kept under its address for the page too).
+    nonisolated private static func fetch(
+        _ id: String, _ request: URLRequest, _ pixel: CGFloat
+    ) async -> (String, UIImage?, UnitPoint) {
+        guard let image = try? await ImageLoader.shared.image(for: request, maxPixel: pixel) else {
+            return (id, nil, .center)
         }
-        var quiet = Transaction(animation: nil)
-        quiet.disablesAnimations = true
-        withTransaction(quiet) { position = work.id }
+        let focus = await SubjectFocus.shared.point(in: image, key: ImageLoader.pictureKey(request), subject: true)
+        return (id, image, focus)
+    }
+
+    /// Back to the work tapped: it is put in place under the grid, its
+    /// picture made ready, and the grid grows about its tile till the tile
+    /// lies where the work lies on its page, as large, and fades, the page
+    /// growing out of the tile the same way (14:06: "Po powrocie z siatki
+    /// … w obydwu wypadkach jest skok i przesunięcie dzieła").
+    private func closeGrid(on work: RemoteItem) {
+        guard grid, gridOpen else { return }
+        gridGoing = false
+        let quiet = Self.quiet
+        withTransaction(quiet) {
+            if let tile = gridFrames.frames[work.id], tile.width > 0 {
+                meet(place: place(of: work), tile: tile)
+            }
+            position = work.id
+        }
         speed.reset()
         Task { @MainActor in
-            await Task.yield()
-            withAnimation(.smooth(duration: 0.45)) { grid = false }
+            await ready(work)
+            withAnimation(.smooth(duration: 0.45)) { gridOpen = false }
+            try? await Task.sleep(for: .milliseconds(480))
+            guard !gridOpen else { return }
+            withTransaction(quiet) { grid = false }
+        }
+    }
+
+    /// A change with no animation at all.
+    private static var quiet: Transaction {
+        var quiet = Transaction(animation: nil)
+        quiet.disablesAnimations = true
+        return quiet
+    }
+
+    // MARK: The long drag back
+
+    /// How much smaller the work is at the end of the drag.
+    static let pullShrink: CGFloat = 0.3
+    /// How far the drag must go (of the screen's width) for the grid.
+    static let pullFar: CGFloat = 0.33
+
+    private func pulled(_ move: CGFloat) {
+        guard !grid else { return }
+        let width = max(pagesArea.width, 1)
+        // A short swipe stays a swipe: the work shrinks only past it.
+        let share = min(max((move - 36) / width, 0), 1)
+        let quiet = Self.quiet
+        withTransaction(quiet) { pull = share }
+    }
+
+    /// The drag let go: far and not flicked, the grid of the works seen;
+    /// a short swipe on the cut work, the whole one (as before); else back.
+    private func released(_ work: RemoteItem, move: CGFloat, speed: CGFloat, seconds: Double) {
+        guard !grid else { return }
+        let width = max(pagesArea.width, 1)
+        let flicked = seconds < 0.3 && move < width * 0.5
+        if move > width * Self.pullFar, !flicked {
+            openGrid(back: true)
+            return
+        }
+        withAnimation(.smooth(duration: 0.3)) { pull = 0 }
+        if !whole, move > 50 || speed > 500 { flip(work) }
+    }
+
+    /// The work's page picture and the point it is cut around, in memory,
+    /// waited for a little at most.
+    private func ready(_ work: RemoteItem) async {
+        guard let request = model.backend.request(for: .thumb(work.id)) else { return }
+        let pixel = GalleryPage.thumbPixel
+        let key = ImageLoader.pictureKey(request)
+        Task { @MainActor in
+            guard let image = try? await ImageLoader.shared.image(for: request, maxPixel: pixel, priority: .high)
+            else { return }
+            _ = await SubjectFocus.shared.point(in: image, key: key, subject: true)
+        }
+        let until = ContinuousClock.now + .milliseconds(600)
+        while ContinuousClock.now < until {
+            if ImageLoader.inMemory(for: request, maxPixel: pixel) != nil, SubjectFocus.known(key + "|subject") != nil {
+                // A frame or two for the page to take them.
+                try? await Task.sleep(for: .milliseconds(50))
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(25))
         }
     }
 
@@ -347,6 +537,14 @@ struct GalleryView: View {
     /// work, which melts away first, as on the way to the whole one.
     private func open(_ work: RemoteItem) {
         ItemPeeks.remember(work.summary, thumb: .thumb(work.id))
+        // The way back is the way in turned round (14:06: "Powrót z karty
+        // dzieła do „całego dzieła” odwrócona animacją wejścia"): the card
+        // takes its work back here, then leaves without a slide.
+        CardArrival.pending[work.id]?.back = {
+            var quiet = Transaction(animation: nil)
+            quiet.disablesAnimations = true
+            withTransaction(quiet) { if !path.isEmpty { path.removeLast() } }
+        }
         let push = {
             var quiet = Transaction(animation: nil)
             quiet.disablesAnimations = true
@@ -378,12 +576,12 @@ struct GalleryView: View {
         UserDefaults.standard.set(data, forKey: rememberedKey)
     }
 
-    private func more() async {
+    private func more(count: Int = GalleryView.batch) async {
         guard !loading else { return }
         loading = true
         defer { loading = false }
         do {
-            let next = try await model.backend.gallery(count: Self.batch)
+            let next = try await model.backend.gallery(count: count)
             failed = false
             let have = Set(works.map(\.id))
             let fresh = next.filter { !have.contains($0.id) }
@@ -488,11 +686,15 @@ private struct GalleryPage: View {
     /// (17:01: "Jednak bez ruchu pod wpływem żyroskopu. Tylko oddalenie po
     /// startowym zoomie i bardzo delikatny ruch w bok (kierunek zmienny)").
     @State private var zoom: CGFloat = GalleryPage.closer
-    static let closer: CGFloat = 1.06
+    static let closer = GalleryView.closer
     /// Seconds to draw back from `closer` to the whole picture.
     static let drawBack: Double = 20
 
-    private static let thumbPixel: CGFloat = 900
+    static let thumbPixel: CGFloat = 900
+    /// The whole work's room on the page as the shown one last had it,
+    /// for where another work would lie (the way back from the grid).
+    @MainActor static var lastSafe = EdgeInsets()
+    @MainActor static var lastCaption = Whole.captionGuess
     private static let fullPixel: CGFloat = 2800
 
     var body: some View {
@@ -596,8 +798,11 @@ private struct GalleryPage: View {
             open()
         }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                if place != nil, abs(height - captionHeight) > 0.5 { captionHeight = height }
+                guard place != nil else { return }
+                GalleryPage.lastCaption = height
+                if abs(height - captionHeight) > 0.5 { captionHeight = height }
             }
+            .onAppear { GalleryPage.lastSafe = geo.safeAreaInsets }
             .padding(.bottom, foot)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
     }
@@ -932,7 +1137,7 @@ private struct GalleryHeart: View {
 }
 
 /// A picture cut to fill a box around `focus`: its size and where it lies.
-private struct Fill {
+struct Fill {
     let size: CGSize
     let offset: CGSize
     /// How far it can move either way and still fill the box.
@@ -997,11 +1202,14 @@ private struct GalleryCaption: View {
             // ekranie także dodajmy guzik „karta dzieła”"), black there
             // whatever the phone's mode ("na pełnym ekranie guzik „karta
             // dzieła” czarny").
-            Button(action: open) {
-                Label("Karta dzieła".bound, systemImage: "text.below.photo")
+            // Only under the whole work after all (14:06: "Na pełnym
+            // ekranie nie dajemy jednak guzika karta dzieła").
+            if whole {
+                Button(action: open) {
+                    Label("Karta dzieła".bound, systemImage: "text.below.photo")
+                }
+                .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
             }
-            .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
-            .environment(\.colorScheme, whole ? scheme : .light)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.gutter + 2)

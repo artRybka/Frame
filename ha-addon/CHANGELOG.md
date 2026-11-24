@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.364
+
+- Galeria: siatka z dużym zapasem miniatur i rozpędem ostatniego machnięcia,
+  kafelki w proporcji ekranu, historia oglądanych dzieł nad bieżącym, długie
+  przeciągnięcie w prawo otwiera siatkę; płynny powrót z siatki i z karty
+  dzieła; pewniejsze machnięcia.
+
 ## 1.145.363
 
 - Rysunki i grafiki z muzeów kadruje nowy model (kadr-11s, próg 0,795),
