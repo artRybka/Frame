@@ -407,11 +407,11 @@ struct GalleryView: View {
     /// Thumbnails fetched before they are shown, at the grid's size, six at
     /// a time, and held in the grid's stock.
     private func prefetch(_ some: some Sequence<RemoteItem>) {
-        let jobs = some.filter { stock.images[$0.id] == nil }
+        let kept = stock
+        let jobs = some.filter { kept.images[$0.id] == nil }
             .compactMap { work in model.backend.request(for: .thumb(work.id)).map { (work.id, $0) } }
         guard !jobs.isEmpty else { return }
         let pixel = Self.gridPixel
-        let stock = stock
         Task(priority: .utility) {
             await withTaskGroup(of: (String, UIImage?, UnitPoint).self) { group in
                 var next = jobs.makeIterator()
@@ -420,8 +420,8 @@ struct GalleryView: View {
                 }
                 while case let (done, image, focus)? = await group.next() {
                     if let image {
-                        stock.images[done] = image
-                        stock.focus[done] = focus
+                        kept.images[done] = image
+                        kept.focus[done] = focus
                     }
                     if case let (id, request)? = next.next() { group.addTask { await Self.fetch(id, request, pixel) } }
                 }
