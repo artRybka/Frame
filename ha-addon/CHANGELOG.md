@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.361
+
+- Galeria: siatka gotowa z dużym zapasem i bez skoków, dzieło oddala się
+  w swój kafelek, a siatka lekko płynie; prosta droga dzieła do karty.
+
 ## 1.145.360
 
 - Galeria: przy bardzo szybkim przewijaniu oddala się do siatki kolejnych
