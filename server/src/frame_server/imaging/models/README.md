@@ -6,3 +6,10 @@
 used through `cv2.FaceDetectorYN` to keep faces in automatic crops.
 
 MIT License, Copyright (c) 2020 Shiqi Yu.
+
+`kadr-4.onnx`, `kadr-10p.onnx`: the museum photographs' crop models, the
+app's `ios/Models/Kadr.mlpackage` and `KadrPainting.mlpackage` (trained on
+the Mac) exported to ONNX with the same weights (float16, used as float32)
+for the server's night (`crop_night.py`). Each names its model in its
+metadata (`model`), held to `crop_model.MODEL` and `PAINTING_MODEL`: a new
+model comes on both sides at once.

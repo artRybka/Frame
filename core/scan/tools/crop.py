@@ -2,8 +2,12 @@
 model's answer (`frame_crop_find`, `frame_crop_letterbox`) against the server's `imaging/crop_model.py`: the
 letterboxed photograph, the verdict, how far apart the corners are (px). Without photographs, made-up ones and
 made-up masks. Run from `server/`: `uv run python ../core/scan/tools/crop.py <build>/crop`. (The model's own
-answers come from `Kadr.mlpackage` on the phone, or from its PyTorch weights on the Mac.)"""
-import subprocess, sys
+answers come from `Kadr.mlpackage` on the phone, or from its PyTorch weights on the Mac.)
+
+crop.py <crop binary> plates [<photo> <x0,y0,…,y3>]…: a print's sheet cut down round its impression
+(`frame_crop_plate`) against `crop_model.plate`, on photographs and the sheets found on them; without
+any, on made-up sheets."""
+import subprocess, sys, tempfile
 from pathlib import Path
 
 import cv2
@@ -13,8 +17,7 @@ from PIL import Image
 from frame_server.imaging import crop_model as cm
 
 binary = sys.argv[1]
-shm = Path("/dev/shm/crop")
-shm.mkdir(exist_ok=True)
+shm = Path(tempfile.mkdtemp(prefix="crop-"))
 rng = np.random.default_rng(7)
 
 
@@ -55,6 +58,63 @@ def boxed(rgb):
     said = subprocess.run([binary, "box", str(shm / "p.npy"), str(shm / "x.npy")], capture_output=True, text=True, check=True)
     return np.load(shm / "x.npy").reshape(3, cm.SIDE, cm.SIDE), tuple(int(v) for v in said.stdout.split())
 
+
+def made_up_print(n):
+    """A sheet of paper on a dark board, an impression on it (a caption under it now and then)."""
+    w, h = (int(v) for v in rng.integers(600, 1025, 2))
+    board = np.full((h, w, 3), rng.integers(30, 80, 3), np.uint8)
+    sx0, sy0 = int(w * rng.uniform(0.05, 0.15)), int(h * rng.uniform(0.05, 0.15))
+    sx1, sy1 = int(w * rng.uniform(0.85, 0.95)), int(h * rng.uniform(0.85, 0.95))
+    board[sy0:sy1, sx0:sx1] = rng.integers(215, 245, 3)
+    share = rng.uniform(0.4, 0.95)
+    iw, ih = int((sx1 - sx0) * share), int((sy1 - sy0) * share * rng.uniform(0.8, 1.0))
+    ix, iy = sx0 + (sx1 - sx0 - iw) // 2 + int(rng.integers(-10, 11)), sy0 + (sy1 - sy0 - ih) // 3
+    y, x = np.mgrid[0:ih, 0:iw]
+    ink = ((x * (3 + n % 4) + y * 7) % 23 < 9)[..., None] * rng.integers(60, 160, 3)
+    board[iy : iy + ih, ix : ix + iw] = (board[iy : iy + ih, ix : ix + iw] - ink).clip(0, 255)
+    if n % 3 == 0:
+        cv2.putText(board, "Title of the print", (ix, iy + ih + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (40, 40, 40), 1)
+    board = (board + rng.normal(0, 2, board.shape)).clip(0, 255).astype(np.uint8)
+    sheet = [[sx0 / w, sy0 / h], [sx1 / w, sy0 / h], [sx1 / w, sy1 / h], [sx0 / w, sy1 / h]]
+    return board, sheet
+
+
+def plated(rgb, sheet):
+    np.save(shm / "p.npy", np.ascontiguousarray(rgb))
+    corners = [repr(float(v)) for c in sheet for v in c]
+    said = subprocess.run([binary, "plate", str(shm / "p.npy"), repr(cm.PLATE_OVER), *corners], capture_output=True, text=True, check=True)
+    lines = said.stdout.splitlines()
+    quads = [None if l == "-" else np.array([float(v) for v in l.split()]).reshape(4, 2) for l in lines[1:3]]
+    return int(lines[0]), quads
+
+
+if sys.argv[2:3] == ["plates"]:
+    sheets = []
+    given = sys.argv[3:]
+    for n in range(0, len(given), 2):
+        corners = [float(v) for v in given[n + 1].split(",")]
+        sheets.append((Path(given[n]).name, np.asarray(Image.open(given[n]).convert("RGB")), [corners[i : i + 2] for i in range(0, 8, 2)]))
+    if not sheets:
+        sheets = [(f"made up {n}", *made_up_print(n)) for n in range(30)]
+    worst, differ, cut = 0.0, 0, 0
+    for name, rgb, sheet in sheets:
+        made, (mine, alone) = plated(rgb, sheet)
+        want = cm.plate(rgb, sheet)
+        h, w = rgb.shape[:2]
+        if bool(made) != (want is not None) or (want is not None and (alone is None) != (want[1] is None)):
+            differ += 1
+            print(f"{name:24s} {w}x{h} core {'cut' if made else 'sheet'}, server {'sheet' if want is None else 'cut'}")
+            continue
+        far = 0.0
+        if want is not None:
+            cut += 1
+            far = float(np.abs(mine - np.array(want[0])).max() * max(w, h))
+            if alone is not None:
+                far = max(far, float(np.abs(alone - np.array(want[1])).max() * max(w, h)))
+        worst = max(worst, far)
+        print(f"{name:24s} {w}x{h} {'cut' if made else 'sheet':5s} {far:.3f} px")
+    print(f"{len(sheets)} sheets, {cut} cut down, {differ} differ, corners at most {worst:.3f} px apart")
+    sys.exit(1 if differ else 0)
 
 VERDICTS = {0: "whole", 1: "cut", 2: "unsure"}
 cases = []

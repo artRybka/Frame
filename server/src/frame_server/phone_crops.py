@@ -13,20 +13,42 @@ Both wait for him on the list "Kadrowane" in Biblioteka
 (:meth:`PhoneCrops.review`): what the model cut, and what it left to him.
 His corrections, and the cuts he said were fine, are what the model is
 taught again from (:meth:`PhoneCrops.lessons`).
+
+A print's sheet is cut down round its impression when the paper is wide
+(``crop_model.plate``, Mateusz 2026-11-24): by the phone, by the server for
+an app that does not say it did (:data:`..imaging.crop_model.PLATE`), and
+once for every print cut before, his own cuts among them
+(:meth:`PhoneCrops.plates_again`).
 """
 
 from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 from PIL import Image
 
 from .ai.crops import Crops
-from .imaging.crop_model import KINDS, holds, kind_of, model_of
+from .imaging.crop_model import (
+    KINDS,
+    PHOTO_SIDE,
+    PLATE,
+    PLATE_SAME,
+    holds,
+    impression,
+    kept,
+    kind_of,
+    model_of,
+    overlap,
+    plate,
+)
+from .imaging.crop_night import Looker
 from .imaging.cut import Quad, same_picture, valid, worth_cutting
+from .imaging.layout import load_image
 from .library.models import Cut
 
 if TYPE_CHECKING:
@@ -57,10 +79,18 @@ def _now() -> str:
 # round them (Mateusz 2026-11-21 17:48 UTC: „Dla rysunku i grafiki
 # zostawimy tylko jedno kadrowanie - »do kartki«”; prints since 2026-11-20).
 SHEET_KINDS = (KINDS.index("drawing"), KINDS.index("print"))
+#: A print: its sheet cut down round its impression when the paper is wide.
+PRINT = KINDS.index("print")
+#: The whole photograph, as corners.
+WHOLE = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
 
 def _unframed_kind(item: Item) -> bool:
     return kind_of(item.classification, item.medium) in SHEET_KINDS
+
+
+def _is_print(item: Item) -> bool:
+    return kind_of(item.classification, item.medium) == PRINT
 
 
 def _as_told(answer: str | None, kind: int | None) -> str | None:
@@ -76,6 +106,7 @@ class PhoneCrops:
     def __init__(self, library: Library, crops: Crops) -> None:
         self.library = library
         self.crops = crops
+        self.looker = Looker()
 
     def _state(self) -> dict[str, Any]:
         state = dict(self.library.get_state(KEY, {}) or {})
@@ -130,11 +161,21 @@ class PhoneCrops:
         size: tuple[int, int],
         picture: str,
         model: str,
+        sheet: Quad | None = None,
+        plate_alone: Quad | None = None,
+        plates: int | None = None,
+        night: bool = False,
     ) -> str:
         """What the phone's model found about ``item``'s photograph of
         ``size`` (as looked at), kept; a sure cut put on. The verdict kept
         ("cut" when the work was cut); "" when nothing was done: the
-        photograph shown changed meanwhile, or the owner cut it himself."""
+        photograph shown changed meanwhile, or the owner cut it himself.
+
+        Of a print: ``work`` cut down round its impression (``plate_alone``)
+        from the ``sheet`` the model found, by an app that did it as
+        ``plates`` (:data:`..imaging.crop_model.PLATE`); here, of an app
+        that did not. ``night``: looked at by the server at night
+        (:meth:`at_night`), not by the phone."""
         if verdict not in VERDICTS:
             raise ValueError(f"no such verdict: {verdict}")
         stored = self.library.get(item.id) or item
@@ -151,6 +192,19 @@ class PhoneCrops:
             surround = None  # not around all of it: no frame (an older app's)
         if surround is not None and _unframed_kind(stored):
             surround = None
+        alone: Quad | None = None
+        if not _is_print(stored):
+            sheet = None
+        elif plates == PLATE:
+            sheet = valid(sheet) if sheet is not None and work is not None else None
+            if sheet is not None and plate_alone is not None:
+                alone = kept(plate_alone)
+        else:
+            sheet = None
+            if work is not None:
+                made = plate(self._photo(stored), work)
+                if made is not None:
+                    sheet, (work, alone) = work, made
         if verdict == "cut" and (work is None or not worth_cutting(work)):
             verdict = "whole" if work is not None else "unsure"
         state = self._state()
@@ -164,6 +218,10 @@ class PhoneCrops:
             "aspect": aspect,
             "at": _now(),
         }
+        if _is_print(stored):
+            state["looked"][stored.id].update(sheet=sheet, plate=alone, pl=PLATE)
+        if night:
+            state["looked"][stored.id]["night"] = True
         state["fine"].pop(stored.id, None)
         self._save(state)
         log.info("phone crops: %s %s (sure %.2f, %s)", stored.id, verdict, sure, model)
@@ -177,6 +235,8 @@ class PhoneCrops:
                 surround=surround,
                 surround_kind="frame" if surround is not None else "",
                 surround_asked=True,
+                plate=alone if sheet is not None else None,
+                paper=True,
             )
             self.crops.apply(stored, cut)
             return verdict
@@ -184,6 +244,154 @@ class PhoneCrops:
             # Looked at: nothing around it (as the night keeps it).
             self.library.update(stored.id, cut=Cut(aspect=aspect, picture=stored.picture_key()))
         return verdict
+
+    def _photo(self, item: Item) -> np.ndarray:
+        """``item``'s museum photograph as the phone looks at it: RGB, its
+        long side at most :data:`..imaging.crop_model.PHOTO_SIDE`."""
+        rgb = load_image(self.crops.images.museum_photo(item)).convert("RGB")
+        rgb.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
+        return np.asarray(rgb)
+
+    # -- the same at night, on the server ----------------------------------------------
+
+    def at_night(self, quiet: Callable[[], bool], most: int) -> dict[str, int]:
+        """The works the phone is to look at (:meth:`waiting`, those cared
+        about first) looked at here with the same models (``crop_night``),
+        and what was found kept as the phone's is (Mateusz 2026-11-24
+        10:53 UTC, „Na serwerze w nocy”): ``most`` of them at most, while
+        ``quiet()`` says the night goes on. The phone passes over what was
+        looked at here. How many of each verdict."""
+        done = {"cut": 0, "whole": 0, "unsure": 0}
+        works, _ = self.waiting(most)
+        for item in works:
+            if not quiet():
+                break
+            stored = self.library.get(item.id)
+            if stored is None or not self.wants(stored):
+                continue
+            kind = kind_of(stored.classification, stored.medium)
+            try:
+                rgb = self._photo(stored)
+                found = self.looker.look(rgb, kind)
+                verdict = self.found(
+                    stored,
+                    verdict=found.verdict,
+                    sure=found.sure,
+                    work=found.work,
+                    surround=found.surround,
+                    size=(rgb.shape[1], rgb.shape[0]),
+                    picture=stored.picture_key(),
+                    model=model_of(kind),
+                    sheet=found.sheet,
+                    plate_alone=found.plate,
+                    plates=PLATE,
+                    night=True,
+                )
+            except (OSError, ValueError, LookupError) as err:
+                log.warning("phone crops: %s not looked at tonight: %s", stored.id, err)
+                continue
+            if verdict in done:
+                done[verdict] += 1
+        log.info("phone crops at night: %s", done)
+        return done
+
+    # -- prints cut down round their impression, once ----------------------------------
+
+    def plates_again(self) -> dict[str, int]:
+        """Once after a start, for every print cut before prints were cut
+        as now (:data:`..imaging.crop_model.PLATE`): its sheet cut down
+        round its impression when the paper is wide. His own cuts too
+        (Mateusz 2026-11-24 10:39–10:40 UTC: „ręczne kadry, jeżeli obejmują
+        samą grafikę także obejmij tą zmianą”, „te Ręczne kadry z papierem
+        wokół i te z całą kartką także obejmij zmianą”): his cut to the
+        impression alone gets its margin within the model's sheet; within
+        his cut of the sheet, or of the sheet and more, the impression is
+        looked for as in the model's. His cuts set after it stay as he
+        sets them. How many were cut anew: the model's, his, and of his
+        those that were the impression alone."""
+        state = self._state()
+        if int(state.get("plates") or 0) >= PLATE:
+            return {}
+        done = {"auto": 0, "owner": 0, "owner_impression": 0, "looked": 0}
+        for item in self.library.all_items():
+            cut = item.cut
+            if (
+                cut is None
+                or cut.work is None
+                or not _is_print(item)
+                or cut.picture != item.picture_key()
+                or cut.not_rectangle
+            ):
+                continue
+            try:
+                made = self._plate_again(item, state, done)
+            except (OSError, ValueError, LookupError) as err:
+                log.warning("phone crops: %s not cut round its impression: %s", item.id, err)
+                continue
+            if made:
+                done["owner" if cut.by == "owner" else "auto"] += 1
+        state = self._state() | {"plates": PLATE, "plates_done": done}
+        self._save(state)
+        log.info(
+            "phone crops: prints cut round their impression: %d of the model's, %d of his "
+            "(%d to the impression alone), of %d looked at",
+            done["auto"],
+            done["owner"],
+            done["owner_impression"],
+            done["looked"],
+        )
+        return done
+
+    def _plate_again(self, item: Item, state: dict[str, Any], done: dict[str, int]) -> bool:
+        cut = item.cut
+        assert cut is not None and cut.work is not None
+        entry = state["looked"].get(item.id)
+        if entry is not None and entry.get("p") != item.picture_key():
+            entry = None
+        rgb = self._photo(item)
+        h, w = rgb.shape[:2]
+        if cut.aspect and not same_picture(cut.aspect, (w, h)):
+            return False
+        done["looked"] += 1
+        made: tuple[Quad, Quad] | None = None
+        if cut.by == "owner":
+            # The model's sheet where it looked, else his cut is the sheet.
+            sheet = (entry or {}).get("sheet") or (entry or {}).get("work")
+            found = impression(rgb, sheet) if sheet is not None else None
+            if found is not None and sheet is not None:
+                alone = found.on_photo(found.corners(), w, h)
+                if overlap(cut.work, alone, (w, h)) >= PLATE_SAME:
+                    made = plate(rgb, sheet, over=0.0)
+                    if made is not None:
+                        done["owner_impression"] += 1
+            if made is None:
+                made = plate(rgb, cut.work)
+        else:
+            made = plate(rgb, cut.work)
+        if made is None:
+            return False
+        work, alone_kept = made
+        at = _now()
+        if (
+            cut.by == "auto"
+            and entry is not None
+            and entry.get("v") == "cut"
+            and entry.get("at") == cut.at
+        ):
+            looked = self._state()
+            looked["looked"][item.id] = entry | {
+                "sheet": entry.get("sheet") or entry.get("work"),
+                "work": work,
+                "plate": alone_kept,
+                "pl": PLATE,
+                "at": at,
+            }
+            self._save(looked)
+            state["looked"][item.id] = looked["looked"][item.id]
+        again = {"work": work, "plate": alone_kept, "paper": True, "at": at}
+        self.crops.apply(item, cut.model_copy(update=again))
+        log.info("phone crops: %s (%s) cut round its impression", item.id, cut.by)
+        return True
 
     # -- "Kadrowane" -------------------------------------------------------------------
 
@@ -285,6 +493,9 @@ class PhoneCrops:
             if not fine and not owners:
                 continue
             cut = item.cut
+            # The model is taught the sheet it found, not the impression's
+            # cut made of it (``crop_model.plate``).
+            models = entry.get("sheet") or entry.get("work")
             found.append(
                 {
                     "id": item_id,
@@ -293,7 +504,7 @@ class PhoneCrops:
                     "fine": fine and not owners,
                     "work": cut.work
                     if owners and cut is not None
-                    else (None if entry.get("v") == "unsure" else entry.get("work")),
+                    else (None if entry.get("v") == "unsure" else models),
                     "surround": cut.surround
                     if cut is not None and (owners or cut.surround_by == "owner")
                     else (None if entry.get("v") == "unsure" else entry.get("surround")),

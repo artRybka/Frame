@@ -39,6 +39,15 @@ enum MuseumCrop {
     static let side = 384
     /// The photograph's long side looked at (`crop_model.PHOTO_SIDE`).
     static let photoSide = 1024
+    /// A print's sheet is cut down round its impression when its paper is
+    /// wide (`crop_model.plate`; Mateusz 2026-11-24: „kadrujmy do kartki,
+    /// chyba że margines od odbitki jest wtedy bardzo duży”): as the
+    /// server does it (`crop_model.PLATE`, told it with what was found),
+    /// over this share of the impression's shorter side (`PLATE_OVER`).
+    static let plates = 1
+    static let plateOver = 0.15
+    /// A print (`crop_model.KINDS`).
+    static let printKind = 2
 
     struct Failed: LocalizedError {
         let told: String
@@ -59,6 +68,10 @@ enum MuseumCrop {
         var work: [[Double]]?
         var surround: [[Double]]?
         var sure: Double
+        /// Of a print whose sheet was cut down round its impression
+        /// (`plate(_:sheet:)`): the sheet the model found, the impression alone.
+        var sheet: [[Double]]? = nil
+        var plate: [[Double]]? = nil
     }
 
     /// A photograph's file read upright in sRGB, as the server's
@@ -141,6 +154,31 @@ enum MuseumCrop {
             surround: found & 2 != 0 ? corners(surround) : nil,
             sure: sure
         )
+    }
+
+    /// A print's `sheet` on `photo` cut down round its impression when its
+    /// paper is wide (`crop_model.plate`): the cut and the impression
+    /// alone; nil when the sheet stays.
+    static func plate(_ photo: Pixels, sheet: [[Double]]) throws -> (cut: [[Double]], plate: [[Double]])? {
+        guard sheet.count == 4, sheet.allSatisfy({ $0.count == 2 }) else { throw Failed(told: "no sheet") }
+        let given = sheet.flatMap { $0 }
+        var cut = [Double](repeating: 0, count: 8), alone = [Double](repeating: 0, count: 8)
+        var found: Int32 = 0
+        var error = [CChar](repeating: 0, count: 512)
+        let size = Int32(error.count)
+        let made = photo.rgb.withUnsafeBufferPointer { rgb in
+            frame_crop_plate(
+                rgb.baseAddress, Int32(photo.rows), Int32(photo.columns), given, plateOver, &cut, &alone, &found,
+                &error, size
+            )
+        }
+        guard made >= 0 else { throw Failed(told: told(error)) }
+        guard made == 1, found & 3 == 3 else { return nil }
+        return (corners(cut), corners(alone))
+    }
+
+    private static func corners(_ q: [Double]) -> [[Double]] {
+        stride(from: 0, to: 8, by: 2).map { [q[$0], q[$0 + 1]] }
     }
 
     private static func told(_ error: [CChar]) -> String {
@@ -229,7 +267,13 @@ enum MuseumCrop {
     static func look(at file: Data, kind: Int) throws -> (found: Found, columns: Int, rows: Int) {
         let photo = try pixels(of: file)
         let (logits, sure) = try ask(photo, kind: kind)
-        return (try find(photo, logits: logits, sure: sure, cutAt: sureOf(kind)), photo.columns, photo.rows)
+        var found = try find(photo, logits: logits, sure: sure, cutAt: sureOf(kind))
+        if kind == printKind, let sheet = found.work, let made = try plate(photo, sheet: sheet) {
+            found.sheet = sheet
+            found.work = made.cut
+            found.plate = made.plate
+        }
+        return (found, photo.columns, photo.rows)
     }
 }
 
@@ -272,6 +316,11 @@ struct PhoneCropFound: Codable, Hashable, Sendable {
     var surround: [[Double]]?
     var width: Int
     var height: Int
+    /// Of a print whose sheet was cut down round its impression: the sheet
+    /// the model found, the impression alone, and how (`MuseumCrop.plates`).
+    var sheet: [[Double]]? = nil
+    var plate: [[Double]]? = nil
+    var plates: Int? = MuseumCrop.plates
 }
 
 /// What came of it: the verdict as the server kept it ("" when it did
@@ -322,7 +371,8 @@ extension MuseumCrop {
         let looked = try await Task.detached(priority: .userInitiated) { try MuseumCrop.look(at: file, kind: ask.kind) }.value
         let found = PhoneCropFound(
             model: ask.model, picture: ask.picture, verdict: looked.found.verdict, sure: looked.found.sure,
-            work: looked.found.work, surround: looked.found.surround, width: looked.columns, height: looked.rows
+            work: looked.found.work, surround: looked.found.surround, width: looked.columns, height: looked.rows,
+            sheet: looked.found.sheet, plate: looked.found.plate
         )
         return try await backend.phoneCropFound(itemID: itemID, found)
     }

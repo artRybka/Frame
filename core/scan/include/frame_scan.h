@@ -85,6 +85,17 @@ int frame_crop_letterbox(const unsigned char* pixels, int rows, int columns, int
 int frame_crop_find(const unsigned char* pixels, int rows, int columns, const float* logits, int side, double sure,
                     double cut_at, double* work, double* surround, int* found, char* error, int error_size);
 
+/* A print's `sheet` (corners as `frame_crop_find` gives them, on `pixels`)
+ * cut down round its impression when its paper's widest margin is more
+ * than `over` of the impression's shorter side (`PLATE_OVER`): into `cut`
+ * the impression and `PLATE_MARGIN` of it round it, the same on every
+ * side, never past the sheet; into `plate` the impression alone. `found`:
+ * 3 when both are there. 1 when the sheet is cut
+ * down, 0 when it stays; -1 when it went wrong (said in `error`).
+ * `server/src/frame_server/imaging/crop_model.py`'s `plate`. */
+int frame_crop_plate(const unsigned char* pixels, int rows, int columns, const double* sheet, double over,
+                     double* cut, double* plate, int* found, char* error, int error_size);
+
 /* No more threads than these from now on (0: as many as there are cores). */
 void frame_scan_threads(int threads);
 

@@ -1,7 +1,8 @@
 // A museum photograph cut down to the work by the phone's model, with no
 // Claude (Mateusz 2026-11-20): what `imaging/crop_model.py` makes of the
 // model's masks and how sure it is, and `imaging/cut.py`'s `snap` and
-// `valid`, written a second time. The Python is the truth: a change there
+// `valid`, written a second time; and a print's sheet cut down round its
+// impression (`crop_model.plate`, Mateusz 2026-11-24). The Python is the truth: a change there
 // is made here by hand, and checked with `tools/crop.py`.
 #include "../include/frame_scan.h"
 #include "constants.hpp"
@@ -17,6 +18,8 @@
 #include <numeric>
 #include <optional>
 #include <stdexcept>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace frame::crop {
@@ -413,6 +416,322 @@ int decide(double sure, const std::optional<Quad>& quad, int w, int h, double cu
     return upright_off(*quad, w, h) <= UPRIGHT ? 1 : 2;
 }
 
+// A print's impression on its sheet set upright (`crop_model.Impression`):
+// its box turned by `turn` degrees about `middle`.
+struct Impression {
+    std::array<double, 4> box;  // left, top, right, bottom
+    double turn = 0;
+    cv::Point2d middle;
+    int cols = 0, rows = 0;
+    cv::Mat to_sheet;
+
+    std::array<cv::Point2d, 4> corners(double grow = 0) const {
+        double u0 = box[0] - grow, v0 = box[1] - grow, u1 = box[2] + grow, v1 = box[3] + grow;
+        double a = turn * M_PI / 180.0, ca = std::cos(a), sa = std::sin(a);
+        std::array<std::array<double, 2>, 4> uv{{{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}}};
+        std::array<cv::Point2d, 4> out;
+        for (int i = 0; i < 4; i++)
+            out[i] = {middle.x + uv[i][0] * ca - uv[i][1] * sa, middle.y + uv[i][0] * sa + uv[i][1] * ca};
+        return out;
+    }
+
+    std::array<double, 4> margins() const {
+        auto q = corners();
+        return {(q[0].x + q[3].x) / 2, (q[0].y + q[1].y) / 2, cols - (q[1].x + q[2].x) / 2,
+                rows - (q[2].y + q[3].y) / 2};
+    }
+
+    Quad on_photo(const std::array<cv::Point2d, 4>& q, int w, int h) const {
+        std::vector<cv::Point2f> from, back;
+        for (const auto& p : q) from.emplace_back(static_cast<float>(p.x), static_cast<float>(p.y));
+        cv::Mat inverse;
+        cv::invert(to_sheet, inverse);
+        cv::perspectiveTransform(from, back, inverse);
+        Quad out;
+        for (int i = 0; i < 4; i++)
+            out[i] = {static_cast<double>(back[i].x) / w, static_cast<double>(back[i].y) / h};
+        return out;
+    }
+};
+
+// NumPy's `median` of floats (of float32: the two middle ones' mean in float).
+float median_of(std::vector<float> v) {
+    size_t n = v.size(), mid = n / 2;
+    std::nth_element(v.begin(), v.begin() + static_cast<long>(mid), v.end());
+    float hi = v[mid];
+    if (n % 2) return hi;
+    float lo = *std::max_element(v.begin(), v.begin() + static_cast<long>(mid));
+    return (lo + hi) / 2.0f;
+}
+
+double median_of(std::vector<double> v) {
+    size_t n = v.size(), mid = n / 2;
+    std::nth_element(v.begin(), v.begin() + static_cast<long>(mid), v.end());
+    double hi = v[mid];
+    if (n % 2) return hi;
+    double lo = *std::max_element(v.begin(), v.begin() + static_cast<long>(mid));
+    return (lo + hi) / 2.0;
+}
+
+// `quantile` of the low and high share `q` and 1 - `q` at once, as NumPy's.
+std::pair<double, double> ends_of(std::vector<double> v, double q) {
+    auto at = [&](double share) {
+        double where = share * static_cast<double>(v.size() - 1);
+        double below = std::floor(where), gamma = where - below;
+        size_t lo = static_cast<size_t>(below);
+        std::nth_element(v.begin(), v.begin() + static_cast<long>(lo), v.end());
+        double a = v[lo];
+        double b = lo + 1 < v.size() ? *std::min_element(v.begin() + static_cast<long>(lo) + 1, v.end()) : a;
+        double diff = b - a;
+        return gamma >= 0.5 ? b - diff * (1 - gamma) : a + diff * gamma;
+    };
+    double lo = at(q);
+    return {lo, at(1 - q)};
+}
+
+// `crop_model._spread_above`: the median and PLATE_SPREAD median deviations.
+float spread_above(const std::vector<float>& values) {
+    float mid = median_of(values);
+    std::vector<float> off(values.size());
+    for (size_t i = 0; i < values.size(); i++) off[i] = std::abs(values[i] - mid);
+    return mid + static_cast<float>(PLATE_SPREAD) * median_of(off);
+}
+
+// `crop_model.upright`: the sheet set upright, its long side PLATE_SIDE.
+cv::Mat upright(const cv::Mat& rgb, const Quad& sheet, cv::Mat& to_sheet) {
+    std::array<cv::Point2f, 4> q;
+    for (int i = 0; i < 4; i++)
+        q[i] = {static_cast<float>(sheet[i].x * rgb.cols), static_cast<float>(sheet[i].y * rgb.rows)};
+    auto length = [](cv::Point2f a, cv::Point2f b) { return std::sqrt((b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y)); };
+    float width = (length(q[0], q[1]) + length(q[3], q[2])) / 2.0f;
+    float height = (length(q[0], q[3]) + length(q[1], q[2])) / 2.0f;
+    float s = static_cast<float>(PLATE_SIDE) / std::max(width, height);
+    int cols = std::max(8, static_cast<int>(std::nearbyint(width * s)));
+    int rows = std::max(8, static_cast<int>(std::nearbyint(height * s)));
+    std::array<cv::Point2f, 4> to{cv::Point2f(0, 0), cv::Point2f(cols, 0), cv::Point2f(cols, rows), cv::Point2f(0, rows)};
+    to_sheet = cv::getPerspectiveTransform(q.data(), to.data());
+    cv::Mat flat;
+    cv::warpPerspective(rgb, flat, to_sheet, cv::Size(cols, rows), cv::INTER_AREA, cv::BORDER_REPLICATE);
+    return flat;
+}
+
+// `crop_model._cut_caption`: the impression's extent along one axis without
+// a caption or signature at either end.
+std::pair<double, double> cut_caption(const std::vector<double>& t, double lo, double hi, double across) {
+    int n = static_cast<int>(hi - lo) + 1;
+    std::vector<double> prof(static_cast<size_t>(n), 0.0);
+    for (double x : t) prof[static_cast<size_t>(std::clamp(static_cast<int>(x - lo), 0, n - 1))] += 1;
+    for (double& p : prof) p /= std::max(1.0, across);
+    double body = median_of(prof);
+    int reach = static_cast<int>(PLATE_REACH * n);
+    double gap = std::max(0.01, PLATE_GAP * body);
+    std::array<double, 2> ends{lo, hi};
+    for (int side = 0; side < 2; side++) {
+        auto p = [&](int j) { return prof[static_cast<size_t>(side == 0 ? j : n - 1 - j)]; };
+        int cut_at = -1;
+        double sum = p(0) + p(1);
+        for (int j = 2; j < static_cast<int>(PLATE_NEAR * n); j++) {
+            if (p(j) <= gap && sum / j < PLATE_SPARSE * body) cut_at = j;
+            sum += p(j);
+        }
+        if (cut_at >= 0) {
+            int j = cut_at;
+            while (j < n - 1 && p(j) <= gap) j++;
+            cut_at = j;
+        } else if (body >= PLATE_DENSE) {
+            int j = 0;
+            while (j < reach && p(j) < PLATE_THIN * body) j++;
+            if (2 <= j && j < reach) cut_at = j;
+        }
+        if (cut_at > 0) ends[side] = side == 0 ? lo + cut_at : hi - cut_at;
+    }
+    return {ends[0], ends[1]};
+}
+
+// `crop_model.impression`: a print's impression on its sheet, where there is
+// plain paper all round it.
+std::optional<Impression> impression(const cv::Mat& rgb, const Quad& sheet) {
+    Impression found;
+    cv::Mat flat = upright(rgb, sheet, found.to_sheet);
+    int rows = flat.rows, cols = flat.cols;
+    cv::Mat blurred, as_float, lab;
+    cv::GaussianBlur(flat, blurred, cv::Size(0, 0), 1.2);
+    blurred.convertTo(as_float, CV_32FC3);
+    for (int r = 0; r < rows; r++) {
+        float* row = as_float.ptr<float>(r);
+        for (int c = 0; c < 3 * cols; c++) row[c] = row[c] / 255.0f;
+    }
+    cv::cvtColor(as_float, lab, cv::COLOR_RGB2Lab);
+    int least_side = std::min(cols, rows);
+    int e = std::max(2, static_cast<int>(std::nearbyint(PLATE_EDGE * least_side)));
+    int b = std::max(e + 3, static_cast<int>(std::nearbyint(PLATE_BAND * least_side)));
+    auto in_band = [&](int r, int c) {
+        bool outer = r >= e && r < rows - e && c >= e && c < cols - e;
+        bool inner = r >= b && r < rows - b && c >= b && c < cols - b;
+        return outer && !inner;
+    };
+    std::array<std::vector<float>, 3> band_colours;
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            if (in_band(r, c)) {
+                const cv::Vec3f& v = lab.at<cv::Vec3f>(r, c);
+                for (int k = 0; k < 3; k++) band_colours[k].push_back(v[k]);
+            }
+    std::array<float, 3> paper;
+    for (int k = 0; k < 3; k++) paper[k] = median_of(band_colours[k]);
+    cv::Mat apart(rows, cols, CV_32F), light(rows, cols, CV_32F);
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++) {
+            const cv::Vec3f& v = lab.at<cv::Vec3f>(r, c);
+            float d0 = v[0] - paper[0], d1 = v[1] - paper[1], d2 = v[2] - paper[2];
+            apart.at<float>(r, c) = std::sqrt(d0 * d0 + d1 * d1 + d2 * d2);
+            light.at<float>(r, c) = v[0];
+        }
+    cv::Mat mean, squares, mean_squares;
+    cv::blur(light, mean, cv::Size(5, 5));
+    cv::multiply(light, light, squares);
+    cv::blur(squares, mean_squares, cv::Size(5, 5));
+    cv::Mat grain(rows, cols, CV_32F);
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++) {
+            float m = mean.at<float>(r, c);
+            grain.at<float>(r, c) = std::sqrt(std::max(mean_squares.at<float>(r, c) - m * m, 0.0f));
+        }
+    std::vector<float> band_apart, band_grain;
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            if (in_band(r, c)) band_apart.push_back(apart.at<float>(r, c)), band_grain.push_back(grain.at<float>(r, c));
+    float far = std::max(static_cast<float>(PLATE_APART), spread_above(band_apart));
+    float rough = std::max(static_cast<float>(PLATE_GRAIN), spread_above(band_grain));
+    cv::Mat work = cv::Mat::zeros(rows, cols, CV_8U);
+    for (int r = e; r < rows - e; r++)
+        for (int c = e; c < cols - e; c++)
+            work.at<unsigned char>(r, c) = apart.at<float>(r, c) > far || grain.at<float>(r, c) > rough;
+    cv::morphologyEx(work, work, cv::MORPH_OPEN, cv::Mat::ones(3, 3, CV_8U));
+    int grow = std::max(2, static_cast<int>(std::nearbyint(PLATE_GROW * std::max(cols, rows))));
+    cv::Mat grown, parts, stats, centres;
+    cv::dilate(work, grown, cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(2 * grow + 1, 2 * grow + 1)));
+    int n = cv::connectedComponentsWithStats(grown, parts, stats, centres, 8);
+    if (n < 2) return std::nullopt;
+    std::vector<long> count(static_cast<size_t>(n), 0);
+    long all = 0;
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            if (work.at<unsigned char>(r, c)) count[static_cast<size_t>(parts.at<int>(r, c))]++, all++;
+    count[0] = 0;
+    int k = static_cast<int>(std::max_element(count.begin(), count.end()) - count.begin());
+    std::vector<cv::Point2f> points;
+    std::vector<double> xs, ys;
+    for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            if (parts.at<int>(r, c) == k && work.at<unsigned char>(r, c)) {
+                points.emplace_back(static_cast<float>(c), static_cast<float>(r));
+                xs.push_back(c), ys.push_back(r);
+            }
+    cv::RotatedRect turned_rect = cv::minAreaRect(points);
+    double cx = turned_rect.center.x, cy = turned_rect.center.y;
+    double turn = std::fmod(static_cast<double>(turned_rect.angle) + 45.0, 90.0);
+    if (turn < 0) turn += 90.0;
+    turn -= 45.0;
+    auto boxed = [&](double by, std::vector<double>& u, std::vector<double>& v) {
+        double a = by * M_PI / 180.0, ca = std::cos(a), sa = std::sin(a);
+        u.resize(xs.size()), v.resize(xs.size());
+        for (size_t i = 0; i < xs.size(); i++) {
+            u[i] = (xs[i] - cx) * ca + (ys[i] - cy) * sa;
+            v[i] = -(xs[i] - cx) * sa + (ys[i] - cy) * ca;
+        }
+        auto [u0, u1] = ends_of(u, PLATE_STRAY);
+        auto [v0, v1] = ends_of(v, PLATE_STRAY);
+        return std::array<double, 4>{u0, v0, u1 + 1, v1 + 1};
+    };
+    auto size = [](const std::array<double, 4>& x) { return (x[2] - x[0]) * (x[3] - x[1]); };
+    std::vector<double> u, v;
+    std::array<double, 4> box = boxed(0.0, u, v);
+    if (PLATE_TURN_LEAST < std::abs(turn) && std::abs(turn) <= PLATE_TURN) {
+        std::vector<double> tu, tv;
+        std::array<double, 4> tbox = boxed(turn, tu, tv);
+        if (size(tbox) <= PLATE_TURN_GAIN * size(box)) {
+            u.swap(tu), v.swap(tv), box = tbox;
+        } else {
+            turn = 0.0;
+        }
+    } else {
+        turn = 0.0;
+    }
+    std::vector<double> ku, kv;
+    for (size_t i = 0; i < u.size(); i++)
+        if (u[i] >= box[0] && u[i] <= box[2] && v[i] >= box[1] && v[i] <= box[3]) ku.push_back(u[i]), kv.push_back(v[i]);
+    std::tie(box[0], box[2]) = cut_caption(ku, box[0], box[2], box[3] - box[1]);
+    std::tie(box[1], box[3]) = cut_caption(kv, box[1], box[3], box[2] - box[0]);
+    found.box = box;
+    found.turn = turn;
+    found.middle = {cx, cy};
+    found.cols = cols, found.rows = rows;
+    // Plain paper round it: alike on every side, light, and little on it.
+    std::array<cv::Rect, 4> sides{cv::Rect(e, e, cols - 2 * e, b - e), cv::Rect(e, rows - b, cols - 2 * e, b - e),
+                                  cv::Rect(e, e, b - e, rows - 2 * e), cv::Rect(cols - b, e, b - e, rows - 2 * e)};
+    std::array<std::array<float, 3>, 4> med;
+    for (int s = 0; s < 4; s++) {
+        std::array<std::vector<float>, 3> colours;
+        for (int r = sides[s].y; r < sides[s].y + sides[s].height; r++)
+            for (int c = sides[s].x; c < sides[s].x + sides[s].width; c++) {
+                const cv::Vec3f& x = lab.at<cv::Vec3f>(r, c);
+                for (int j = 0; j < 3; j++) colours[j].push_back(x[j]);
+            }
+        for (int j = 0; j < 3; j++) med[s][j] = median_of(colours[j]);
+    }
+    float sides_apart = 0;
+    for (const auto& p : med)
+        for (const auto& q : med) {
+            float d0 = p[0] - q[0], d1 = p[1] - q[1], d2 = p[2] - q[2];
+            sides_apart = std::max(sides_apart, std::sqrt(d0 * d0 + d1 * d1 + d2 * d2));
+        }
+    cv::Mat filled = cv::Mat::zeros(rows, cols, CV_8U), near;
+    std::vector<cv::Point> outline;
+    for (const auto& p : found.corners())
+        outline.emplace_back(static_cast<int>(std::nearbyint(p.x)), static_cast<int>(std::nearbyint(p.y)));
+    cv::fillPoly(filled, std::vector<std::vector<cv::Point>>{outline}, cv::Scalar(1));
+    cv::dilate(filled, near, cv::Mat::ones(2 * grow + 1, 2 * grow + 1, CV_8U));
+    long beyond = 0, loose = 0;
+    for (int r = e; r < rows - e; r++)
+        for (int c = e; c < cols - e; c++)
+            if (!near.at<unsigned char>(r, c)) {
+                beyond++;
+                loose += apart.at<float>(r, c) > static_cast<float>(PLATE_LOOSE) ||
+                         grain.at<float>(r, c) > static_cast<float>(PLATE_LOOSE_GRAIN);
+            }
+    double busy = beyond > 50 ? static_cast<double>(loose) / static_cast<double>(beyond) : 1.0;
+    bool plain = busy <= PLATE_BUSY && rough <= PLATE_GRAIN_MOST &&
+                 static_cast<double>(count[static_cast<size_t>(k)]) / std::max(1L, all) >= PLATE_WHOLE &&
+                 sides_apart <= PLATE_SIDES && paper[0] >= PLATE_LIGHT &&
+                 size(box) >= PLATE_LEAST * cols * rows;
+    if (!plain) return std::nullopt;
+    return found;
+}
+
+// `crop_model.plate`: the sheet cut down round its impression when its paper
+// is wide (PLATE_OVER): the impression and PLATE_MARGIN round it, the same on
+// every side; and the impression alone.
+// `crop_model.kept`: corners within the picture, to five places.
+Quad kept(const Quad& q) {
+    Quad out;
+    for (int i = 0; i < 4; i++)
+        out[i] = {round5(std::clamp(q[i].x, 0.0, 1.0)), round5(std::clamp(q[i].y, 0.0, 1.0))};
+    return out;
+}
+
+std::optional<std::pair<Quad, Quad>> plate(const cv::Mat& rgb, const Quad& sheet, double over) {
+    auto found = impression(rgb, sheet);
+    if (!found) return std::nullopt;
+    double least = std::min(found->box[2] - found->box[0], found->box[3] - found->box[1]);
+    auto margins = found->margins();
+    if (*std::max_element(margins.begin(), margins.end()) <= over * least) return std::nullopt;
+    double pad = std::max(0.0, std::min(PLATE_MARGIN * least, *std::min_element(margins.begin(), margins.end())));
+    auto cut = valid(found->on_photo(found->corners(pad), rgb.cols, rgb.rows));
+    if (!cut) return std::nullopt;
+    return std::make_pair(*cut, kept(found->on_photo(found->corners(), rgb.cols, rgb.rows)));
+}
+
 }  // namespace frame::crop
 
 namespace {
@@ -443,6 +762,29 @@ int frame_crop_letterbox(const unsigned char* pixels, int rows, int columns, int
         return failed(err.what(), error, error_size);
     } catch (...) {
         return failed("the photograph could not be made the model's", error, error_size);
+    }
+}
+
+int frame_crop_plate(const unsigned char* pixels, int rows, int columns, const double* sheet, double over,
+                     double* cut, double* plate, int* found, char* error, int error_size) {
+    using namespace frame::crop;
+    try {
+        if (!pixels || !sheet || !cut || !plate || !found || rows <= 0 || columns <= 0)
+            return failed("no picture", error, error_size);
+        cv::Mat rgb(rows, columns, CV_8UC3, const_cast<unsigned char*>(pixels));
+        Quad given;
+        for (int i = 0; i < 4; i++) given[i] = {sheet[2 * i], sheet[2 * i + 1]};
+        *found = 0;
+        auto made = frame::crop::plate(rgb, given, over);
+        if (!made) return 0;
+        put(made->first, cut);
+        put(made->second, plate);
+        *found = 3;
+        return 1;
+    } catch (const std::exception& err) {
+        return failed(err.what(), error, error_size);
+    } catch (...) {
+        return failed("the impression could not be found", error, error_size);
     }
 }
 

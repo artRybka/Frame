@@ -361,3 +361,45 @@ def test_the_phone_finds_a_museum_work_as_the_server_does() -> None:
     # Not sure enough, or sure it wants none: as here.
     assert cm.find(photo, logits, 0.5).verdict == "unsure"
     assert cm.find(photo, logits, 0.05).verdict == "whole"
+
+    # A print's wide sheet cut down round its impression (Mateusz
+    # 2026-11-24): as here, and the app says it did it as the server would.
+    found = re.search(r"static let plates = (\d+)\n", text)
+    assert found is not None and int(found.group(1)) == cm.PLATE
+    found = re.search(r"static let plateOver = ([0-9.]+)\n", text)
+    assert found is not None and float(found.group(1)) == cm.PLATE_OVER
+    found = re.search(r"static let printKind = (\d+)\n", text)
+    assert found is not None and int(found.group(1)) == cm.KINDS.index("print")
+    sheet = np.full((h, w, 3), 50, np.uint8)
+    sheet[20:220, 30:270] = (236, 230, 216)
+    y, x = np.mgrid[70:170, 100:200]
+    sheet[70:170, 100:200][(x * 3 + y * 7) % 19 < 8] = (70, 60, 50)
+    assert "where (x * 3 + y * 7) % 19 < 8" in held
+    edges = [[30, 20], [270, 20], [270, 220], [30, 220]]
+    assert said("printSheet") == [[a / w, b / h] for a, b in edges]
+    made = cm.plate(sheet, said("printSheet"))
+    assert made is not None
+    assert [list(c) for c in made[0]] == said("printCut")
+    assert [list(c) for c in made[1]] == said("printPlate")
+
+
+def test_the_servers_crop_models_are_the_apps() -> None:
+    """Mateusz 2026-11-24 10:53 UTC, „Na serwerze w nocy”: the night cuts
+    museum photographs with the app's own models, exported to ONNX
+    (``imaging/models``, ``crop_night.py``). Each names its model as
+    ``crop_model`` does and the app's weights it was made beside: a new
+    model comes on both sides at once, or this fails."""
+    import hashlib
+
+    import onnxruntime as ort
+
+    from frame_server.imaging import crop_model as cm
+
+    for model, package in ((cm.MODEL, "Kadr"), (cm.PAINTING_MODEL, "KadrPainting")):
+        session = ort.InferenceSession(str(cm.WEIGHTS / f"{model}.onnx"))
+        said = session.get_modelmeta().custom_metadata_map
+        assert said["model"] == model
+        weights = IOS / "Models" / f"{package}.mlpackage" / "Data" / "com.apple.CoreML"
+        weights = weights / "weights" / "weight.bin"
+        if weights.is_file():
+            assert hashlib.sha256(weights.read_bytes()).hexdigest() == said["mlpackage"], package
