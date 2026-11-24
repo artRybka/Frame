@@ -12,6 +12,10 @@ enum CardArrival {
         let from: CGRect?
         /// Galeria's ground behind it, fading into the card's paper.
         let ground: Color
+        /// Back to Galeria without the pop's slide, once the card has given
+        /// its work back (Mateusz 2026-11-24 14:06: "Powrót z karty dzieła
+        /// do „całego dzieła” odwrócona animacją wejścia").
+        var back: (@MainActor () -> Void)?
     }
 
     /// Left by Galeria for the card it is about to open, taken by the card.
@@ -27,6 +31,20 @@ enum CardArrival {
     }
     /// Galeria's ground giving way to the paper.
     static let ground = Animation.easeInOut(duration: 0.4)
+    /// The card's work sinking back into the cut one.
+    static let sink = Animation.easeIn(duration: 0.18)
+    /// The rest of the card going before its work leaves.
+    static let restLeaving = Animation.easeIn(duration: 0.14)
+    /// How long the way back takes, before Galeria is there again.
+    static func leaving(_ pending: Pending) -> Duration {
+        pending.from == nil ? .milliseconds(200) : .milliseconds(430)
+    }
+}
+
+/// Where the card's work lies now, followed as the card scrolls without
+/// drawing it again: the way back starts from there.
+@MainActor final class ArrivalPlace {
+    var rect: CGRect?
 }
 
 /// The card's picture on its way from Galeria: drawn where the whole work
