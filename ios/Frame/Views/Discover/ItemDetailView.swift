@@ -145,6 +145,9 @@ struct ItemDetailView: View {
     /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
     /// tło „łuny” za dziełem").
     @State private var edgeGlow: UIImage?
+    /// Coming from the work held in Galeria: the glow that filled the
+    /// screen there, behind the work on its way, fading as it arrives.
+    @State private var farGlow: UIImage?
     @Environment(\.colorScheme) private var scheme
 
     init(itemID: String) {
@@ -153,6 +156,7 @@ struct ItemDetailView: View {
         _arrival = State(initialValue: arrival)
         _arrived = State(initialValue: arrival == nil)
         _edgeGlow = State(initialValue: Glow.kept[itemID])
+        _farGlow = State(initialValue: arrival?.from != nil ? Glow.wide[itemID] : nil)
         let known = ItemPeeks.polish[itemID]
         _item = State(initialValue: ItemPeeks.cards[itemID])
         _polish = State(initialValue: known)
@@ -566,6 +570,7 @@ struct ItemDetailView: View {
                             }
                         }
                     }
+                    .background { farGlowBehind }
                     .modifier(arriving)
                     .pictureBox()
                 Picker("Widok", selection: .constant(ViewMode.original)) {
@@ -1351,12 +1356,32 @@ struct ItemDetailView: View {
         }
     }
 
-    /// The rest of the card, appearing once the work is on its way.
+    /// The rest of the card, appearing once the work is on its way: from
+    /// the work held in Galeria it rides up with the work, from under it
+    /// (Mateusz 2026-11-24 18:51: "pociągnięcie w górę otwiera płynnie
+    /// kartę dzieła").
     private var restOfCard: RestOfCard {
-        RestOfCard(
+        var rise: CGFloat = 0
+        if let from = arrival?.from, let home = arrivalHome { rise = from.maxY - home.maxY }
+        return RestOfCard(
             shown: arrived,
-            animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default
+            animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default,
+            rise: rise
         )
+    }
+
+    /// Galeria's glow, the screen full of it, behind the work on its way
+    /// here: it fades as the work arrives, the card's own under it.
+    @ViewBuilder
+    private var farGlowBehind: some View {
+        if let farGlow {
+            GeometryReader { box in
+                Glow(edges: farGlow, size: box.size, offset: .zero, spread: Glow.far)
+                    .opacity((scheme == .light ? 0.62 : 1) * (arrived ? 0 : 1))
+                    .animation(CardArrival.ground, value: arrived)
+                    .frame(width: box.size.width, height: box.size.height)
+            }
+        }
     }
 
     /// Back to Galeria the way the card came, turned round (Mateusz
@@ -1460,6 +1485,7 @@ struct ItemDetailView: View {
                     .transition(.opacity)
                 }
             }
+            .background { farGlowBehind }
             .modifier(arriving)
             .pictureBox()
             .layoutProbe("group")
@@ -2119,9 +2145,14 @@ private struct GalleryWayBack: ViewModifier {
 private struct RestOfCard: ViewModifier {
     let shown: Bool
     let animation: Animation
+    /// How far below its place it starts (and leaves): as far as the work
+    /// is from its own.
+    var rise: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
+            .offset(y: shown ? 0 : rise)
+            .animation(CardArrival.move, value: shown)
             .opacity(shown ? 1 : 0)
             .animation(animation, value: shown)
     }

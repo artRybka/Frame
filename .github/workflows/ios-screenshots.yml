@@ -95,6 +95,8 @@ jobs:
             capture now 16 "now-colour-burin-$appearance" -paintStyle burin -paintColours c7bc9a:0.431/7e6e52:0.179/9d7f5a:0.171/ac9c77:0.138/c06e4f:0.044/aa8e38:0.043
             capture gallery 14 "gallery-$appearance"
             capture gallery-caption 14 "gallery-caption-$appearance"
+            capture gallery-grid 16 "gallery-grid-$appearance"
+            capture gallery-whole 16 "gallery-whole-$appearance"
             capture discover 12 "discover-$appearance"
             capture discover 14 "discover-studies-$appearance" -scroll studies
             capture discover 14 "discover-zoom-$appearance" -scroll zoom
@@ -345,6 +347,34 @@ jobs:
             CODE_SIGNING_ALLOWED=NO || true
           mkdir -p shots
           cp /tmp/frame-pull/* shots/ || true
+      # `only: gallery-probe` (or a regex holding it, to take screenshots in
+      # the same run): a finger goes through Galeria's ways between the
+      # whole screen and the grid (FrameUITests/GalleryProbeTests.swift)
+      # while the screen is filmed; the film, what the app did and when and
+      # a screenshot of each step come back with the screenshots.
+      - name: Gallery probe
+        if: contains(inputs.only, 'gallery-probe')
+        env:
+          UDID: ${{ steps.sim.outputs.udid }}
+        run: |
+          mkdir -p shots /tmp/frame-gallery
+          xcodebuild build-for-testing -project Frame.xcodeproj -scheme FramePull \
+            -destination "id=$UDID" -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO | tail -5
+          for part in testTheWaysBetweenTheTwoViews testTheSweepByItself; do
+            xcrun simctl io "$UDID" recordVideo --codec=h264 --force "shots/gallery-probe-$part.mov" &
+            film=$!
+            sleep 2
+            python3 -c 'import time; print(time.time())' > "shots/gallery-probe-$part-film-start.log"
+            xcodebuild test-without-building -project Frame.xcodeproj -scheme FramePull \
+              -destination "id=$UDID" -derivedDataPath build \
+              -only-testing:"FrameUITests/GalleryProbeTests/$part" \
+              CODE_SIGNING_ALLOWED=NO 2>&1 | tail -30 || true
+            kill -INT "$film" || true
+            wait "$film" || true
+          done
+          cp /tmp/frame-gallery/* shots/ || true
+          ls -la shots
       # `only: colours-probe`: a finger switches the colours' button on the
       # full-screen viewer with a slow server (FrameUITests/
       # ColoursSwitchTests.swift): fails the run when the picture waits for
@@ -369,4 +399,5 @@ jobs:
           path: |
             ios/shots/*.png
             ios/shots/*.log
+            ios/shots/*.mov
           retention-days: 14

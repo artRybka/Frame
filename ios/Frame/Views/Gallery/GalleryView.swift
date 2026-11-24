@@ -4,77 +4,86 @@ import SwiftUI
 /// "Galeria", the first tab (Mateusz 2026-11-23): works one after another on
 /// the whole screen, cut to fill it. A swipe up brings the next, down the one
 /// before; the order is the person's own (`GET /api/gallery`: their hearts,
-/// works like them, new ones). Cut to the screen, the work has only the
-/// glass heart in its top corner; a tap draws it back to the whole of it
-/// on its own colour, with its caption and the tab bar (Mateusz 2026-11-23
-/// 17:42: "Jednak bez widocznego tytułu i paska menu. Samo serduszko. Pasek
-/// menu, autor i tytuł po kliknięciu"), and another cuts it to the screen
-/// again. The caption opens the work's card; a double tap gives a heart,
-/// red pouring into the corner's; a hold opens the work's menu.
+/// works like them, new ones).
+///
+/// Two views and no more (2026-11-24 18:31: "Zrezygnujmy chyba z widoku
+/// „całego dzieła”, bo wprowadza zamieszanie"): the work on the whole
+/// screen, with its title, its artist and the glass heart, and the grid of
+/// small screens (`GalleryGrid`), the works seen above the one shown and
+/// the works coming below. The grid has the tab bar: it is the way out of
+/// the whole screen. Between the two the work only shrinks into its tile or
+/// grows out of it (`GalleryCamera`).
+///
+/// To the grid: a quick run of swipes (the work draws back while still on
+/// its way, `sweep`), a swipe down from the screen's upper part
+/// (`SwipeZone`; lower down it is the work before), or two fingers drawn
+/// together. Back: a tap on a tile, or two fingers spread on it. A tap on
+/// the work does nothing; two give a heart (19:12, 18:51). A hold shows
+/// the whole work on its own colours while the finger lies, and the finger
+/// drawn up from there opens the work's card (18:51).
 struct GalleryView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.displayScale) private var displayScale
     /// The works not seen yet when the app was last left: shown at once on
     /// the next launch while the server is asked for more (Mateusz
     /// 2026-11-23: "czarny ekran zaraz po otwarciu").
     @State private var works: [RemoteItem] = GalleryView.remembered()
     @State private var position: String?
-    /// The works shown whole (tapped), kept from one work to the next till
-    /// another tap (Mateusz 2026-11-24: "przewijając do kolejnego zostawiaj
-    /// ekran całego dzieła").
-    @State private var whole = false
     @State private var loading = false
     @State private var failed = false
     @State private var path: [String] = []
-    /// Swiped past too fast: the works coming as a grid (`GalleryGrid`).
-    /// `grid` while it is there at all, `gridOpen` once it has grown out of
-    /// the work (and till it goes back into one), `gridGoing` once it lies
-    /// where it is to be and flows on.
+    /// The grid under the pages (`grid`), and at rest with the pages gone
+    /// into it (`gridOpen`): the tab bar is there then.
     @State private var grid = false
     @State private var gridOpen = false
-    @State private var gridGoing = false
-    /// The first of the works seen before, shown above the line.
-    @State private var gridBefore = 0
-    /// A long drag from left to right, as a share of the screen's width:
-    /// the work shrinks as it goes, and the grid of the works seen comes
-    /// (14:26: "długie przeciągnięcie (nie krótkie machnięcie) wstecz to
-    /// dzieło się zmniejsza i przechodzę do siatki (historii tego co było)").
-    @State private var pull: CGFloat = 0
-    /// A slow drag down under way: the scroll gives way to it.
+    /// The first work in the grid, the empty cells before it, and how far
+    /// the grid is scrolled when it comes (`layGrid`).
+    @State private var gridFirst = 0
+    @State private var gridLead = 0
+    @State private var gridStart: CGFloat = 0
+    /// Fingers spread on a tile: the grid does not scroll meanwhile.
+    @State private var gridLocked = false
+    /// The pages drawn over the grid: on the way out of a work always, on
+    /// the way into one once its page has its picture.
+    @State private var windowShown = true
+    /// The work the grid is going back into, and the page last ready.
+    @State private var returning: String?
+    @State private var readyPage: String?
+    /// What moves the camera now.
+    @State private var hand = Hand.idle
+    /// A gesture of Galeria's own under way: the pages' scroll gives way.
     @State private var pulling = false
-    @State private var speed = SwipeSpeed()
-    @State private var gridFrames = GridFrames()
+    @State private var heartShown = true
+    @State private var camera = GalleryCamera()
+    @State private var coast = Coast()
+    @State private var track = GridTrack()
     @State private var stock = GridStock()
-    /// How fast the pages were swiped, for the grid to flow on as fast.
+    /// How fast the pages are swiped, for the grid to flow on as fast.
     @State private var flow = SwipeFlow()
-    @State private var gridSpeed: CGFloat = 0
-    /// Where the grid's content starts below its top (the status bar).
-    @State private var gridInset: CGFloat = 0
-    /// The first work in the grid: the one before the work shown, on the
-    /// cut works, so that one lands in the middle of the top row.
-    @State private var gridStart = 0
-    /// How the grid and the pages meet: the work's tile in the grid
-    /// (`gridAnchor`, its middle in the grid's frame) lies, grown
-    /// `gridScale` times and moved by `gridShift`, where the work lies on
-    /// its page (`pageMask`, in the pages' frame; `pageAnchor` its middle),
-    /// and the page shrinks and moves (`pageShift`) into the tile.
-    @State private var gridAnchor = UnitPoint.topLeading
-    @State private var gridShift = CGSize.zero
-    @State private var pageAnchor = UnitPoint.center
-    @State private var pageShift = CGSize.zero
-    @State private var pageMask = CGRect.zero
-    @State private var gridScale: CGFloat = 3
-    @State private var gridArea: CGRect = .zero
-    @State private var pagesArea: CGRect = .zero
+    @State private var run = SwipeRun()
+    /// The screen.
+    @State private var area = CGRect.zero
+    /// The work held: shown whole while the finger lies (and while its
+    /// card, opened from there, is up).
+    @State private var peek: String?
+    @State private var pull = GalleryPull()
+    /// The held work's card opened by the finger drawn up.
+    @State private var engaged = false
+    /// The phone's taps: the hold, the card.
+    @State private var ticks = 0
     /// The end page's glow over the first new work as it fades away.
     @State private var surfacing = false
-    /// The cut work whose card is opening (`GalleryPage.leaving`).
-    @State private var leaving: String?
     /// Double taps given, for the corner heart's flash.
     @State private var flashes = 0
     /// The works ahead being cut down to the work, one at a time.
     @State private var cutting: Task<Void, Never>?
     /// Works looked at for a cut here since the app started.
     @MainActor private static var looked: Set<String> = []
+
+    private enum Hand {
+        case idle, sweep, swipe, pinch, spread, back
+    }
 
     /// Works asked for at once, and how near the end the next are asked for.
     /// Asked for well before the end (Mateusz 2026-11-24: "niech aplikacja
@@ -89,43 +98,82 @@ struct GalleryView: View {
         return works.first { $0.id == position } ?? works.first
     }
 
+    private var shownIndex: Int? {
+        guard position != Self.endID, !works.isEmpty else { return nil }
+        return works.firstIndex { $0.id == position } ?? 0
+    }
+
     /// The glow the end page and a work coming out of it are made of: the
     /// last works' colours.
     private var endColours: [Color] {
         works.suffix(4).compactMap { $0.item.colors.first?.hex }.compactMap { Color(hexString: $0) }
     }
 
+    private var metrics: GridMetrics { GridMetrics(area: area.size, scale: displayScale) }
+
+    /// The screen's own edges (the status bar, the home indicator),
+    /// whatever bars are shown: the pages are laid out by these, so nothing
+    /// on them moves when the tab bar comes or goes.
+    private static var insets: EdgeInsets {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.first?.keyWindow ?? scenes.first?.windows.first
+        guard let insets = window?.safeAreaInsets else { return EdgeInsets(top: 59, leading: 0, bottom: 34, trailing: 0) }
+        return EdgeInsets(top: insets.top, leading: 0, bottom: insets.bottom, trailing: 0)
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
-            pages
-                .overlay(alignment: .topTrailing) {
-                    // Its own for each work: swiped to a work given a heart
-                    // before, the red is there already, not pouring in.
-                    if let shown, !grid { heartButton(shown).id(shown.id) }
+            ZStack {
+                Color.black
+                if grid { wall }
+                pages
+            }
+            // All of it on the whole screen, set before the safe area is
+            // let go of: set after it, a shape is only as large as the safe
+            // area (Mateusz 2026-11-24 17:23: "Czarne paski od góry i dołu").
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { area = $0 }
+            .ignoresSafeArea()
+            .overlay(alignment: .topTrailing) {
+                // Its own for each work: swiped to a work given a heart
+                // before, the red is there already, not pouring in.
+                if let shown, heartShown { heartButton(shown).id(shown.id).transition(.opacity) }
+            }
+            .overlay {
+                if works.isEmpty { emptyState }
+            }
+            .overlay {
+                // The first of the new works coming out of the glow.
+                if surfacing {
+                    GalleryWaiting(colours: endColours)
+                        .ignoresSafeArea()
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
                 }
-                .overlay { gridLayer }
-                .overlay {
-                    if works.isEmpty { emptyState }
-                }
-                .overlay {
-                    // The first of the new works coming out of the glow.
-                    if surfacing {
-                        GalleryWaiting(colours: endColours)
-                            .ignoresSafeArea()
-                            .allowsHitTesting(false)
-                            .transition(.opacity)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.2), value: shown?.id)
-                .toolbarVisibility(.hidden, for: .navigationBar)
-                .toolbarVisibility(whole || !path.isEmpty ? .visible : .hidden, for: .tabBar)
-                .statusBarHidden(!whole)
-                .navigationDestination(for: String.self) { id in
-                    ItemDetailView(itemID: id)
-                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: shown?.id)
+            .sensoryFeedback(.impact(weight: .medium), trigger: ticks)
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .toolbarVisibility(gridOpen || !path.isEmpty ? .visible : .hidden, for: .tabBar)
+            .statusBarHidden(!gridOpen)
+            .navigationDestination(for: String.self) { id in
+                ItemDetailView(itemID: id)
+            }
         }
-        .task { if works.count < Self.batch { await more() } }
-        .onChange(of: path) { _, now in if now.isEmpty { leaving = nil } }
+        .task {
+            if works.count < Self.batch { await more() }
+            await staged()
+        }
+        .onChange(of: path) { _, now in
+            // Back from the card: the work held there is cut to the screen
+            // again.
+            guard now.isEmpty, peek != nil else { return }
+            engaged = false
+            pulling = false
+            withAnimation(GalleryPage.toWhole) {
+                peek = nil
+                pull.up = 0
+            }
+        }
         .task(id: position == Self.endID) {
             // On the end page: asked again till the works come.
             while position == Self.endID, !Task.isCancelled {
@@ -136,7 +184,6 @@ struct GalleryView: View {
         }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
-            if !grid, pull == 0, path.isEmpty, speed.reached() { openGrid() }
             Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
             cutAhead()
@@ -146,38 +193,11 @@ struct GalleryView: View {
     }
 
     private var pages: some View {
-        ScrollView(.vertical) {
+        let insets = Self.insets
+        return ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(Array(works.enumerated()), id: \.element.id) { index, work in
-                    GalleryPage(
-                        work: work, current: work.id == shown?.id, whole: whole,
-                        above: index > 0 ? works[index - 1] : nil,
-                        below: index + 1 < works.count ? works[index + 1] : nil,
-                        leaving: leaving == work.id,
-                        flip: { flip(work) }, open: { open(work) }
-                    )
-                        .containerRelativeFrame([.horizontal, .vertical])
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) { heart(work) }
-                        .onTapGesture { flip(work) }
-                        // UIKit's gestures, beside the scroll, never holding
-                        // it back (14:06: "nie łapie machnięcia palca").
-                        // A slow drag down: the work shrinks and the grid of
-                        // the works seen comes (16:29; no swipe to the right
-                        // any more: "Machniecie w prawo w ogóle zlikwidujmy").
-                        .gesture(PullDown(
-                            began: { pulling = !grid },
-                            changed: { move in pulled(move) },
-                            ended: { move in released(move) }
-                        ))
-                        // A hold shows the whole work (2026-11-23 21:41: "Do
-                        // ekranu całego dzieła wchodzi także przytrzymanie").
-                        .gesture(GalleryHold {
-                            guard !whole else { return }
-                            flip(work)
-                        })
-                        .sensoryFeedback(.impact(weight: .light), trigger: whole)
-                        .id(work.id)
+                    page(work, at: index, insets: insets)
                 }
                 // At the end of what came, only the glow, flowing, till the
                 // next works are here (Mateusz 2026-11-24: "łuny … tańczą
@@ -193,33 +213,44 @@ struct GalleryView: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $position)
         .scrollDisabled(pulling || grid)
-        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in flow.note(y) }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in scrolled(y) }
         .scrollIndicators(.hidden)
-        // All that shapes the pages is set on the whole screen, before the
-        // safe area is let go of: set after it, the mask was only as large
-        // as the safe area and cut the works off under the status bar and
-        // at the foot (Mateusz 2026-11-24 17:23: "Czarne paski od góry i
-        // dołu"), and the work's place was reckoned in another box than
-        // its page's own.
-        .background(Color.black)
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pagesArea = $0 }
-        .clipShape(RoundedRectangle(cornerRadius: pull > 0 ? 24 * pull : 0, style: .continuous))
-        .scaleEffect(1 - Self.pullShrink * pull)
-        .offset(y: pull * pagesArea.height * Self.pullFollow)
-        // Drawn back with the grid, into the work's tile (Mateusz
-        // 2026-11-24 10:48: "musi skalować (jakby oddalać i płynnie
-        // przechodzić z pełnego dzieła do siatki"): cut to the tile's
-        // shape, and its middle to the tile's.
-        .mask(alignment: .topLeading) {
-            let shape = gridOpen ? pageMask : wholeMask
-            RoundedRectangle(cornerRadius: gridOpen ? 6 * gridScale : 0, style: .continuous)
-                .frame(width: shape.width, height: shape.height)
-                .offset(x: shape.minX, y: shape.minY)
-        }
-        .scaleEffect(gridOpen ? 1 / gridScale : 1, anchor: pageAnchor)
-        .offset(gridOpen ? pageShift : .zero)
-        .opacity(gridOpen ? 0 : 1)
-        .ignoresSafeArea()
+        .modifier(WindowZoom(camera: camera))
+        .opacity(windowShown ? 1 : 0)
+        // Not by `grid`: it comes while a finger of the pages' own is still
+        // down (the swipe down, the pinch), and that gesture is to go on.
+        .allowsHitTesting(!gridOpen && returning == nil)
+    }
+
+    private func page(_ work: RemoteItem, at index: Int, insets: EdgeInsets) -> some View {
+        GalleryPage(
+            work: work, current: work.id == shown?.id, whole: peek == work.id, still: grid,
+            insets: insets, pull: pull,
+            above: index > 0 ? works[index - 1] : nil,
+            below: index + 1 < works.count ? works[index + 1] : nil,
+            ready: { pageReady(work.id) }
+        )
+        .containerRelativeFrame([.horizontal, .vertical])
+        .contentShape(Rectangle())
+        // One tap does nothing; two give a heart (Mateusz 2026-11-24
+        // 19:12: "pojedyncze kliknięcie na pełnym ekranie nie robi nic").
+        .onTapGesture(count: 2) { heart(work) }
+        // UIKit's gestures, beside the scroll, never holding it back
+        // (14:06: "nie łapie machnięcia palca").
+        .gesture(DownSwipe(
+            on: !gridOpen,
+            began: { drawBack(.swipe) },
+            changed: { dragged($0) },
+            ended: { move, speed in dropped(move, speed) }
+        ))
+        .gesture(GalleryPinch(
+            on: !gridOpen,
+            began: { _ in drawBack(.pinch) },
+            changed: { pinched($0) },
+            ended: { scale, speed in unpinched(scale, speed) }
+        ))
+        .gesture(HoldPull(on: !grid, began: { hold() }, moved: { held($0) }, ended: { letGo() }))
+        .id(work.id)
     }
 
     private var emptyState: some View {
@@ -258,15 +289,18 @@ struct GalleryView: View {
         .padding(.top, 2)
     }
 
-    /// The works whole, or cut to the screen again: a tap on it or on its
-    /// title or a hold to see it whole (Mateusz
-    /// 2026-11-23 21:41, 2026-11-24).
-    private func flip(_ work: RemoteItem) {
-        // The page melts one into the other with its own timings
-        // (`GalleryPage`); this is the rest's.
-        withAnimation(GalleryPage.toWhole) {
-            whole.toggle()
-        }
+    private func heart(_ work: RemoteItem) {
+        guard !grid else { return }
+        let summary = work.summary
+        if !model.liked(summary) { Task { await model.like(summary, true) } }
+        flashes += 1
+    }
+
+    /// A change with no animation at all.
+    private static var quiet: Transaction {
+        var quiet = Transaction(animation: nil)
+        quiet.disablesAnimations = true
+        return quiet
     }
 
     // MARK: The grid
@@ -282,121 +316,318 @@ struct GalleryView: View {
     static let gridReady = 160
     /// Works asked for at once while the grid is up.
     static let gridBatch = 40
+    /// Works seen before, above the one shown.
+    static let seen = 60
 
-    private var gridLayer: some View {
-        GeometryReader { geo in
-            if grid {
-                GalleryGrid(
-                    before: Array(works[min(gridBefore, gridStart) ..< min(gridStart, works.count)]),
-                    works: Array(works.dropFirst(gridStart)), whole: whole,
-                    frames: gridFrames, stock: stock,
-                    tall: pagesArea.width > 0 ? pagesArea.height / pagesArea.width : 2.17,
-                    going: gridGoing, speed: gridSpeed,
-                    pick: { closeGrid(on: $0) },
-                    more: { Task { await more(count: Self.gridBatch) } }
-                )
-                .background((whole ? Theme.paper : Color.black).ignoresSafeArea())
-                .modifier(
-                    gridOpen
-                        ? GridZoom(scale: 1, anchor: gridAnchor, shift: .zero, opacity: 1)
-                        : GridZoom(scale: gridScale, anchor: gridAnchor, shift: gridShift, opacity: 0)
-                )
-                .allowsHitTesting(gridOpen)
-                .transition(.identity)
+    private var wall: some View {
+        GalleryGrid(
+            lead: gridLead, works: Array(works.dropFirst(gridFirst)), metrics: metrics, start: gridStart,
+            stock: stock, track: track, locked: gridLocked,
+            pick: { closeGrid(on: $0) },
+            more: { Task { await more(count: Self.gridBatch) } }
+        )
+        .gesture(GalleryPinch(
+            began: { spread(at: $0) },
+            changed: { spreading($0) },
+            ended: { scale, speed in spreadEnded(scale, speed) }
+        ))
+        .modifier(WallZoom(camera: camera))
+        .allowsHitTesting(gridOpen || hand == .spread)
+        .transition(.identity)
+    }
+
+    /// The grid laid out under the pages, unseen yet: the work at `index`
+    /// in its middle column, its row's top `top` points below the screen's
+    /// (above it, when less than 0), the works seen before it above. The
+    /// camera stands on the page still.
+    private func layGrid(at index: Int, top: CGFloat) {
+        let metrics = metrics
+        let seen = min(index, Self.seen)
+        // The work in the middle column: (seen + lead) is one past a row's start.
+        let lead = ((1 - seen) % GridMetrics.columns + GridMetrics.columns) % GridMetrics.columns
+        let cell = metrics.cell(lead + seen)
+        // The grid cannot lie lower than its own first row at the top.
+        let top = min(top, cell.minY)
+        coast.stop()
+        track.ready = false
+        track.touched = { [coast] in coast.stop() }
+        camera.screen = area
+        camera.tile = CGRect(x: area.minX + cell.minX, y: area.minY + top, width: cell.width, height: cell.height)
+        camera.pose(0)
+        camera.on = true
+        withTransaction(Self.quiet) {
+            gridFirst = index - seen
+            gridLead = lead
+            gridStart = cell.minY - top
+            windowShown = true
+            returning = nil
+            grid = true
+        }
+        withAnimation(.easeOut(duration: 0.15)) { heartShown = false }
+        stockFor(index)
+        GalleryLog.note("grid laid at \(index): top \(Int(top)), start \(Int(cell.minY - top)), lead \(lead)")
+    }
+
+    /// The work's tile where the grid has it now.
+    private func tile(of index: Int) -> CGRect {
+        let cell = metrics.cell(gridLead + index - gridFirst)
+        return CGRect(
+            x: area.minX + cell.minX, y: area.minY + cell.minY - track.offset, width: cell.width, height: cell.height
+        )
+    }
+
+    // MARK: A quick run of swipes
+
+    /// How the grid flows on after the swipes: as a flicked list slows
+    /// (`UIScrollView`'s usual), so far as the speed carries it, at least a
+    /// little (Mateusz 2026-11-24 14:06: "Prędkość powinna być zgodna z
+    /// ostatnim machnięciem. Nawet kosztem kilku dzieł").
+    static let slowing: CGFloat = 0.5
+    static let least: CGFloat = 700
+    /// Seconds the work takes to shrink into its tile, on its way.
+    static let sweepZoom: CGFloat = 0.6
+
+    /// Swiped past too fast to look: the work coming in draws back while it
+    /// is still on its way up, and the wall of works flows on upwards as
+    /// fast as the swipes went, slowing (Mateusz 2026-11-24 19:12: "wolałem
+    /// rozwiązanie z oddaleniem"; the film of 19:20, "oddala się już w
+    /// biegu i ściana płynie dalej w górę"). The work's top edge keeps the
+    /// one motion throughout: the page's own at first, the grid's scroll
+    /// once the work is a tile. It is past the screen's top by then, the
+    /// works coming under it.
+    private func sweep(to index: Int) {
+        guard hand == .idle, !grid, works.indices.contains(index), area.height > 0 else { return }
+        let height = area.height, slowing = Self.slowing, zoom = Self.sweepZoom
+        // Points gone after `t` seconds, for each point a second at first.
+        let gone = { (t: CGFloat) in slowing * (1 - exp(-t / slowing)) }
+        let metrics = metrics
+        // No faster than the grid is laid out for above the screen.
+        let most = (metrics.above - metrics.pitch * 0.5) / gone(zoom)
+        let fast = min(max(flow.speed, Self.least), max(most, Self.least))
+        let left = max(CGFloat(index) * height - flow.y, 0)
+        hand = .sweep
+        layGrid(at: index, top: left - fast * gone(zoom))
+        let screen = area, id = works[index].id
+        GalleryLog.note("sweep to \(index): speed \(Int(flow.speed)) taken as \(Int(fast)), \(Int(left)) left")
+        var began: CFTimeInterval?
+        var from: CGFloat = 0
+        var swift = fast
+        var tile = camera.tile
+        var start = gridStart
+        var settled = false
+        coast.run { seconds in
+            // Till the grid lies where it is to: a frame or two.
+            guard let began0 = began ?? (track.ready || seconds > 0.25 ? seconds : nil) else { return true }
+            if began == nil {
+                began = began0
+                // Where the grid really is, and the page by now.
+                start = track.offset
+                tile = self.tile(of: index)
+                camera.tile = tile
+                from = max(CGFloat(index) * height - flow.y, 0)
+                swift = (from - (tile.minY - screen.minY)) / gone(zoom)
+                GalleryLog.note("sweep began after \(Int(seconds * 1000)) ms: \(Int(from)) left, tile at \(Int(tile.minY))")
             }
+            let t = CGFloat(seconds - began0)
+            if t < zoom {
+                let inner = max(CGFloat(index) * height - flow.y, 0)
+                let width = screen.width * pow(tile.width / screen.width, GalleryCamera.ease(t / zoom))
+                let scale = width / screen.width
+                let hero = CGRect(
+                    x: screen.midX - width / 2, y: screen.minY + from - swift * gone(t),
+                    width: width, height: screen.height * scale
+                )
+                camera.hero = hero
+                camera.window = hero.offsetBy(dx: 0, dy: -inner * scale)
+                return true
+            }
+            if !settled {
+                settled = true
+                GalleryLog.note("sweep settled: \(Int(max(CGFloat(index) * height - flow.y, 0))) of the page left")
+                gridSettled(on: id)
+                Task { await stockUp(from: index) }
+            }
+            track.scroll?(min(max(start + swift * (gone(t) - gone(zoom)), 0), track.most))
+            return t < slowing * 6
         }
-        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { gridArea = $0 }
-        .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.top } action: { gridInset = $0 }
     }
 
-    /// The pages' own shape, uncut.
-    private var wholeMask: CGRect {
-        guard pagesArea.width > 0 else { return CGRect(x: -4000, y: -4000, width: 8000, height: 8000) }
-        return CGRect(origin: .zero, size: pagesArea.size)
+    /// The pages' scroll moved: its speed is kept, and a quick run of
+    /// swipes down the works brings the grid.
+    private func scrolled(_ y: CGFloat) {
+        flow.note(y)
+        guard !grid, hand == .idle, peek == nil, path.isEmpty else { return }
+        guard let index = run.scrolled(to: y, height: area.height), works.indices.contains(index) else { return }
+        sweep(to: index)
     }
 
-    private func unit(_ point: CGPoint, in area: CGRect) -> UnitPoint {
-        UnitPoint(x: (point.x - area.minX) / max(area.width, 1), y: (point.y - area.minY) / max(area.height, 1))
+    // MARK: Drawn back by hand
+
+    /// How far a finger goes down for the whole way to the tile, how much
+    /// of the way it can take the work before it lets go, and how much of
+    /// the finger's way the work follows.
+    static let swipeFull: CGFloat = 400
+    static let swipeMost: CGFloat = 0.5
+    static let swipeFollow: CGFloat = 0.35
+    /// Seconds from the finger's letting go to the grid (Mateusz
+    /// 2026-11-24 19:12: "przejście do siatki - A, może odrobinę wolniej").
+    static let toGrid = 0.42
+    /// How much smaller the fingers' span for the whole way to the tile,
+    /// and how much larger for the whole way out of one.
+    static let pinchFull: CGFloat = 0.6
+    static let spreadFull: CGFloat = 1.5
+
+    /// A swipe down from the upper part, or two fingers drawn together:
+    /// the work shown starts back into its tile, in the middle of the
+    /// screen, the works seen above it.
+    private func drawBack(_ way: Hand) {
+        guard hand == .idle, !grid, peek == nil, path.isEmpty, area.height > 0, let index = shownIndex else { return }
+        hand = way
+        pulling = true
+        layGrid(at: index, top: metrics.pitch)
+        GalleryLog.note("drawn back by \(way) at \(index)")
     }
 
-    /// Where a work lies on its page, on the screen: the cut work's middle
-    /// in the tile's shape, or the whole work where its page puts it.
-    private func place(of work: RemoteItem) -> CGRect {
-        let box = pagesArea.size
-        let middle = CGPoint(x: pagesArea.midX, y: pagesArea.midY)
-        if whole {
-            let aspect = CGFloat(max(work.summary.aspectRatio, 0.05))
-            let place = Whole(
-                picture: CGSize(width: aspect, height: 1), box: box,
-                safe: GalleryPage.lastSafe, caption: GalleryPage.lastCaption
-            )
-            return CGRect(
-                x: middle.x - place.size.width / 2, y: middle.y + place.offset.height - place.size.height / 2,
-                width: place.size.width, height: place.size.height
-            )
+    private func dragged(_ move: CGFloat) {
+        guard hand == .swipe else { return }
+        let z = min(max(move / Self.swipeFull, 0), Self.swipeMost)
+        camera.pose(z, drop: max(move, 0) * Self.swipeFollow * (1 - z))
+    }
+
+    private func dropped(_ move: CGFloat, _ speed: CGFloat) {
+        guard hand == .swipe else { return }
+        settle(toGrid: move > 40 || speed > 250, seconds: Self.toGrid)
+    }
+
+    private func pinched(_ scale: CGFloat) {
+        guard hand == .pinch else { return }
+        camera.pose((1 - scale) / Self.pinchFull)
+    }
+
+    private func unpinched(_ scale: CGFloat, _ speed: CGFloat) {
+        guard hand == .pinch else { return }
+        settle(toGrid: camera.z > 0.3 || speed < -0.6, seconds: 0.32)
+    }
+
+    /// Two fingers spread on a tile: that work grows out of it.
+    private func spread(at point: CGPoint) {
+        guard hand == .idle, grid, gridOpen, returning == nil else { return }
+        let inGrid = CGPoint(x: point.x - area.minX, y: point.y - area.minY + track.offset)
+        guard let n = metrics.index(at: inGrid), n >= gridLead, works.indices.contains(gridFirst + n - gridLead),
+              aim(works[gridFirst + n - gridLead])
+        else { return }
+        hand = .spread
+        gridLocked = true
+    }
+
+    private func spreading(_ scale: CGFloat) {
+        guard hand == .spread else { return }
+        camera.pose(1 - (scale - 1) / Self.spreadFull)
+    }
+
+    private func spreadEnded(_ scale: CGFloat, _ speed: CGFloat) {
+        guard hand == .spread else { return }
+        settle(toGrid: camera.z > 0.7 && speed < 0.8, seconds: 0.32)
+    }
+
+    /// The camera the rest of its way, to the tile or to the page.
+    private func settle(
+        toGrid: Bool, seconds: Double, curve: @escaping (CGFloat) -> CGFloat = { GalleryCamera.out($0) }
+    ) {
+        let from = camera.z, drop = camera.drop
+        let to: CGFloat = toGrid ? 1 : 0
+        let seconds = seconds * Double(max(abs(to - from), 0.4))
+        let id = returning ?? shown?.id
+        coast.run { now in
+            let t = min(CGFloat(now / seconds), 1)
+            let done = curve(t)
+            camera.pose(from + (to - from) * done, drop: drop * (1 - done))
+            guard t >= 1 else { return true }
+            if toGrid { gridSettled(on: id) } else { pageSettled() }
+            return false
         }
-        // The tile is the screen's shape: the whole page goes into it.
-        return pagesArea
     }
 
-    /// The grid and the pages set to meet: the work on its page (`place`)
-    /// and its tile, each the other's size and in the other's place.
-    private func meet(place: CGRect, tile: CGRect) {
-        gridScale = max(place.width / max(tile.width, 1), 1.01)
-        gridAnchor = unit(CGPoint(x: tile.midX, y: tile.midY), in: gridArea)
-        gridShift = CGSize(width: place.midX - tile.midX, height: place.midY - tile.midY)
-        pageAnchor = unit(CGPoint(x: place.midX, y: place.midY), in: pagesArea)
-        pageShift = CGSize(width: tile.midX - place.midX, height: tile.midY - place.midY)
-        pageMask = place.offsetBy(dx: -pagesArea.minX, dy: -pagesArea.minY)
+    /// The work is its tile: the pages go, the grid is all there is, with
+    /// the tab bar.
+    private func gridSettled(on id: String?) {
+        camera.pose(1)
+        withTransaction(Self.quiet) {
+            windowShown = false
+            if let id, position != id, hand == .sweep { position = id }
+        }
+        hand = .idle
+        pulling = false
+        gridLocked = false
+        returning = nil
+        withAnimation(GalleryPage.toWhole) { gridOpen = true }
+        GalleryLog.note("grid open at \(Int(track.offset))")
     }
 
-    /// The grid grows out of the work shown: the work draws back into its
-    /// tile, in the middle of the top row (cut works) or at the head of
-    /// the left column (whole ones), the works seen before above it, and
-    /// the grid flows on as fast as the works were swiped, slowing as a
-    /// flicked list does (Mateusz 2026-11-24 14:06: "rozpęd … powinien
-    /// być większy. Teraz jakby stopuje. Prędkość powinna być zgodna z
-    /// ostatnim machnięciem. Nawet kosztem kilku dzieł"). From a long
-    /// drag back it flows back a little, into the works seen (14:26).
-    /// The grid is laid out first, unseen, and the work goes into its tile
-    /// where the tile really is.
-    private func openGrid(back: Bool = false) {
-        guard !grid, let at = works.firstIndex(where: { $0.id == position }) else { return }
-        let id = works[at].id
-        gridStart = !whole && at > 0 ? at - 1 : at
-        gridBefore = max(gridStart - (whole ? Self.seenCards : Self.seenTiles), 0)
-        gridSpeed = back ? -GalleryGrid.least : flow.recent
-        gridFrames.frames = [:]
-        gridScale = 1
-        gridShift = .zero
-        gridOpen = false
-        gridGoing = false
-        speed.reset()
-        stockFor(at)
-        let quiet = Self.quiet
-        withTransaction(quiet) { grid = true }
+    /// The work fills the screen: the grid goes, once the page has its own
+    /// picture (a moment more at most, the tile grown large meanwhile).
+    private func pageSettled() {
+        let id = returning
         Task { @MainActor in
-            // Laid out and set at the line: a few frames at most.
-            for _ in 0 ..< 24 {
-                try? await Task.sleep(for: .milliseconds(16))
-                if let frame = gridFrames.frames[id], frame.width > 0, gridArea.intersects(frame) { break }
+            if let id {
+                let until = ContinuousClock.now + .milliseconds(600)
+                while readyPage != id, ContinuousClock.now < until {
+                    try? await Task.sleep(for: .milliseconds(16))
+                }
             }
-            let tile = gridFrames.frames[id].flatMap { $0.width > 0 ? $0 : nil }
-                ?? CGRect(x: gridArea.midX - 60, y: gridArea.minY + gridInset, width: 120, height: 120)
-            withTransaction(quiet) { meet(place: place(of: works[at]), tile: tile) }
-            await Task.yield()
-            withAnimation(.smooth(duration: 0.45)) {
-                gridOpen = true
-                pull = 0
+            withTransaction(Self.quiet) {
+                windowShown = true
+                grid = false
+                gridOpen = false
+                returning = nil
             }
-            gridGoing = true
-            await stockUp(from: at)
+            camera.on = false
+            hand = .idle
+            pulling = false
+            gridLocked = false
+            run.reset(at: shownIndex ?? 0)
+            withAnimation(.easeOut(duration: 0.25)) { heartShown = true }
+            GalleryLog.note("page settled\(id == nil ? "" : readyPage == id ? ", ready" : ", not ready")")
         }
     }
 
-    /// Works seen before, above the line: tiles, cards.
-    static let seenTiles = 60
-    static let seenCards = 24
+    /// A tile tapped: it grows to the whole screen at once, its page under
+    /// it by the end (Mateusz 2026-11-24 17:23: "Powrót z siatki … bardzo
+    /// skacze"; nothing is waited for before it moves now).
+    private func closeGrid(on work: RemoteItem) {
+        guard hand == .idle, grid, gridOpen, returning == nil, aim(work) else { return }
+        hand = .back
+        settle(toGrid: false, seconds: 0.36, curve: { GalleryCamera.ease($0) })
+    }
+
+    /// The camera set on a work's tile, its page put under it: shown as
+    /// soon as it has its picture.
+    private func aim(_ work: RemoteItem) -> Bool {
+        guard let index = works.firstIndex(where: { $0.id == work.id }), index >= gridFirst, area.width > 0
+        else { return false }
+        coast.stop()
+        camera.screen = area
+        camera.tile = tile(of: index)
+        camera.pose(1)
+        camera.on = true
+        returning = work.id
+        withTransaction(Self.quiet) {
+            windowShown = readyPage == work.id && position == work.id
+            position = work.id
+        }
+        withAnimation(GalleryPage.toWhole) { gridOpen = false }
+        GalleryLog.note("aimed at \(index), tile at \(Int(camera.tile.minY)), page \(windowShown ? "ready" : "to come")")
+        return true
+    }
+
+    /// A page has its picture and the point it is cut about.
+    private func pageReady(_ id: String) {
+        readyPage = id
+        guard returning == id, !windowShown else { return }
+        withAnimation(.easeOut(duration: 0.1)) { windowShown = true }
+    }
+
+    // MARK: The grid's stock
 
     /// Plenty of works ahead for the grid, their thumbnails fetched.
     private func stockUp(from at: Int) async {
@@ -409,10 +640,12 @@ struct GalleryView: View {
 
     /// The thumbnails about the work shown kept, those ahead fetched.
     private func stockFor(_ at: Int) {
-        let kept = works[max(at - Self.seenTiles - 3, 0) ..< min(at + Self.gridReady + 60, works.count)]
+        guard !works.isEmpty else { return }
+        let at = min(at, works.count - 1)
+        let kept = works[max(at - Self.seen - 3, 0) ..< min(at + Self.gridReady + 60, works.count)]
         stock.keep(Set(kept.map(\.id)))
         prefetch(works.dropFirst(at).prefix(Self.gridReady))
-        prefetch(works[max(at - Self.seenTiles, 0) ..< at].reversed())
+        prefetch(works[max(at - Self.seen, 0) ..< at].reversed())
     }
 
     /// Thumbnails fetched before they are shown, at the grid's size, six at
@@ -452,122 +685,96 @@ struct GalleryView: View {
         return (id, image, focus)
     }
 
-    /// Back to the work tapped: it is put in place under the grid, its
-    /// picture made ready, and the grid grows about its tile till the tile
-    /// lies where the work lies on its page, as large, and fades, the page
-    /// growing out of the tile the same way (14:06: "Po powrocie z siatki
-    /// … w obydwu wypadkach jest skok i przesunięcie dzieła").
-    private func closeGrid(on work: RemoteItem) {
-        guard grid, gridOpen else { return }
-        gridGoing = false
-        let quiet = Self.quiet
-        withTransaction(quiet) {
-            if let tile = gridFrames.frames[work.id], tile.width > 0 {
-                meet(place: place(of: work), tile: tile)
-            }
-            position = work.id
-        }
-        speed.reset()
-        Task { @MainActor in
-            await ready(work)
-            withAnimation(.smooth(duration: 0.45)) { gridOpen = false }
-            try? await Task.sleep(for: .milliseconds(480))
-            guard !gridOpen else { return }
-            withTransaction(quiet) { grid = false }
-        }
+    // MARK: The whole work, and its card
+
+    /// How far up the finger is drawn from the hold for the card.
+    static let cardPull: CGFloat = 70
+
+    /// Held: the phone taps, and the whole work is shown on its own
+    /// colours while the finger lies (Mateusz 2026-11-24 18:51: "Podoba mi
+    /// się koncept z całym dziełem po przytrzymaniu. Można dodać do tego
+    /// haptyke - stukanie").
+    private func hold() {
+        guard hand == .idle, !grid, path.isEmpty, peek == nil, let shown else { return }
+        pulling = true
+        engaged = false
+        pull.up = 0
+        ticks += 1
+        withAnimation(GalleryPage.toWhole) { peek = shown.id }
     }
 
-    /// A change with no animation at all.
-    private static var quiet: Transaction {
-        var quiet = Transaction(animation: nil)
-        quiet.disablesAnimations = true
-        return quiet
+    /// The finger drawn up from the hold: the work follows a little, and
+    /// far enough the phone taps again and the work's card comes out from
+    /// under it (18:51: "po przytrzymaniu … pociągnięcie w górę otwiera
+    /// płynnie kartę dzieła").
+    private func held(_ up: CGFloat) {
+        guard let id = peek, !engaged else { return }
+        pull.up = max(up, 0)
+        guard up > Self.cardPull, let work = works.first(where: { $0.id == id }) else { return }
+        engaged = true
+        ticks += 1
+        open(work)
     }
 
-    // MARK: The long drag back
-
-    /// How much smaller the work is at the end of the drag, and how far it
-    /// follows the finger down (of the screen's height).
-    static let pullShrink: CGFloat = 0.3
-    static let pullFollow: CGFloat = 0.25
-    /// How far the drag must go (of the screen's height) for the grid.
-    static let pullFar: CGFloat = 0.25
-
-    private func pulled(_ move: CGFloat) {
-        guard pulling, !grid else { return }
-        let height = max(pagesArea.height, 1)
-        let share = min(max(move / height, 0), 1)
-        let quiet = Self.quiet
-        withTransaction(quiet) { pull = share }
-    }
-
-    /// The drag let go: far enough, the grid of the works seen; else the
-    /// work grows back.
-    private func released(_ move: CGFloat) {
-        guard pulling else { return }
+    /// The finger lifted: cut to the screen again, unless the card came.
+    private func letGo() {
+        guard peek != nil, !engaged else { return }
         pulling = false
-        guard !grid else { return }
-        if move > max(pagesArea.height, 1) * Self.pullFar {
-            openGrid(back: true)
-            return
+        withAnimation(GalleryPage.toWhole) {
+            peek = nil
+            pull.up = 0
         }
-        withAnimation(.smooth(duration: 0.3)) { pull = 0 }
-    }
-
-    /// The work's page picture and the point it is cut around, in memory,
-    /// waited for a little at most.
-    private func ready(_ work: RemoteItem) async {
-        guard let request = model.backend.request(for: .thumb(work.id)) else { return }
-        let pixel = GalleryPage.thumbPixel
-        let key = ImageLoader.pictureKey(request)
-        Task { @MainActor in
-            guard let image = try? await ImageLoader.shared.image(for: request, maxPixel: pixel, priority: .high)
-            else { return }
-            _ = await SubjectFocus.shared.point(in: image, key: key, subject: true)
-        }
-        let until = ContinuousClock.now + .milliseconds(600)
-        while ContinuousClock.now < until {
-            if ImageLoader.inMemory(for: request, maxPixel: pixel) != nil, SubjectFocus.known(key + "|subject") != nil {
-                // A frame or two for the page to take them.
-                try? await Task.sleep(for: .milliseconds(50))
-                return
-            }
-            try? await Task.sleep(for: .milliseconds(25))
-        }
-    }
-
-    private func heart(_ work: RemoteItem) {
-        let summary = work.summary
-        if !model.liked(summary) { Task { await model.like(summary, true) } }
-        flashes += 1
     }
 
     /// The card without the push's slide: it takes the work from where it
     /// lies here (Mateusz 2026-11-24 07:36: "dzieło podsuwa się do góry na
-    /// miejsce w karcie dzieła i pojawia się reszta treści"); from the cut
-    /// work, which melts away first, as on the way to the whole one.
+    /// miejsce w karcie dzieła i pojawia się reszta treści"), as wide
+    /// there as here, and the rest of the card rides up from under it.
     private func open(_ work: RemoteItem) {
         ItemPeeks.remember(work.summary, thumb: .thumb(work.id))
+        let from = GalleryPage.spots[work.id]?.offsetBy(dx: 0, dy: -GalleryPull.lift(pull.up))
         // The way back is the way in turned round (14:06: "Powrót z karty
-        // dzieła do „całego dzieła” odwrócona animacją wejścia"): the card
-        // takes its work back here, then leaves without a slide.
-        CardArrival.pending[work.id]?.back = {
-            var quiet = Transaction(animation: nil)
-            quiet.disablesAnimations = true
-            withTransaction(quiet) { if !path.isEmpty { path.removeLast() } }
+        // dzieła … odwrócona animacją wejścia"): the card gives its work
+        // back here, then leaves without a slide.
+        CardArrival.pending[work.id] = CardArrival.Pending(
+            from: from, ground: GalleryPage.ground(of: work, light: scheme == .light),
+            back: {
+                var quiet = Transaction(animation: nil)
+                quiet.disablesAnimations = true
+                withTransaction(quiet) { if !path.isEmpty { path.removeLast() } }
+            }
+        )
+        withTransaction(Self.quiet) { path.append(work.id) }
+    }
+
+    // MARK: Staged
+
+    /// CI screenshots and the simulator's probe: `-screen gallery-grid`
+    /// opens the grid, `-screen gallery-whole` holds the work, and
+    /// `-gallerySweep YES` swipes through the works by itself, quickly.
+    private func staged() async {
+        let sweeps = UserDefaults.standard.bool(forKey: "gallerySweep")
+        guard sweeps || ["gallery-grid", "gallery-whole"].contains(LaunchRoute.screen) else { return }
+        try? await Task.sleep(for: .seconds(4))
+        guard works.count > 12 else { return }
+        if sweeps {
+            for index in 1 ... 10 where !grid {
+                withAnimation(.easeOut(duration: 0.26)) { position = works[index].id }
+                try? await Task.sleep(for: .milliseconds(360))
+            }
+            return
         }
-        let push = {
-            var quiet = Transaction(animation: nil)
-            quiet.disablesAnimations = true
-            withTransaction(quiet) { path.append(work.id) }
-        }
-        guard !whole else { push(); return }
-        withAnimation(.easeIn(duration: 0.16)) { leaving = work.id }
-        Task {
-            try? await Task.sleep(for: .seconds(0.14))
-            push()
+        withTransaction(Self.quiet) { position = works[5].id }
+        try? await Task.sleep(for: .seconds(2))
+        if LaunchRoute.screen == "gallery-whole" {
+            hold()
+        } else {
+            drawBack(.swipe)
+            dropped(100, 0)
         }
     }
+
+    // MARK: The works
 
     private static let rememberedKey = "gallery.next"
     private static let rememberedMost = 24
@@ -603,9 +810,7 @@ struct GalleryView: View {
             // the glow fading off it.
             if position == Self.endID, let first = fresh.first {
                 surfacing = true
-                var quiet = Transaction(animation: nil)
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { position = first.id }
+                withTransaction(Self.quiet) { position = first.id }
                 Task {
                     try? await Task.sleep(for: .seconds(0.35))
                     withAnimation(.easeOut(duration: 0.8)) { surfacing = false }
@@ -655,7 +860,7 @@ struct GalleryView: View {
 /// the same point so nothing moves (Mateusz 2026-11-23: "mignięcie/
 /// przesunięcie"; a focus pull "wygląda źle, zróbmy jednak delikatne
 /// przejście"). It starts a little closer and draws back, drifting a
-/// little sideways.
+/// little sideways. Held, the whole of it on its own colours.
 private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -663,31 +868,34 @@ private struct GalleryPage: View {
     let work: RemoteItem
     /// On screen now: it draws back and drifts a little.
     var current = false
-    /// Tapped: drawn back to the whole of it, the caption right under it.
+    /// Held: the whole of it, the head of its card under it (Mateusz
+    /// 2026-11-24 18:51, 19:12).
     var whole = false
+    /// The grid is up: cut as its tile is, no closer and no further, and
+    /// no caption, so the two are one picture on the way between them.
+    var still = false
+    /// The screen's own edges (`GalleryView.insets`).
+    var insets = EdgeInsets()
+    /// How far the finger that holds it has been drawn up.
+    let pull: GalleryPull
     /// The works before and after it, whose grounds its own flows into at
     /// its top and foot (Mateusz 2026-11-24: "na łączeniu tła przy
     /// przewijaniu widać ostrą krawędź. Zróbmy tam płynne przejście").
     var above: RemoteItem?
     var below: RemoteItem?
-    /// Its card opening from the cut work: the work melts away as it does
-    /// on the way to the whole one, and the card's surfaces out of it.
-    var leaving = false
-    /// The title tapped: the work whole, or cut again.
-    var flip: () -> Void = {}
-    /// "Karta dzieła" under the whole work's caption.
-    var open: () -> Void = {}
+    /// It is shown and has its picture and the point it is cut about.
+    var ready: () -> Void = {}
 
     @State private var thumb: UIImage?
     @State private var full: UIImage?
     @State private var polish: PolishText?
-    /// The whole work's caption as tall as it is, the work above it.
-    @State private var captionHeight = Whole.captionGuess
+    /// The card's head under the whole work, as tall as it is.
+    @State private var headHeight = Whole.headGuess
     @State private var focus: UnitPoint?
     /// The full picture over the thumbnail, 1 once it is in.
     @State private var fullShown: Double = 1
-    /// The colours of the work's edges stretched out and blurred, for
-    /// behind the whole of it (`Glow`); made when it is first tapped.
+    /// The colours of the work's edges stretched far out and blurred, for
+    /// behind the whole of it (`Glow`); made while it is shown.
     @State private var glow: UIImage?
     /// How far the work has drifted from where it was cut (points).
     @State private var pan: CGFloat = 0
@@ -702,120 +910,166 @@ private struct GalleryPage: View {
     static let drawBack: Double = 20
 
     static let thumbPixel: CGFloat = 900
-    /// The whole work's room on the page as the shown one last had it,
-    /// for where another work would lie (the way back from the grid).
-    @MainActor static var lastSafe = EdgeInsets()
-    @MainActor static var lastCaption = Whole.captionGuess
     private static let fullPixel: CGFloat = 2800
+
+    /// Where the whole work lies on the screen, for its card to take it
+    /// from there (`CardArrival`).
+    @MainActor static var spots: [String: CGRect] = [:]
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
-                    let place = Whole(picture: shown.size, box: geo.size, safe: geo.safeAreaInsets, caption: captionHeight)
+                    let place = Whole(picture: shown.size, box: geo.size, insets: insets, head: headHeight)
                     // Two pictures, never one moved between them (Mateusz
                     // 2026-11-23 20:14: the scaling "nadal nie wygląda
                     // dobrze. Zaproponuj zupełnie inne rozwiązanie"; B,
                     // "Rozpływ w łunę"): the cut one melts into its glow, and
                     // the whole one surfaces out of it where it will stay.
-                    ZStack {
-                        ZStack {
-                            if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
-                            if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
-                        }
-                        .scaleEffect(reduceMotion ? 1 : zoom, anchor: layout.anchor)
-                        .offset(x: pan)
-                        if current { caption(nil, geo) }
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
-                    .blur(radius: whole || leaving ? Self.melt : 0)
-                    .opacity(whole || leaving ? 0 : 1)
-                    .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: 0.2).delay(0.05), value: whole)
-                    .allowsHitTesting(!whole)
-                    ZStack {
-                        if let glow {
-                            Glow(edges: glow, size: place.size, offset: place.offset)
-                                // On paper, paler (21:43: "Podkład jasny w
-                                // trybie jasnym i ciemny w trybie ciemnym").
-                                .opacity(scheme == .light ? 0.62 : 1)
-                        }
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .opacity(whole ? 1 : 0)
-                    .animation(whole ? .easeOut(duration: 0.2) : .easeIn(duration: 0.14), value: whole)
-                    ZStack {
-                        ZStack {
-                            if let thumb { picture(thumb, size: place.size, offset: place.offset, rounded: true) }
-                            if let full { picture(full, size: place.size, offset: place.offset, rounded: true).opacity(fullShown) }
-                        }
-                        // Faint (21:41: "cień za dziełem znacznie słabszy").
-                        .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
-                        if current { caption(place, geo) }
-                    }
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .scaleEffect(whole ? 1 : 0.96, anchor: UnitPoint(x: 0.5, y: 0.5 + place.offset.height / max(geo.size.height, 1)))
-                    .opacity(whole ? 1 : 0)
-                    .animation(whole ? .easeOut(duration: 0.22).delay(0.07) : .easeIn(duration: 0.12), value: whole)
-                    .allowsHitTesting(whole)
+                    cut(layout, geo)
+                    glowLayer(place, geo)
+                    wholeLayer(place, geo)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
-            .task(id: current && geo.size.width > 0) { await drawBack(geo.size) }
+            .task(id: Drift(current: current, still: still, sized: geo.size.width > 0)) { await drawBack(geo.size) }
         }
         .background {
             ZStack {
                 placeholder
-                ground.opacity(whole || leaving ? 1 : 0)
-                    .animation(.easeOut(duration: 0.16), value: leaving)
+                ground.opacity(whole ? 1 : 0)
+                    .animation(.easeOut(duration: 0.16), value: whole)
             }
             .ignoresSafeArea()
         }
         .task(id: work.id) { await load() }
         .task(id: current) { if current { await loadPolish() } }
-        // Made while the work is shown, before any tap: ready for it.
+        // Made while the work is shown, before any hold: ready for it.
         .task(id: (current || whole) && (thumb ?? full) != nil) {
             guard current || whole, glow == nil, let picture = thumb ?? full else { return }
-            if let made = Glow.kept[work.id] { glow = made; return }
-            glow = await Task.detached(priority: .utility) { Glow.edges(of: picture) }.value
-            if let glow { Glow.kept[work.id] = glow }
+            if let made = Glow.wide[work.id] { glow = made; return }
+            let made = await Task.detached(priority: .utility) {
+                (Glow.edges(of: picture, reach: Glow.far, hold: Glow.farHold), Glow.edges(of: picture))
+            }.value
+            glow = made.0
+            Glow.keep(wide: made.0, near: made.1, for: work.id)
+        }
+        .onChange(of: Shown(current: current, loaded: (full ?? thumb) != nil && focus != nil), initial: true) { _, now in
+            if now.current, now.loaded { ready() }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(work.item.displayTitle)
     }
 
-    /// The title and the artist always (Mateusz 2026-11-23 18:20: "Na
-    /// pełnym ekranie pokazuj także tytuł i autora"): low on the cut work,
-    /// on a shade; right under the whole one ("tytuł i autora przesuwaj
-    /// bezpośrednio pod dzieło"), with the museum and the artist's years.
-    /// Under the whole work it stands low too, above the tab bar (22:08:
-    /// "Jednak na „całym dziele” tytuł, autor, guzik dajmy u dołu strony").
-    private func caption(_ place: Whole?, _ geo: GeometryProxy) -> some View {
-        let foot = max(geo.safeAreaInsets.bottom, 34) + (place == nil ? 0 : Whole.tabBar)
-        let frame = geo.frame(in: .global)
-        let from = place.map {
-            CGRect(
-                x: frame.midX + $0.offset.width - $0.size.width / 2,
-                y: frame.midY + $0.offset.height - $0.size.height / 2,
-                width: $0.size.width, height: $0.size.height
-            )
-        }
-        let ground = behind
-        let id = work.id
-        return GalleryCaption(work: work, polish: polish, whole: place != nil, flip: flip) {
-            // The card takes the work from here (`CardArrival`).
-            CardArrival.pending[id] = CardArrival.Pending(from: from, ground: ground)
-            open()
-        }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
-                guard place != nil else { return }
-                GalleryPage.lastCaption = height
-                if abs(height - captionHeight) > 0.5 { captionHeight = height }
+    private struct Drift: Equatable {
+        let current: Bool
+        let still: Bool
+        let sized: Bool
+    }
+
+    private struct Shown: Equatable {
+        let current: Bool
+        let loaded: Bool
+    }
+
+    /// The work cut to the screen, its title and artist low on it.
+    private func cut(_ layout: Fill, _ geo: GeometryProxy) -> some View {
+        ZStack {
+            ZStack {
+                if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
+                if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
             }
-            .onAppear { GalleryPage.lastSafe = geo.safeAreaInsets }
-            .padding(.bottom, foot)
+            .scaleEffect(zoom, anchor: layout.anchor)
+            .offset(x: pan)
+            if current {
+                caption(geo)
+                    .opacity(still ? 0 : 1)
+                    .animation(still ? .easeOut(duration: 0.12) : .easeOut(duration: 0.3), value: still)
+            }
+        }
+        .frame(width: geo.size.width, height: geo.size.height)
+        .clipped()
+        .blur(radius: whole ? Self.melt : 0)
+        .opacity(whole ? 0 : 1)
+        .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: 0.2).delay(0.05), value: whole)
+    }
+
+    /// The colours of the whole work's edges, the screen full of them
+    /// (Mateusz 2026-11-24 19:12: "łuna zdecydowanie szersza, pełniej
+    /// wypełniająca ekran").
+    private func glowLayer(_ place: Whole, _ geo: GeometryProxy) -> some View {
+        ZStack {
+            if let glow {
+                Glow(edges: glow, size: place.size, offset: place.offset, spread: Glow.far)
+                    // On paper, paler (2026-11-23 21:43: "Podkład jasny w
+                    // trybie jasnym i ciemny w trybie ciemnym").
+                    .opacity(scheme == .light ? 0.62 : 1)
+            }
+        }
+        .frame(width: geo.size.width, height: geo.size.height)
+        .modifier(PulledUp(pull: pull, on: whole))
+        .opacity(whole ? 1 : 0)
+        .animation(whole ? .easeOut(duration: 0.2) : .easeIn(duration: 0.14), value: whole)
+    }
+
+    /// The whole work, as large as on its card, and the card's head under
+    /// it where the card has it. It comes up a little from below and
+    /// settles (19:12, variant A of the hint).
+    private func wholeLayer(_ place: Whole, _ geo: GeometryProxy) -> some View {
+        let lies = spot(place, geo)
+        return ZStack {
+            ZStack {
+                if let thumb { picture(thumb, size: place.size, offset: place.offset, rounded: true) }
+                if let full { picture(full, size: place.size, offset: place.offset, rounded: true).opacity(fullShown) }
+            }
+            // Faint (2026-11-23 21:41: "cień za dziełem znacznie słabszy").
+            .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
+            if current { head(place, geo) }
+        }
+        .frame(width: geo.size.width, height: geo.size.height)
+        .modifier(PulledUp(pull: pull, on: whole))
+        .scaleEffect(whole ? 1 : 0.96, anchor: UnitPoint(x: 0.5, y: 0.5 + place.offset.height / max(geo.size.height, 1)))
+        .offset(y: whole ? 0 : 14)
+        .opacity(whole ? 1 : 0)
+        .animation(whole ? .spring(duration: 0.42, bounce: 0.32).delay(0.06) : .easeIn(duration: 0.12), value: whole)
+        .allowsHitTesting(false)
+        .onChange(of: current ? lies : CGRect.null, initial: true) { _, rect in
+            guard !rect.isNull else { return }
+            if Self.spots.count > 200 { Self.spots.removeAll() }
+            Self.spots[work.id] = rect
+        }
+    }
+
+    private func spot(_ place: Whole, _ geo: GeometryProxy) -> CGRect {
+        let frame = geo.frame(in: .global)
+        return CGRect(
+            x: frame.midX + place.offset.width - place.size.width / 2,
+            y: frame.midY + place.offset.height - place.size.height / 2,
+            width: place.size.width, height: place.size.height
+        )
+    }
+
+    /// The title and the artist, low on the cut work, on a shade (Mateusz
+    /// 2026-11-23 18:20: "Na pełnym ekranie pokazuj także tytuł i autora").
+    private func caption(_ geo: GeometryProxy) -> some View {
+        GalleryCaption(work: work, polish: polish)
+            .padding(.bottom, max(insets.bottom, 34))
             .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+    }
+
+    /// The head of the work's card under the whole work (Mateusz
+    /// 2026-11-24 19:12: no arrow, no "KARTA DZIEŁA"; the card's own
+    /// beginning says what a pull up brings).
+    private func head(_ place: Whole, _ geo: GeometryProxy) -> some View {
+        let top = geo.size.height / 2 + place.offset.height + place.size.height / 2 + Whole.head
+        return GalleryHead(work: work, polish: polish)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if abs(height - headHeight) > 0.5 { headHeight = height }
+            }
+            .padding(.horizontal, Theme.gutter)
+            .padding(.top, top)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
     }
 
     /// Behind the whole work: its own main colour, quiet and dark
@@ -824,19 +1078,20 @@ private struct GalleryPage: View {
     /// In light mode a paper in the work's colour, light and nearly grey
     /// (Mateusz 2026-11-23 21:43: "Podkład jasny w trybie jasnym i ciemny w
     /// trybie ciemnym").
-    private var behind: Color { behind(work) }
+    private var behind: Color { Self.ground(of: work, light: scheme == .light) }
 
-    private func behind(_ other: RemoteItem) -> Color {
-        let hex = other.item.colors.first?.hex ?? ""
-        return Self.toned(UIColor(Color(hexString: hex) ?? .black), light: scheme == .light)
+    static func ground(of work: RemoteItem, light: Bool) -> Color {
+        let hex = work.item.colors.first?.hex ?? ""
+        return toned(UIColor(Color(hexString: hex) ?? .black), light: light)
     }
 
     /// Its own ground, meeting each neighbour's halfway at the seam: both
     /// pages are the same colour there, so scrolling shows no edge.
     private var ground: LinearGradient {
         let own = behind
-        let top = above.map { own.mix(with: behind($0), by: 0.5) } ?? own
-        let foot = below.map { own.mix(with: behind($0), by: 0.5) } ?? own
+        let light = scheme == .light
+        let top = above.map { own.mix(with: Self.ground(of: $0, light: light), by: 0.5) } ?? own
+        let foot = below.map { own.mix(with: Self.ground(of: $0, light: light), by: 0.5) } ?? own
         return LinearGradient(
             stops: [
                 .init(color: top, location: 0),
@@ -883,8 +1138,6 @@ private struct GalleryPage: View {
     /// moment, not for each one swiped past; one for both its captions.
     private func loadPolish() async {
         polish = ItemPeeks.polish[work.id]
-        // Always shown now: asked for only once the work has stayed a moment,
-        // not for each one swiped past.
         guard polish == nil, work.item.kind == .artwork else { return }
         try? await Task.sleep(for: .seconds(1.5))
         guard !Task.isCancelled,
@@ -910,7 +1163,8 @@ private struct GalleryPage: View {
             thumb = image
         } else if let image = try? await ImageLoader.shared.image(for: thumbRequest, maxPixel: Self.thumbPixel) {
             await settle(image, key: ImageLoader.pictureKey(thumbRequest))
-            withAnimation(.easeOut(duration: 0.3)) { thumb = image }
+            // In the grid it is to be there at once, under its tile.
+            withAnimation(still ? nil : .easeOut(duration: 0.3)) { thumb = image }
         }
         guard !Task.isCancelled,
               let image = try? await ImageLoader.shared.image(
@@ -937,16 +1191,24 @@ private struct GalleryPage: View {
     }
 
     private func drawBack(_ box: CGSize) async {
+        if still {
+            // As its tile is cut: the one shown gets there on its way into
+            // the tile, the others are there before they are seen.
+            if current {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    zoom = Self.closer
+                    pan = 0
+                }
+            } else {
+                rest()
+            }
+            return
+        }
         guard current else {
             // Off the screen by then: closer again for the next time.
             try? await Task.sleep(for: .seconds(1))
             guard !Task.isCancelled else { return }
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            withTransaction(quiet) {
-                zoom = Self.closer
-                pan = 0
-            }
+            rest()
             return
         }
         guard !reduceMotion else { return }
@@ -964,47 +1226,72 @@ private struct GalleryPage: View {
         withAnimation(.easeInOut(duration: Self.drawBack)) { pan = to }
     }
 
+    /// Closer and undrifted, at once.
+    private func rest() {
+        var quiet = Transaction(animation: nil)
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            zoom = Self.closer
+            pan = 0
+        }
+    }
+
     /// To the whole work and back, for what has no timing of its own; all
-    /// of it quicker (Mateusz 2026-11-24: "Przejście … szybsze")
-    /// (the background, the tab bar).
+    /// of it quick (Mateusz 2026-11-24: "Przejście … szybsze").
     static let toWhole = Animation.easeInOut(duration: 0.25)
 
     /// How far a work drifts sideways while it draws back (points), at most.
     static let drift: CGFloat = 22
 }
 
-/// A tapped work drawn back to the whole of it (Mateusz 2026-11-23 16:32:
-/// "Kliknięcie w dzieło - zmniejsza i pokazuje je w całości"): between the
-/// status bar and the caption, a little in from the sides, on the dark.
+/// How far the finger that holds a work has been drawn up: the whole work
+/// follows a little, and far enough its card comes (`GalleryView.held`).
+@MainActor @Observable final class GalleryPull {
+    var up: CGFloat = 0
+
+    /// How far the work goes up for a finger drawn `up`.
+    nonisolated static func lift(_ up: CGFloat) -> CGFloat { min(max(up, 0), 160) * 0.55 }
+}
+
+private struct PulledUp: ViewModifier {
+    let pull: GalleryPull
+    let on: Bool
+
+    func body(content: Content) -> some View {
+        content.offset(y: on ? -GalleryPull.lift(pull.up) : 0)
+    }
+}
+
+/// The whole work while it is held (Mateusz 2026-11-24 18:51): as wide
+/// and at most as tall as on its card, so on the way to the card it only
+/// rides up to its place there, with room under it for the card's head.
 private struct Whole {
     let size: CGSize
     let offset: CGSize
 
-    /// The floating tab bar's height, the caption above it.
-    static let tabBar: CGFloat = 62
-    static let side: CGFloat = 20
+    static let side = Theme.gutter
     static let gap: CGFloat = 12
-    /// Between the work and its title.
-    static let aboveTitle: CGFloat = 22
-    /// The caption's height before it is measured: one line of title, the
-    /// artist and "Karta dzieła".
-    static let captionGuess: CGFloat = 140
-    /// Where a work lower than its room stands in it: this share of the room
-    /// left over above it, the rest below (Mateusz 2026-11-23 22:37: "Dzieła
-    /// które na to pozwalają - trochę niżej").
-    static let lower: CGFloat = 0.64
+    /// From the work down to the card's head: as on the card, where the
+    /// switch between the work and the frame lies between them.
+    static let head: CGFloat = 68
+    /// The head's height before it is measured: the museum, one line of
+    /// title, the artist.
+    static let headGuess: CGFloat = 96
+    /// The card's picture is no taller (`PictureBox`).
+    static let tallest: CGFloat = 460
+    static let foot: CGFloat = 20
+    /// Where the work and its head stand in the room they leave: this
+    /// share of it above them, the rest below.
+    static let lower: CGFloat = 0.45
 
-    /// Between the status bar and the caption as tall as it is (22:37: "na
-    /// pewno rezerwa od dołu jest zbyt duża"; it was 36% of the screen, made
-    /// for the museum and the artist's years too).
-    init(picture: CGSize, box: CGSize, safe: EdgeInsets, caption: CGFloat) {
-        // The pages ignore the safe area: the status bar's height as least.
-        let top = max(safe.top, 59) + Self.gap
-        let bottom = max(safe.bottom, 34) + Self.tabBar + caption + Self.aboveTitle
-        let room = CGSize(width: box.width - Self.side * 2, height: max(box.height - top - bottom, 1))
+    init(picture: CGSize, box: CGSize, insets: EdgeInsets, head: CGFloat) {
+        let top = max(insets.top, 20) + Self.gap
+        let bottom = max(insets.bottom, 20) + Self.foot + head + Self.head
+        let free = max(box.height - top - bottom, 1)
+        let room = CGSize(width: max(box.width - Self.side * 2, 1), height: min(free, Self.tallest))
         let scale = min(room.width / max(picture.width, 1), room.height / max(picture.height, 1))
         size = CGSize(width: picture.width * scale, height: picture.height * scale)
-        let y = top + (room.height - size.height) * Self.lower
+        let y = top + (free - size.height) * Self.lower
         offset = CGSize(width: 0, height: y + size.height / 2 - box.height / 2)
     }
 }
@@ -1019,19 +1306,36 @@ struct Glow: View {
     /// Where the work lies: its size and its offset from the middle.
     let size: CGSize
     let offset: CGSize
+    /// How far out `edges` was made (`reach`, or `far`).
+    var spread: CGFloat = Glow.reach
 
     /// How far the edges are drawn out on each side, as a share of the
     /// work's longer side; and their blur, as a share of it too.
     nonisolated static let reach: CGFloat = 0.6
     nonisolated static let softness: CGFloat = 0.12
+    /// Behind the work held in Galeria: far out, the screen full of it,
+    /// and fading only far from the work (Mateusz 2026-11-24 19:12: "łuna
+    /// zdecydowanie szersza, pełniej wypełniająca ekran").
+    nonisolated static let far: CGFloat = 1.4
+    nonisolated static let farHold: CGFloat = 0.75
     nonisolated(unsafe) private static let context = CIContext(options: [.cacheIntermediates: false])
     /// Made in Galeria, kept for the work's card, which shows the same
-    /// glow behind it (Mateusz 2026-11-24 07:36).
+    /// glow behind it (Mateusz 2026-11-24 07:36); and the far one, which
+    /// the card coming from Galeria lets fade.
     @MainActor static var kept: [String: UIImage] = [:]
+    @MainActor static var wide: [String: UIImage] = [:]
+
+    @MainActor static func keep(wide far: UIImage?, near: UIImage?, for id: String) {
+        if wide.count > 40 { wide.removeAll() }
+        if kept.count > 200 { kept.removeAll() }
+        if let far { wide[id] = far }
+        if let near, kept[id] == nil { kept[id] = near }
+    }
 
     /// The picture with its edges drawn out by `reach` and blurred; the
-    /// work itself sits in its middle.
-    nonisolated static func edges(of picture: UIImage) -> UIImage? {
+    /// work itself sits in its middle. It fades out from `hold` of the
+    /// way out on.
+    nonisolated static func edges(of picture: UIImage, reach: CGFloat = Glow.reach, hold: CGFloat = 0.45) -> UIImage? {
         guard let cg = picture.cgImage else { return nil }
         // Small is enough for a blur this wide.
         let long = CGFloat(max(cg.width, cg.height))
@@ -1048,7 +1352,7 @@ struct Glow: View {
         // left an edge (Mateusz 2026-11-23 19:01 and 20:14, "Nadal widać
         // krawędź").
         let fade = CIImage(color: .white)
-            .cropped(to: extent.insetBy(dx: -pad * 0.45, dy: -pad * 0.45))
+            .cropped(to: extent.insetBy(dx: -pad * hold, dy: -pad * hold))
             .applyingGaussianBlur(sigma: Double(pad / 6))
             .cropped(to: outer)
         let out = glow.applyingFilter("CIBlendWithMask", parameters: [
@@ -1062,7 +1366,7 @@ struct Glow: View {
     var body: some View {
         // The work's share of the made picture: 1 / (1 + 2 * reach * long / side).
         let long = max(size.width, size.height)
-        let pad = long * Self.reach
+        let pad = long * spread
         let whole = CGSize(width: size.width + pad * 2, height: size.height + pad * 2)
         Image(uiImage: edges)
             .resizable()
@@ -1181,50 +1485,34 @@ struct Fill {
     var wide: Bool { room.width * 2 > size.width * 0.3 }
 }
 
-/// The work's caption: on its lower part while it is cut (Mateusz 2026-11-23,
-/// variant 2: no card, the text on a shade), right under it when it is whole: the museum, the title with its year, the
-/// artist and their nationality and years, as on the work's card. Tapped:
-/// the card. The Polish texts are asked for once the work has stayed a moment.
+/// The work's caption on the cut work: its title and its artist, low on
+/// it, on a shade (Mateusz 2026-11-23, variant 2: no card, the text on a
+/// shade; 22:08: "bez nazwy muzeum, daty, narodowości i okresu życia").
+/// The Polish texts are asked for once the work has stayed a moment.
 private struct GalleryCaption: View {
-    @Environment(AppModel.self) private var model
     let work: RemoteItem
     /// Its Polish texts, once the page has them.
     let polish: PolishText?
-    /// Under the whole work: with the museum and the artist's years, on
-    /// the glow; over the cut one only the title and the artist, on a shade.
-    var whole = false
-    /// The title tapped: the work whole, or cut again (Mateusz 2026-11-23
-    /// 21:41: "kliknięcie w tytuł także przenosi do całego dzieła … wraca
-    /// na pełny ekran").
-    let flip: () -> Void
-    /// "Karta dzieła", under the whole work's caption (21:41).
-    let open: () -> Void
-
-    @Environment(\.colorScheme) private var scheme
 
     private var item: Item { work.item }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Button(action: flip) { words }
-                .buttonStyle(.plain)
-            // As the app's black buttons (21:43: "jak czarne guziki w
-            // aplikacji"), on the cut work too (2026-11-24: "Na pełnym
-            // ekranie także dodajmy guzik „karta dzieła”"), black there
-            // whatever the phone's mode ("na pełnym ekranie guzik „karta
-            // dzieła” czarny").
-            // Only under the whole work after all (14:06: "Na pełnym
-            // ekranie nie dajemy jednak guzika karta dzieła").
-            if whole {
-                Button(action: open) {
-                    Label("Karta dzieła".bound, systemImage: "text.below.photo")
-                }
-                .buttonStyle(ActionButtonStyle(prominent: true, wide: false))
+        VStack(alignment: .leading, spacing: 6) {
+            Text(bound: title)
+                .font(.serif(26, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(3)
+            if !item.artist.isEmpty {
+                Text(bound: Names.artist(item.artist))
+                    .font(.serif(19))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, Theme.gutter + 2)
-        .padding(.top, whole ? 0 : 70)
+        .padding(.top, 70)
         .padding(.bottom, 12)
         .background(alignment: .bottom) {
             LinearGradient(
@@ -1236,41 +1524,58 @@ private struct GalleryCaption: View {
                 startPoint: .top, endPoint: .bottom
             )
             .padding(.bottom, -140)  // to the screen's foot
-            .opacity(whole ? 0 : 1)
             .allowsHitTesting(false)
         }
-        // Light text on the cut work's shade in both modes; under the whole
-        // one, on its light or dark ground, as the phone is set.
-        .environment(\.colorScheme, whole ? scheme : .dark)
-    }
-
-    private var words: some View {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 6) {
-                    // Only the title and the artist, both ways (Mateusz
-                    // 2026-11-23 22:08: "bez nazwy muzeum, daty, narodowości
-                    // i okresu życia").
-                    Text(bound: title)
-                        .font(.serif(26, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineLimit(whole ? 2 : 3)
-                    if !item.artist.isEmpty {
-                        Text(bound: Names.artist(item.artist))
-                            .font(.serif(19))
-                            .foregroundStyle(Theme.ink)
-                            .lineLimit(1)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .shadow(color: .black.opacity(whole && scheme == .dark ? 0.45 : 0), radius: 6, y: 1)
-            .contentShape(Rectangle())
+        // Light text on the shade in both modes.
+        .environment(\.colorScheme, .dark)
     }
 
     private var title: String {
         nonEmpty(polish?.title) ?? nonEmpty(work.titlePl)
             ?? (item.displayTitle.isEmpty ? "Bez tytułu" : item.displayTitle)
+    }
+
+    private func nonEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
+    }
+}
+
+/// The head of the work's card, as the card itself shows it while it
+/// loads (`ItemDetailView.peekTitle`): the museum, the title with its
+/// year, the artist. Under the whole work while it is held: what a pull
+/// up brings (Mateusz 2026-11-24 19:12, variant A).
+private struct GalleryHead: View {
+    let work: RemoteItem
+    let polish: PolishText?
+
+    var body: some View {
+        let summary = work.summary
+        // The museum the work is in; a source that only gathers pictures
+        // (Commons) is no museum.
+        let held = summary.isOwnWork ? Names.ownCollection(summary.own?.hangs)
+            : summary.kind == .artwork ? summary.heldBy ?? Names.source(summary.source)
+            : Names.source(summary.source)
+        let title = nonEmpty(polish?.title) ?? (summary.shownTitle.isEmpty ? "Bez tytułu" : summary.shownTitle)
+        VStack(alignment: .leading, spacing: 6) {
+            if !held.isEmpty {
+                Eyebrow(held, color: Theme.vermilion)
+            }
+            TitleWithYear(
+                title: title,
+                date: summary.kind == .photo ? "" : nonEmpty(polish?.date) ?? summary.dateText,
+                font: .serif(30, weight: .semibold),
+                lowSide: summary.lowSide,
+                restored: summary.restored == true,
+                cropped: summary.isCropped,
+                cleaned: summary.isCleaned
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            if !summary.artist.isEmpty {
+                NameText(text: Names.artist(summary.artist))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func nonEmpty(_ text: String?) -> String? {
@@ -1313,3 +1618,4 @@ private struct GalleryWaiting: View {
         GalleryPage.toned(UIColor(colours.last ?? .black), light: scheme == .light)
     }
 }
+

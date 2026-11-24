@@ -134,6 +134,12 @@ Screenshots are not part of CI: when a branch changes the look, dispatch
 `ios-screenshots.yml` on that branch (`workflow_dispatch`, ref = branch) and
 take the `screenshots` artifact (input `only`: a regex of shot names, e.g.
 `^confirm-`, to capture just those).
+Galeria's ways between the whole screen and the grid are looked at on film
+before a release: `only: gallery-probe` (a finger on the simulator,
+`FrameUITests/GalleryProbeTests.swift`; the artifact has the `.mov`, the
+app's `GalleryLog` and the steps' times). The grid's tiles lie where
+`GridMetrics` says and are cut as their pages are (`Fill`, `closer`): keep
+the two one picture, or the way between them jumps again.
 `.confirmationDialog` goes on the button (or menu, or card) that asks, never
 on a page or section: on iOS 26 it is a popover pointing at that view.
 Polish line breaking (no "i", "w" left at a line's end, `Design/Typography.swift`):
