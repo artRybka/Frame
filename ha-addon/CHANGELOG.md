@@ -6,6 +6,8 @@
   kadr to odbitka z równym marginesem 8%; dotyczy też ręcznych kadrów.
 - Kadrowanie zdjęć dzieł także w nocy na serwerze, tym samym modelem co
   w aplikacji (zadanie w „Powtórki i jakość”).
+- Galeria: siatka przychodzi szybciej, po czterech szybko przewiniętych
+  dziełach.
 
 ## 1.145.361
 
