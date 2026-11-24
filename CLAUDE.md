@@ -139,7 +139,14 @@ before a release: `only: gallery-probe` (a finger on the simulator,
 `FrameUITests/GalleryProbeTests.swift`; the artifact has the `.mov`, the
 app's `GalleryLog` and the steps' times). The grid's tiles lie where
 `GridMetrics` says and are cut as their pages are (`Fill`, `closer`): keep
-the two one picture, or the way between them jumps again.
+the two one picture, or the way between them jumps again. A page born
+under the grid starts with its tile's picture, and the point a work is cut
+about is whichever of the two found one first (`GridStock.focus`). The
+camera's zooms are one geometry effect ignored by layout (`Seen`): with
+`scaleEffect` and `offset` the pages' scroll view took safe-area insets
+while it lay near the screen's edges and was scrolled out of place. The
+probe's logs trace every frame of a way (`-galleryTrace YES`): read them
+beside the film, which drops frames.
 `.confirmationDialog` goes on the button (or menu, or card) that asks, never
 on a page or section: on iOS 26 it is a popover pointing at that view.
 Polish line breaking (no "i", "w" left at a line's end, `Design/Typography.swift`):
