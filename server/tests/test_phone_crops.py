@@ -7,6 +7,8 @@ prostokątów prawie na wprost”): what the model's answer comes to
 
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 
 import cv2
@@ -347,3 +349,32 @@ def test_prints_cut_before_are_cut_round_their_impression_once(
     assert _near(service.library.get("mnw:6").cut.work, sheet, 0.002)  # type: ignore[union-attr]
     assert service.library.get("mnw:5").cut is None  # type: ignore[union-attr]
     assert phone.plates_again() == {}
+
+
+def test_the_server_looks_at_night_as_the_phone_would(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-24 10:53 UTC, „Na serwerze w nocy”: the same models,
+    # what was found kept as the phone's is; the phone passes over it.
+    from frame_server.night import Night, tasks
+
+    _work(service, "mnw:1", pooled=True, medium="olej, płótno")
+    _print(service, "mnw:2", (250, 200, 650, 500))
+    _work(service, "upload:9", pooled=True)
+    rgb = np.asarray(photo())
+    logits, sure = service.phone_crops.looker.ask(rgb, 0)
+    assert logits.shape == (2, cm.SIDE, cm.SIDE) and 0 <= sure <= 1
+    (task,) = [t for t in tasks(service) if t.name == "crops"]
+    assert not task.paid and task.group == "duplicates"
+    night = Night(stop=threading.Event(), deadline=time.monotonic() + 600, asked=True)
+    done = task.run(night)
+    assert done.count == 2  # type: ignore[attr-defined]
+    looked = service.phone_crops._state()["looked"]
+    assert set(looked) == {"mnw:1", "mnw:2"}
+    assert looked["mnw:1"]["m"] == cm.PAINTING_MODEL and looked["mnw:1"]["night"]
+    assert looked["mnw:2"]["m"] == cm.MODEL and looked["mnw:2"]["pl"] == cm.PLATE
+    with _client(service) as client:
+        assert not client.get("/api/crops/phone/mnw:1").json()["look"]
+        assert client.get("/api/crops/phone/waiting").json()["left"] == 0
+    assert fake.asked == []

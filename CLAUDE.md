@@ -95,7 +95,11 @@ uv run mypy src
   core's `frame_crop_plate`, checked with `tools/crop.py … plates`): a
   change of it raises `PLATE`, and the prints cut before are cut again
   once. `phone_crops.py` keeps what the phone found, the owner's list
-  "Kadrowane" and the lessons for retraining.
+  "Kadrowane" and the lessons for retraining. The server has the same
+  weights in ONNX (`imaging/models/kadr-*.onnx`, `crop_night.py`) and
+  looks at night at what the phone has not (Mateusz 2026-11-24, „Na
+  serwerze w nocy”): a new model is exported there too (its name and the
+  app's weights are held by `tests/test_scan_core.py`).
 - "Barwy" in "Podobne do" (`library/palettes.py`): works by their bars'
   palettes. A photograph's palette is made on the phone the same way
   (`ios/…/PhonePalette.swift`); `tests/test_palettes.py` holds the two

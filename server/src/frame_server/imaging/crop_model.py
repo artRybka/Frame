@@ -27,6 +27,7 @@ import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -42,6 +43,10 @@ MODEL = "kadr-4"
 #: kadrowania"), with Opus's corners where he said a cut; 302 of 375 held
 #: out as he said against kadr-4's 294, at its own :data:`PAINTING_SURE`.
 PAINTING_MODEL = "kadr-10p"
+#: The same models for the server's night (``crop_night.py``): the app's
+#: weights exported to ONNX (``framecam-share/kadr-muzea2/onnx/export.py``),
+#: each named after its model, in this folder.
+WEIGHTS = Path(__file__).parent / "models"
 #: The model's input: the photograph letterboxed into a square this long.
 SIDE = 384
 #: The photograph the phone looks at (``/full?side=``).

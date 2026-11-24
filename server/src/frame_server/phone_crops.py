@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -45,7 +46,9 @@ from .imaging.crop_model import (
     overlap,
     plate,
 )
+from .imaging.crop_night import Looker
 from .imaging.cut import Quad, same_picture, valid, worth_cutting
+from .imaging.layout import load_image
 from .library.models import Cut
 
 if TYPE_CHECKING:
@@ -103,6 +106,7 @@ class PhoneCrops:
     def __init__(self, library: Library, crops: Crops) -> None:
         self.library = library
         self.crops = crops
+        self.looker = Looker()
 
     def _state(self) -> dict[str, Any]:
         state = dict(self.library.get_state(KEY, {}) or {})
@@ -160,16 +164,18 @@ class PhoneCrops:
         sheet: Quad | None = None,
         plate_alone: Quad | None = None,
         plates: int | None = None,
+        night: bool = False,
     ) -> str:
         """What the phone's model found about ``item``'s photograph of
         ``size`` (as looked at), kept; a sure cut put on. The verdict kept
         ("cut" when the work was cut); "" when nothing was done: the
         photograph shown changed meanwhile, or the owner cut it himself.
 
-        Of a print: ``work`` cut down round its impression (``plate_alone``) from the
-        ``sheet`` the model found, by an app that did it as ``plates``
-        (:data:`..imaging.crop_model.PLATE`); here, of an app that did
-        not."""
+        Of a print: ``work`` cut down round its impression (``plate_alone``)
+        from the ``sheet`` the model found, by an app that did it as
+        ``plates`` (:data:`..imaging.crop_model.PLATE`); here, of an app
+        that did not. ``night``: looked at by the server at night
+        (:meth:`at_night`), not by the phone."""
         if verdict not in VERDICTS:
             raise ValueError(f"no such verdict: {verdict}")
         stored = self.library.get(item.id) or item
@@ -214,6 +220,8 @@ class PhoneCrops:
         }
         if _is_print(stored):
             state["looked"][stored.id].update(sheet=sheet, plate=alone, pl=PLATE)
+        if night:
+            state["looked"][stored.id]["night"] = True
         state["fine"].pop(stored.id, None)
         self._save(state)
         log.info("phone crops: %s %s (sure %.2f, %s)", stored.id, verdict, sure, model)
@@ -240,10 +248,52 @@ class PhoneCrops:
     def _photo(self, item: Item) -> np.ndarray:
         """``item``'s museum photograph as the phone looks at it: RGB, its
         long side at most :data:`..imaging.crop_model.PHOTO_SIDE`."""
-        with Image.open(self.crops.images.museum_photo(item)) as img:
-            rgb = img.convert("RGB")
-            rgb.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
-            return np.asarray(rgb)
+        rgb = load_image(self.crops.images.museum_photo(item)).convert("RGB")
+        rgb.thumbnail((PHOTO_SIDE, PHOTO_SIDE), Image.Resampling.LANCZOS)
+        return np.asarray(rgb)
+
+    # -- the same at night, on the server ----------------------------------------------
+
+    def at_night(self, quiet: Callable[[], bool], most: int) -> dict[str, int]:
+        """The works the phone is to look at (:meth:`waiting`, those cared
+        about first) looked at here with the same models (``crop_night``),
+        and what was found kept as the phone's is (Mateusz 2026-11-24
+        10:53 UTC, „Na serwerze w nocy”): ``most`` of them at most, while
+        ``quiet()`` says the night goes on. The phone passes over what was
+        looked at here. How many of each verdict."""
+        done = {"cut": 0, "whole": 0, "unsure": 0}
+        works, _ = self.waiting(most)
+        for item in works:
+            if not quiet():
+                break
+            stored = self.library.get(item.id)
+            if stored is None or not self.wants(stored):
+                continue
+            kind = kind_of(stored.classification, stored.medium)
+            try:
+                rgb = self._photo(stored)
+                found = self.looker.look(rgb, kind)
+                verdict = self.found(
+                    stored,
+                    verdict=found.verdict,
+                    sure=found.sure,
+                    work=found.work,
+                    surround=found.surround,
+                    size=(rgb.shape[1], rgb.shape[0]),
+                    picture=stored.picture_key(),
+                    model=model_of(kind),
+                    sheet=found.sheet,
+                    plate_alone=found.plate,
+                    plates=PLATE,
+                    night=True,
+                )
+            except (OSError, ValueError, LookupError) as err:
+                log.warning("phone crops: %s not looked at tonight: %s", stored.id, err)
+                continue
+            if verdict in done:
+                done[verdict] += 1
+        log.info("phone crops at night: %s", done)
+        return done
 
     # -- prints cut down round their impression, once ----------------------------------
 

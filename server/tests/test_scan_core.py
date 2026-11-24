@@ -381,3 +381,25 @@ def test_the_phone_finds_a_museum_work_as_the_server_does() -> None:
     assert made is not None
     assert [list(c) for c in made[0]] == said("printCut")
     assert [list(c) for c in made[1]] == said("printPlate")
+
+
+def test_the_servers_crop_models_are_the_apps() -> None:
+    """Mateusz 2026-11-24 10:53 UTC, „Na serwerze w nocy”: the night cuts
+    museum photographs with the app's own models, exported to ONNX
+    (``imaging/models``, ``crop_night.py``). Each names its model as
+    ``crop_model`` does and the app's weights it was made beside: a new
+    model comes on both sides at once, or this fails."""
+    import hashlib
+
+    import onnxruntime as ort
+
+    from frame_server.imaging import crop_model as cm
+
+    for model, package in ((cm.MODEL, "Kadr"), (cm.PAINTING_MODEL, "KadrPainting")):
+        session = ort.InferenceSession(str(cm.WEIGHTS / f"{model}.onnx"))
+        said = session.get_modelmeta().custom_metadata_map
+        assert said["model"] == model
+        weights = IOS / "Models" / f"{package}.mlpackage" / "Data" / "com.apple.CoreML"
+        weights = weights / "weights" / "weight.bin"
+        if weights.is_file():
+            assert hashlib.sha256(weights.read_bytes()).hexdigest() == said["mlpackage"], package

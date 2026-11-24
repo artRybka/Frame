@@ -83,6 +83,11 @@ HOLDER_WAIT = 60.0
 MEDIA_A_NIGHT = 600
 #: ... each taking this long at most (seconds).
 MEDIUM_WAIT = 60.0
+#: Museum photographs cut by the phone's model here at night
+#: (``phone_crops.at_night``, Mateusz 2026-11-24 10:53 UTC „Na serwerze w
+#: nocy”): this many a night at most, in this much of it.
+CROPS_A_NIGHT = 1500
+CROPS_FOR = 40 * 60.0
 
 #: When the app last asked the server something (time.monotonic()).
 _last_used = float("-inf")
@@ -606,6 +611,18 @@ def tasks(service: FrameService) -> list[NightTask]:
             looked += 1
         return looked
 
+    def crops(night: Night) -> Done:
+        """Museum photographs cut as the phone cuts them, with the same
+        model, those cared about first; the phone passes over them."""
+        done = service.phone_crops.at_night(night.quiet, CROPS_A_NIGHT)
+        parts: list[object] = [
+            done["cut"] and plural(done["cut"], "przycięte", "przycięte", "przyciętych"),
+            done["whole"] and plural(done["whole"], "bez kadru", "bez kadru", "bez kadru"),
+            done["unsure"]
+            and plural(done["unsure"], "do sprawdzenia", "do sprawdzenia", "do sprawdzenia"),
+        ]
+        return Done(sum(done.values()), _listed(parts, "nic do kadrowania"))
+
     def read_again(night: Night) -> int:
         """Works kept with a type or maker an older reading of their
         museum's record got wrong, read again (``Importer.read_again``)."""
@@ -826,6 +843,8 @@ def tasks(service: FrameService) -> list[NightTask]:
             group=dup,
             ahead=service.twins_judge.ahead,
         ),
+        # Museum photographs cut by the phone's own model, here (no Claude).
+        NightTask("crops", crops, "Kadrowanie zdjęć dzieł", group=dup, budget=CROPS_FOR),
         # The night audit, with its critic (ai/audit.py).
         NightTask(
             "audit",
