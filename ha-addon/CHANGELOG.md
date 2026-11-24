@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.367
+
+- Ustawienia ramki: bez trybika (u domownika ludzika) w prawym górnym rogu;
+  Konfiguracja zostaje obok przycisku ustawień w karcie Ramka.
+
 ## 1.145.366
 
 - Galeria: bez czarnych pasów u góry i u dołu dzieła; siatka przy szybkim

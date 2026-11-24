@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The frame itself: battery, charging, connection; schedule, presentation
 /// and screen settings. How to reach the panel and the server, and where the
-/// art comes from, sit behind the gear at the top.
+/// art comes from, sit behind the gear beside this page's button in "Ramka".
 struct FrameTabView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: FrameSettings?
@@ -71,14 +71,9 @@ struct FrameTabView: View {
             .navigationTitle(embedded ? "Ustawienia ramki" : "Ramka")
             .serverLinkBadge()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingConnection = true
-                    } label: {
-                        Image(systemName: model.isOwner ? "gearshape" : "person.crop.circle")
-                    }
-                    .accessibilityLabel(model.isOwner ? "Konfiguracja ekranu i serwera" : "Mój dostęp")
-                }
+                // No gear (or a member's person) here: Konfiguracja and
+                // "Mój dostęp" sit beside this page's button in "Ramka"
+                // (Mateusz 2026-11-24).
                 if let draft, draft != model.settings {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Zapisz") {
@@ -111,6 +106,7 @@ struct FrameTabView: View {
             }
             // In a task of its own: SwiftUI cancels the refresh's task when the
             // view changes under it ("Sprawdzam…"), and the requests with it.
+            // Opened only by the "connection" launch route (CI screenshots).
             .sheet(isPresented: $showingConnection) {
                 // A household member has no Konfiguracja (server: users.py).
                 if model.isOwner { ConnectionSettingsView() } else { MyAccessView() }
