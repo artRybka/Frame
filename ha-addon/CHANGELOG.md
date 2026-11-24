@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.360
+
+- Galeria: przy bardzo szybkim przewijaniu oddala się do siatki kolejnych
+  dzieł; dotknięcie wraca do pełnego ekranu na wybranym.
+
 ## 1.145.359
 
 - Galeria: kolejne dzieła dociągane wcześniej, na końcu partii płynąca

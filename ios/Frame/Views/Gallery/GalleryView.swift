@@ -25,6 +25,14 @@ struct GalleryView: View {
     @State private var loading = false
     @State private var failed = false
     @State private var path: [String] = []
+    /// Swiped past too fast: the works coming as a grid (`GalleryGrid`).
+    @State private var grid = false
+    @State private var speed = SwipeSpeed()
+    @State private var gridFrames: [String: CGRect] = [:]
+    /// About where the grid grows from and back into, and how far.
+    @State private var gridAnchor = UnitPoint.topLeading
+    @State private var gridScale: CGFloat = 3
+    @State private var gridSize: CGSize = .zero
     /// The end page's glow over the first new work as it fades away.
     @State private var surfacing = false
     /// The cut work whose card is opening (`GalleryPage.leaving`).
@@ -59,11 +67,15 @@ struct GalleryView: View {
         NavigationStack(path: $path) {
             pages
                 .background(Color.black)
+                // Under the grid, drawn back a little.
+                .scaleEffect(grid ? 0.9 : 1)
+                .opacity(grid ? 0 : 1)
                 .overlay(alignment: .topTrailing) {
                     // Its own for each work: swiped to a work given a heart
                     // before, the red is there already, not pouring in.
-                    if let shown { heartButton(shown).id(shown.id) }
+                    if let shown, !grid { heartButton(shown).id(shown.id) }
                 }
+                .overlay { gridLayer }
                 .overlay {
                     if works.isEmpty { emptyState }
                 }
@@ -96,6 +108,7 @@ struct GalleryView: View {
         }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
+            if !grid, path.isEmpty, speed.reached() { openGrid() }
             Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
             cutAhead()
@@ -199,6 +212,72 @@ struct GalleryView: View {
         // (`GalleryPage`); this is the rest's.
         withAnimation(GalleryPage.toWhole) {
             whole.toggle()
+        }
+    }
+
+    // MARK: The grid
+
+    private var gridLayer: some View {
+        GeometryReader { geo in
+            if grid {
+                let at = works.firstIndex { $0.id == position } ?? 0
+                GalleryGrid(
+                    works: Array(works.dropFirst(at)), from: position, whole: whole,
+                    frames: $gridFrames,
+                    pick: { closeGrid(on: $0, screen: geo.frame(in: .global)) },
+                    more: { Task { await more() } }
+                )
+                .background((whole ? Theme.paper : Color.black).ignoresSafeArea())
+                .transition(.modifier(
+                    active: GridZoom(scale: gridScale, anchor: gridAnchor, opacity: 0),
+                    identity: GridZoom(scale: 1, anchor: gridAnchor, opacity: 1)
+                ))
+                .onAppear { gridSize = geo.size }
+            }
+        }
+        .onGeometryChange(for: CGSize.self) { $0.size } action: { gridSize = $0 }
+    }
+
+    /// The grid grows out of the work shown: it starts so large that the
+    /// first tile, this work, fills the screen, and draws back about it.
+    private func openGrid() {
+        let width = max(gridSize.width, 1)
+        let side = Theme.gutter
+        let tile: CGFloat
+        let height: CGFloat
+        if whole {
+            tile = (width - side * 2 - 16) / 2
+            height = tile * 0.75
+        } else {
+            tile = (width - side * 2 - GalleryGrid.gap * CGFloat(GalleryGrid.columns - 1)) / CGFloat(GalleryGrid.columns)
+            height = tile * GalleryGrid.tall
+        }
+        gridAnchor = UnitPoint(
+            x: (side + tile / 2) / width,
+            y: (8 + height / 2) / max(gridSize.height, 1)
+        )
+        gridScale = width / max(tile, 1)
+        speed.reset()
+        withAnimation(.smooth(duration: 0.45)) { grid = true }
+    }
+
+    /// Back to the work tapped: it is put in place under the grid, and the
+    /// grid grows about its tile till the tile is the screen, fading.
+    private func closeGrid(on work: RemoteItem, screen: CGRect) {
+        if let frame = gridFrames[work.id], frame.width > 0 {
+            gridAnchor = UnitPoint(
+                x: (frame.midX - screen.minX) / max(screen.width, 1),
+                y: (frame.midY - screen.minY) / max(screen.height, 1)
+            )
+            gridScale = screen.width / frame.width
+        }
+        var quiet = Transaction(animation: nil)
+        quiet.disablesAnimations = true
+        withTransaction(quiet) { position = work.id }
+        speed.reset()
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.smooth(duration: 0.4)) { grid = false }
         }
     }
 
