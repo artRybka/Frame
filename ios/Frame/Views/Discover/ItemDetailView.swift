@@ -131,8 +131,24 @@ struct ItemDetailView: View {
         case frame = "Na ramce"
     }
 
+    /// Opened from Galeria: how the card takes the work from there
+    /// (`CardArrival`); nil from anywhere else.
+    @State private var arrival: CardArrival.Pending?
+    @State private var arrived = true
+    /// Where the work lies on the card, for its way there.
+    @State private var arrivalHome: CGRect?
+    /// The colours of the work's edges glowing out behind it, as behind the
+    /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
+    /// tło „łuny” za dziełem").
+    @State private var edgeGlow: UIImage?
+    @Environment(\.colorScheme) private var scheme
+
     init(itemID: String) {
         self.itemID = itemID
+        let arrival = CardArrival.pending[itemID]
+        _arrival = State(initialValue: arrival)
+        _arrived = State(initialValue: arrival == nil)
+        _edgeGlow = State(initialValue: Glow.kept[itemID])
         let known = ItemPeeks.polish[itemID]
         _item = State(initialValue: ItemPeeks.cards[itemID])
         _polish = State(initialValue: known)
@@ -219,7 +235,19 @@ struct ItemDetailView: View {
             guard let kept else { return }
             withAnimation(.easeInOut(duration: 0.4)) { item = kept }
         }
-        .paperPage(glow: glow, lift: scrolled)
+        .background {
+            // Galeria's ground, giving way to the paper as the card comes.
+            if let arrival {
+                arrival.ground
+                    .ignoresSafeArea()
+                    .opacity(arrived ? 0 : 1)
+                    .animation(CardArrival.ground, value: arrived)
+                    .allowsHitTesting(false)
+            }
+        }
+        .paperPage(glow: edgeGlow == nil ? glow : [], lift: scrolled)
+        .onAppear { CardArrival.pending[itemID] = nil }
+        .task(id: itemID) { await makeEdgeGlow() }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item {
@@ -412,6 +440,7 @@ struct ItemDetailView: View {
     private func loaded(_ item: Item) -> some View {
         VStack(alignment: .leading, spacing: 24) {
             picture(item)
+            Group {
             titleBlock(item).id("title")
             actions(item)
             if !item.colors.isEmpty { palette(item).id("palette") }
@@ -439,6 +468,8 @@ struct ItemDetailView: View {
                     .transition(.opacity)
             }
             facts(item)
+            }
+            .modifier(restOfCard)
         }
         .layoutProbe("column")
         .padding(.horizontal, Theme.gutter)
@@ -519,6 +550,16 @@ struct ItemDetailView: View {
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     .shadow(color: .black.opacity(0.22), radius: 16, y: 12)
+                    .background {
+                        if let edgeGlow {
+                            GeometryReader { box in
+                                Glow(edges: edgeGlow, size: box.size, offset: .zero)
+                                    .opacity(scheme == .light ? 0.62 : 1)
+                                    .frame(width: box.size.width, height: box.size.height)
+                            }
+                        }
+                    }
+                    .modifier(arriving)
                     .pictureBox()
                 Picker("Widok", selection: .constant(ViewMode.original)) {
                     ForEach(ViewMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -526,8 +567,10 @@ struct ItemDetailView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 260)
                 .disabled(true)
+                .modifier(restOfCard)
             }
             .padding(.top, 8)
+            Group {
             if let summary = peek?.summary {
                 peekTitle(summary)
             } else {
@@ -551,6 +594,8 @@ struct ItemDetailView: View {
             } else {
                 ProgressView().frame(maxWidth: .infinity)
             }
+            }
+            .modifier(restOfCard)
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
@@ -1277,6 +1322,40 @@ struct ItemDetailView: View {
         }
     }
 
+    // MARK: Coming from Galeria
+
+    /// The work on its way from Galeria to its place here.
+    private var arriving: ArrivingPicture {
+        ArrivingPicture(pending: arrival, arrived: arrived, home: arrivalHome) { rect in
+            guard arrivalHome == nil else { return }
+            arrivalHome = rect
+            guard let arrival, !arrived else { return }
+            Task { @MainActor in
+                withAnimation(arrival.from == nil ? CardArrival.surface : CardArrival.move) { arrived = true }
+            }
+        }
+    }
+
+    /// The rest of the card, appearing once the work is on its way.
+    private var restOfCard: RestOfCard {
+        RestOfCard(shown: arrived, animation: arrival.map(CardArrival.rest) ?? .default)
+    }
+
+    /// The glow behind the work: Galeria's own when it made one, else made
+    /// here from the thumbnail.
+    private func makeEdgeGlow() async {
+        guard edgeGlow == nil else { return }
+        let ref = ItemPeeks.tiles[itemID]?.thumb ?? .thumb(itemID)
+        guard let request = model.backend.request(for: ref),
+              let thumb = try? await ImageLoader.shared.image(for: request, maxPixel: 700, priority: .normal),
+              !Task.isCancelled
+        else { return }
+        let made = await Task.detached(priority: .utility) { Glow.edges(of: thumb) }.value
+        guard let made, !Task.isCancelled else { return }
+        Glow.kept[itemID] = made
+        withAnimation(.easeOut(duration: 0.4)) { edgeGlow = made }
+    }
+
     // MARK: Sections
 
     private func picture(_ item: Item) -> some View {
@@ -1337,6 +1416,17 @@ struct ItemDetailView: View {
                     framePreview(item)
                 }
             }
+            .background {
+                if view == .original, let edgeGlow {
+                    GeometryReader { box in
+                        Glow(edges: edgeGlow, size: box.size, offset: .zero)
+                            .opacity(scheme == .light ? 0.62 : 1)
+                            .frame(width: box.size.width, height: box.size.height)
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .modifier(arriving)
             .pictureBox()
             .layoutProbe("group")
             HStack(spacing: 12) {
@@ -1351,6 +1441,7 @@ struct ItemDetailView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
             }
+            .modifier(restOfCard)
             if view == .frame {
                 Text(bound: frameHint)
                     .font(.caption)
@@ -1968,4 +2059,16 @@ extension View {
 /// Debug builds (tests): the last frame on screen of the probed views.
 enum FramePositionProbe {
     nonisolated(unsafe) static var frames: [String: CGRect] = [:]
+}
+
+/// What follows the work on the card, appearing after it from Galeria.
+private struct RestOfCard: ViewModifier {
+    let shown: Bool
+    let animation: Animation
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(shown ? 1 : 0)
+            .animation(animation, value: shown)
+    }
 }

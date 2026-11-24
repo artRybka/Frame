@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.358
+
+- Karta dzieła: łuna z kolorów krawędzi za dziełem, jak w Galerii;
+  z Galerii karta wchodzi płynnie, dzieło przesuwa się na swoje miejsce.
+
 ## 1.145.357
 
 - Galeria: płynne przejście tła między całymi dziełami, guzik
