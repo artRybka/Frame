@@ -118,14 +118,36 @@ struct WallZoom: ViewModifier {
     func body(content: Content) -> some View {
         let tile = camera.tile, hero = camera.hero, screen = camera.screen
         let on = camera.on && tile.width > 0 && screen.width > 0 && screen.height > 0
-        content
-            .scaleEffect(
-                on ? hero.width / tile.width : 1,
+        content.modifier(
+            Seen(
+                scale: on ? hero.width / tile.width : 1,
                 anchor: on
                     ? UnitPoint(x: (tile.midX - screen.minX) / screen.width, y: (tile.midY - screen.minY) / screen.height)
-                    : .center
-            )
-            .offset(on ? CGSize(width: hero.midX - tile.midX, height: hero.midY - tile.midY) : .zero)
+                    : .center,
+                moved: on ? CGSize(width: hero.midX - tile.midX, height: hero.midY - tile.midY) : .zero
+            ).ignoredByLayout()
+        )
+    }
+}
+
+/// Scaled about a point of its own and moved, to the eye only. With
+/// `scaleEffect` and `offset` a scroll view near the screen's edges took
+/// the way it had been moved for the safe area's: for the last tenth of
+/// a second of the way from a tile the pages had 47 points, then 2, then
+/// none above them, and were scrolled as far out of place (the probe's
+/// trace of 2026-11-24).
+private struct Seen: GeometryEffect {
+    var scale: CGFloat
+    var anchor: UnitPoint
+    var moved: CGSize
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let about = CGPoint(x: anchor.x * size.width, y: anchor.y * size.height)
+        return ProjectionTransform(
+            CGAffineTransform(translationX: about.x + moved.width, y: about.y + moved.height)
+                .scaledBy(x: scale, y: scale)
+                .translatedBy(x: -about.x, y: -about.y)
+        )
     }
 }
 
@@ -136,9 +158,12 @@ struct WindowZoom: ViewModifier {
     func body(content: Content) -> some View {
         let window = camera.window, screen = camera.screen
         let on = camera.on && window.width > 0 && screen.width > 0
-        content
-            .scaleEffect(on ? window.width / screen.width : 1)
-            .offset(on ? CGSize(width: window.midX - screen.midX, height: window.midY - screen.midY) : .zero)
+        content.modifier(
+            Seen(
+                scale: on ? window.width / screen.width : 1, anchor: .center,
+                moved: on ? CGSize(width: window.midX - screen.midX, height: window.midY - screen.midY) : .zero
+            ).ignoredByLayout()
+        )
     }
 }
 
