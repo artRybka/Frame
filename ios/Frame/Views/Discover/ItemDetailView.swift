@@ -137,6 +137,7 @@ struct ItemDetailView: View {
     @State private var arrived = true
     /// Where the work lies on the card, for its way there.
     @State private var arrivalHome: CGRect?
+    @State private var arrivalStarted = false
     /// The colours of the work's edges glowing out behind it, as behind the
     /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
     /// tło „łuny” za dziełem").
@@ -1327,10 +1328,17 @@ struct ItemDetailView: View {
     /// The work on its way from Galeria to its place here.
     private var arriving: ArrivingPicture {
         ArrivingPicture(pending: arrival, arrived: arrived, home: arrivalHome) { rect in
-            guard arrivalHome == nil else { return }
+            // Its place followed till the way starts: the first measure can
+            // come before the box has its width (at the left, small), and a
+            // way from there ran on a slant (Mateusz 2026-11-24 10:48:
+            // "dzieło 'wędruje po skosie'").
+            guard !arrived, rect.width > 60 else { return }
             arrivalHome = rect
-            guard let arrival, !arrived else { return }
+            guard let arrival, !arrivalStarted else { return }
+            arrivalStarted = true
             Task { @MainActor in
+                // A couple of frames for the card's layout to settle.
+                try? await Task.sleep(for: .milliseconds(70))
                 withAnimation(arrival.from == nil ? CardArrival.surface : CardArrival.move) { arrived = true }
             }
         }
