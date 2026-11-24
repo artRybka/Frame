@@ -36,8 +36,12 @@ from PIL import Image
 from .cut import Quad, area, snap, valid
 
 #: The model's name: a work looked at by another is looked at again.
-#: Drawings, prints and the rest (``model_of``).
-MODEL = "kadr-4"
+#: Drawings, prints and the rest (``model_of``): their own (Mateusz
+#: 2026-11-24 14:07 UTC, „Tak, wymień”), fine-tuned on his sheets as
+#: kadr-10p on his paintings: 141 of 193 held out as he said against
+#: kadr-4's 133, fewer left to him (62 against 69) and fewer cut when he
+#: wanted them whole (7 against 11), at its own :data:`SURE`.
+MODEL = "kadr-11s"
 #: Paintings' own model (Mateusz 2026-11-21 21:31 UTC, „Tak, wymień dla
 #: malarstwa”): fine-tuned on his 2137 paintings told at a glance ("Ucz
 #: kadrowania"), with Opus's corners where he said a cut; 302 of 375 held
@@ -55,10 +59,10 @@ PHOTO_SIDE = 1024
 MASK = 0.5
 #: How sure of a cut the model must be to cut, and below which the
 #: photograph is whole for sure; between the two it is left to him.
-SURE = 0.9
+SURE = 0.795
 WHOLE = 0.1
 #: :data:`PAINTING_MODEL`'s: as many cuts in the old test as kadr-4's at
-#: :data:`SURE` (it is less sure of itself, and tells them apart better).
+#: 0.9 (it is less sure of itself, and tells them apart better).
 PAINTING_SURE = 0.81
 #: A cut's corners and sides at most this far from upright and square
 #: (degrees): a work photographed almost straight on.

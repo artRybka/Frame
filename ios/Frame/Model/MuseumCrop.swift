@@ -19,14 +19,15 @@ import ImageIO
 /// (`POST /api/crops/phone/{id}`, `phone_crops.py`).
 enum MuseumCrop {
     /// The model's name, as the server knows it (`crop_model.MODEL`):
-    /// drawings, prints and the rest (`Models/Kadr.mlpackage`).
-    static let model = "kadr-4"
+    /// drawings, prints and the rest (`Models/Kadr.mlpackage`; Mateusz
+    /// 2026-11-24: „Tak, wymień”).
+    static let model = "kadr-11s"
     /// Paintings' own (`crop_model.PAINTING_MODEL`, `Models/KadrPainting.mlpackage`;
     /// Mateusz 2026-11-21 21:31 UTC: „Tak, wymień dla malarstwa”).
     static let paintingModel = "kadr-10p"
     /// How sure of a cut each must be to cut (`crop_model.SURE`,
     /// `PAINTING_SURE`).
-    static let sure = 0.9
+    static let sure = 0.795
     static let paintingSure = 0.81
 
     /// The model that looks at a work of `kind` (`crop_model.model_of`).
