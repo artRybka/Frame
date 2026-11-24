@@ -18,8 +18,10 @@ struct GalleryView: View {
     /// 2026-11-23: "czarny ekran zaraz po otwarciu").
     @State private var works: [RemoteItem] = GalleryView.remembered()
     @State private var position: String?
-    /// The work shown whole (tapped), till the next one or another tap.
-    @State private var whole: String?
+    /// The works shown whole (tapped), kept from one work to the next till
+    /// another tap (Mateusz 2026-11-24: "przewijając do kolejnego zostawiaj
+    /// ekran całego dzieła").
+    @State private var whole = false
     @State private var loading = false
     @State private var failed = false
     @State private var path: [String] = []
@@ -52,15 +54,14 @@ struct GalleryView: View {
                 }
                 .animation(.easeInOut(duration: 0.2), value: shown?.id)
                 .toolbarVisibility(.hidden, for: .navigationBar)
-                .toolbarVisibility(whole != nil || !path.isEmpty ? .visible : .hidden, for: .tabBar)
-                .statusBarHidden(whole == nil)
+                .toolbarVisibility(whole || !path.isEmpty ? .visible : .hidden, for: .tabBar)
+                .statusBarHidden(!whole)
                 .navigationDestination(for: String.self) { id in
                     ItemDetailView(itemID: id)
                 }
         }
         .task { if works.count < Self.batch { await more() } }
         .onChange(of: position) { _, id in
-            if whole != id { whole = nil }
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
             Self.remember(Array(works.dropFirst(index + 1)))
             if index >= works.count - Self.ahead { Task { await more() } }
@@ -75,21 +76,30 @@ struct GalleryView: View {
             LazyVStack(spacing: 0) {
                 ForEach(works) { work in
                     GalleryPage(
-                        work: work, current: work.id == shown?.id, whole: whole == work.id,
+                        work: work, current: work.id == shown?.id, whole: whole,
                         flip: { flip(work) }, open: { open(work) }
                     )
                         .containerRelativeFrame([.horizontal, .vertical])
                         .contentShape(Rectangle())
                         .onTapGesture(count: 2) { heart(work) }
                         .onTapGesture { flip(work) }
+                        // A swipe from left to right shows the whole work
+                        // too (Mateusz 2026-11-24).
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 24).onEnded { drag in
+                                let move = drag.translation
+                                guard !whole, move.width > 60, move.width > abs(move.height) * 2 else { return }
+                                flip(work)
+                            }
+                        )
                         // A hold shows the whole work too, no menu (Mateusz
                         // 2026-11-23 21:41: "Do ekranu całego dzieła wchodzi
                         // także przytrzymanie. Nie ma już menu po przytrzymaniu").
                         .onLongPressGesture(minimumDuration: 0.35) {
-                            guard whole != work.id else { return }
+                            guard !whole else { return }
                             flip(work)
                         }
-                        .sensoryFeedback(.impact(weight: .light), trigger: whole == work.id)
+                        .sensoryFeedback(.impact(weight: .light), trigger: whole)
                         .id(work.id)
                 }
             }
@@ -137,13 +147,14 @@ struct GalleryView: View {
         .padding(.top, 2)
     }
 
-    /// The work whole, or cut to the screen again: a tap on it or on its
-    /// title, a hold to see it whole (Mateusz 2026-11-23 21:41).
+    /// The works whole, or cut to the screen again: a tap on it or on its
+    /// title, a hold or a swipe to the right to see it whole (Mateusz
+    /// 2026-11-23 21:41, 2026-11-24).
     private func flip(_ work: RemoteItem) {
         // The page melts one into the other with its own timings
         // (`GalleryPage`); this is the rest's.
         withAnimation(GalleryPage.toWhole) {
-            whole = whole == work.id ? nil : work.id
+            whole.toggle()
         }
     }
 
