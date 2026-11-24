@@ -56,6 +56,13 @@ class PhoneFound(BaseModel):
     surround: list[tuple[float, float]] | None = None
     width: int = Field(gt=0)
     height: int = Field(gt=0)
+    #: Of a print whose sheet the phone cut down round its impression
+    #: (``crop_model.plate``): the sheet the model found and the impression
+    #: alone; ``plates``: how it did it (``crop_model.PLATE``; none from an
+    #: older app, the server does it then).
+    sheet: list[tuple[float, float]] | None = None
+    plate: list[tuple[float, float]] | None = None
+    plates: int | None = None
 
 
 class Found(BaseModel):
@@ -115,6 +122,9 @@ async def phone_found(item_id: str, found: PhoneFound, svc: Svc) -> Found:
                 size=(found.width, found.height),
                 picture=found.picture,
                 model=found.model,
+                sheet=found.sheet,
+                plate_alone=found.plate,
+                plates=found.plates,
             )
         )
     except Gone as err:

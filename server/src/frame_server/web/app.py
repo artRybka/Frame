@@ -304,6 +304,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 threading.Timer(START_DELAY, service.own_works.reshape),
                 # And those scanned before photographs were merged as now.
                 threading.Timer(LOOKS_DELAY, service.own_works.scanned_again),
+                # And the prints cut before their sheets were cut down
+                # round the impression where the paper is wide.
+                threading.Timer(LOOKS_DELAY, service.phone_crops.plates_again),
             ):
                 later.daemon = True
                 later.start()

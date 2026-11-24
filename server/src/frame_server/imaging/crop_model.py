@@ -16,6 +16,8 @@ all. What is made of them here is the truth the phone's core
   ``frame_crop_snap``);
 - :func:`decide`: cut only when sure and when the work stands almost
   upright and square in the photograph; unsure stays whole, for him;
+- :func:`plate`: a print's impression found on the sheet the model cut
+  to, and the sheet cut down round it when its paper is wide;
 - :func:`find`: all of it, from the photograph and the model's answer.
 """
 
@@ -74,6 +76,77 @@ FRAME_APART = 15.7
 FRAME_EDGE = 5
 #: The kinds of work the model is told of (the museum's own words, ``kinds``).
 KINDS = ("painting", "drawing", "print", "photo", "other")
+
+# A print is cut to its sheet, unless the paper round the impression is
+# wide (Mateusz 2026-11-24 09:36 UTC: „kadrujmy do kartki, chyba że margines
+# od odbitki jest wtedy bardzo duży. W takiej sytuacji trzeba ograniczyć
+# margines do rozsądnej proporcji, równo od każdej strony od odbitki”;
+# 10:37 the margin, 10:38 „ale próg nie 25% tylko 15%”). The impression is
+# found with no model (``framecam-share/kadr-muzea2/margines1``): what
+# stands apart from the paper in colour or grain, on the sheet set
+# upright, and only where there is plain paper all round it.
+
+#: What decides which prints are cut and how: raised when :func:`plate`
+#: changes, the prints cut before are cut again once (``phone_crops``).
+PLATE = 1
+#: The sheet is cut down when its widest margin is more than this share of
+#: the impression's shorter side…
+PLATE_OVER = 0.15
+#: …to the impression and this much of its shorter side round it, the same
+#: on every side (as much as the narrowest side has: never past the sheet).
+PLATE_MARGIN = 0.08
+#: The sheet set upright this long (px) to be looked at.
+PLATE_SIDE = 900
+#: The paper's colour is read in a band from this far in from the sheet's
+#: edge to :data:`PLATE_BAND` (of its shorter side).
+PLATE_EDGE = 0.015
+PLATE_BAND = 0.05
+#: What stands at least this far from the paper's colour (ΔE) or this far
+#: from its grain (the local spread of lightness, 5 px) is the work; or
+#: further, :data:`PLATE_SPREAD` median deviations above the band's.
+PLATE_APART = 7.0
+PLATE_GRAIN = 2.5
+PLATE_SPREAD = 5 * 1.4826
+#: The work's pixels grown by this share of the sheet's long side into one.
+PLATE_GROW = 0.012
+#: An impression turned by more than :data:`PLATE_TURN_LEAST` and at most
+#: :data:`PLATE_TURN` degrees is boxed turned, when that box is smaller than
+#: :data:`PLATE_TURN_GAIN` of the upright one; its edge pixels left out (share).
+PLATE_TURN = 5.0
+PLATE_TURN_LEAST = 0.3
+PLATE_TURN_GAIN = 0.98
+PLATE_STRAY = 0.001
+#: A caption or signature at a side cut away: beyond a line emptier than
+#: :data:`PLATE_GAP` of the impression's mean filling within :data:`PLATE_NEAR`
+#: of its length, with what is beyond it sparser than :data:`PLATE_SPARSE`;
+#: or, of a dense impression (:data:`PLATE_DENSE`), a band at its edge
+#: sparser than :data:`PLATE_THIN` within :data:`PLATE_REACH`.
+PLATE_GAP = 0.15
+PLATE_NEAR = 0.10
+PLATE_SPARSE = 0.6
+PLATE_DENSE = 0.6
+PLATE_THIN = 0.35
+PLATE_REACH = 0.18
+#: Plain paper round it: the band at most :data:`PLATE_SIDES` (ΔE) apart
+#: between the sheet's sides and as light as :data:`PLATE_LIGHT` (L); its
+#: grain's threshold at most :data:`PLATE_GRAIN_MOST`; of the paper beyond
+#: the impression at most :data:`PLATE_BUSY` more than :data:`PLATE_LOOSE`
+#: (ΔE) or :data:`PLATE_LOOSE_GRAIN` from it; the impression at least
+#: :data:`PLATE_WHOLE` of all that stands apart, and at least
+#: :data:`PLATE_LEAST` of the sheet.
+PLATE_SIDES = 20.0
+PLATE_LIGHT = 60.0
+PLATE_GRAIN_MOST = 4.0
+PLATE_BUSY = 0.10
+PLATE_LOOSE = 10.0
+PLATE_LOOSE_GRAIN = 3.0
+PLATE_WHOLE = 0.8
+PLATE_LEAST = 0.04
+#: His own cut of a print is the impression alone when it overlaps it this
+#: much (intersection over union): cut again to the impression and its
+#: margin within the sheet, once (Mateusz 2026-11-24 10:39 UTC: „ręczne
+#: kadry, jeżeli obejmują samą grafikę także obejmij tą zmianą”).
+PLATE_SAME = 0.85
 
 _PRINT = (
     r"print|etching|engraving|woodcut|wood engraving|lithograph|mezzotint|aquatint|drypoint|"
@@ -314,22 +387,276 @@ def probabilities(
 
 
 @dataclass(frozen=True)
+class Impression:
+    """A print's impression found on its sheet set upright (``size``: w, h;
+    ``to_sheet`` the photograph's perspective onto it): its box (``box``:
+    left, top, right, bottom) turned by ``turn`` degrees about ``middle``."""
+
+    box: tuple[float, float, float, float]
+    turn: float
+    middle: tuple[float, float]
+    size: tuple[int, int]
+    to_sheet: np.ndarray
+
+    def corners(self, grow: Sequence[float] = (0.0, 0.0, 0.0, 0.0)) -> np.ndarray:
+        """The box grown by ``grow`` (left, top, right, bottom) on the
+        upright sheet, its corners in order."""
+        u0, v0, u1, v1 = self.box
+        u0, v0, u1, v1 = u0 - grow[0], v0 - grow[1], u1 + grow[2], v1 + grow[3]
+        a = np.deg2rad(self.turn)
+        ca, sa = np.cos(a), np.sin(a)
+        cx, cy = self.middle
+        return np.array(
+            [
+                [cx + uu * ca - vv * sa, cy + uu * sa + vv * ca]
+                for uu, vv in ((u0, v0), (u1, v0), (u1, v1), (u0, v1))
+            ]
+        )
+
+    def margins(self) -> tuple[float, float, float, float]:
+        """The paper beyond it on the sheet: left, top, right, bottom (px)."""
+        q = self.corners()
+        w, h = self.size
+        return (
+            (q[0, 0] + q[3, 0]) / 2,
+            (q[0, 1] + q[1, 1]) / 2,
+            w - (q[1, 0] + q[2, 0]) / 2,
+            h - (q[2, 1] + q[3, 1]) / 2,
+        )
+
+    def on_photo(self, corners: np.ndarray, w: int, h: int) -> list[list[float]]:
+        """``corners`` on the upright sheet as fractions of the photograph."""
+        back = cv2.perspectiveTransform(
+            np.array([corners], np.float32), np.linalg.inv(self.to_sheet)
+        )[0]
+        return [[float(x) / w, float(y) / h] for x, y in back]
+
+
+def upright(rgb: np.ndarray, sheet: Sequence[Sequence[float]]) -> tuple[np.ndarray, np.ndarray]:
+    """The sheet (corners in order, on ``rgb``) set upright, its long side
+    :data:`PLATE_SIDE`; and the perspective onto it."""
+    h, w = rgb.shape[:2]
+    q = (np.array(sheet, np.float64) * [w, h]).astype(np.float32)
+    width = (np.linalg.norm(q[1] - q[0]) + np.linalg.norm(q[2] - q[3])) / 2
+    height = (np.linalg.norm(q[3] - q[0]) + np.linalg.norm(q[2] - q[1])) / 2
+    s = PLATE_SIDE / max(width, height)
+    cols, rows = max(8, round(width * s)), max(8, round(height * s))
+    to = np.array([[0, 0], [cols, 0], [cols, rows], [0, rows]], np.float32)
+    m = cv2.getPerspectiveTransform(q, to)
+    flat = cv2.warpPerspective(
+        rgb, m, (cols, rows), flags=cv2.INTER_AREA, borderMode=cv2.BORDER_REPLICATE
+    )
+    return flat, m
+
+
+def _spread_above(values: np.ndarray) -> float:
+    """The values' median and :data:`PLATE_SPREAD` median deviations."""
+    mid = np.median(values)
+    return float(mid + PLATE_SPREAD * np.median(np.abs(values - mid)))
+
+
+def _cut_caption(t: np.ndarray, lo: float, hi: float, across: float) -> tuple[float, float]:
+    """The impression's extent along one axis (``t``: its pixels' places,
+    from ``lo`` to ``hi``; ``across``: its extent the other way) without a
+    caption or signature at either end."""
+    n = int(hi - lo) + 1
+    prof = np.bincount((t - lo).astype(int).clip(0, n - 1), minlength=n) / max(1.0, across)
+    body = float(np.median(prof))
+    reach = int(PLATE_REACH * n)
+    gap = max(0.01, PLATE_GAP * body)
+    ends = [lo, hi]
+    for side in (0, 1):
+        p = prof if side == 0 else prof[::-1]
+        cut_at = None
+        for j in range(2, int(PLATE_NEAR * n)):
+            if p[j] <= gap and p[:j].mean() < PLATE_SPARSE * body:
+                cut_at = j
+        if cut_at is not None:
+            j = cut_at
+            while j < n - 1 and p[j] <= gap:
+                j += 1
+            cut_at = j
+        elif body >= PLATE_DENSE:
+            j = 0
+            while j < reach and p[j] < PLATE_THIN * body:
+                j += 1
+            if 2 <= j < reach:
+                cut_at = j
+        if cut_at:
+            ends[side] = lo + cut_at if side == 0 else hi - cut_at
+    return ends[0], ends[1]
+
+
+def impression(rgb: np.ndarray, sheet: Sequence[Sequence[float]]) -> Impression | None:
+    """A print's impression on its ``sheet`` (corners in order, on
+    ``rgb``), where there is plain paper all round it; None where there is
+    none (printed to the edge, a page of text, a newspaper)."""
+    flat, to_sheet = upright(rgb, sheet)
+    rows, cols = flat.shape[:2]
+    lab = cv2.cvtColor(
+        cv2.GaussianBlur(flat, (0, 0), 1.2).astype(np.float32) / 255, cv2.COLOR_RGB2Lab
+    )
+    e = max(2, round(PLATE_EDGE * min(cols, rows)))
+    b = max(e + 3, round(PLATE_BAND * min(cols, rows)))
+    band = np.zeros((rows, cols), bool)
+    band[e : rows - e, e : cols - e] = True
+    band[b : rows - b, b : cols - b] = False
+    paper = np.median(lab[band], axis=0)
+    apart = np.linalg.norm(lab - paper, axis=2)
+    far = max(PLATE_APART, _spread_above(apart[band]))
+    light = lab[..., 0]
+    mean = cv2.blur(light, (5, 5))
+    grain = np.sqrt(np.maximum(cv2.blur(light * light, (5, 5)) - mean * mean, 0))
+    rough = max(PLATE_GRAIN, _spread_above(grain[band]))
+    work = ((apart > far) | (grain > rough)).astype(np.uint8)
+    work[:e, :] = 0
+    work[rows - e :, :] = 0
+    work[:, :e] = 0
+    work[:, cols - e :] = 0
+    work = cv2.morphologyEx(work, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    r = max(2, round(PLATE_GROW * max(cols, rows)))
+    grown = cv2.dilate(work, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * r + 1, 2 * r + 1)))
+    n, parts, _, _ = cv2.connectedComponentsWithStats(grown, connectivity=8)
+    if n < 2:
+        return None
+    count = np.bincount(parts.ravel().astype(np.int64), weights=work.ravel(), minlength=n)
+    count[0] = 0
+    k = int(np.argmax(count))
+    ys, xs = np.nonzero((parts == k) & (work > 0))
+    (cx, cy), _, turn = cv2.minAreaRect(np.column_stack([xs, ys]).astype(np.float32))
+    turn = ((turn + 45) % 90) - 45
+
+    def boxed(turn: float) -> tuple[np.ndarray, np.ndarray, list[float]]:
+        a = np.deg2rad(turn)
+        ca, sa = np.cos(a), np.sin(a)
+        u = (xs - cx) * ca + (ys - cy) * sa
+        v = -(xs - cx) * sa + (ys - cy) * ca
+        u0, u1 = np.percentile(u, [100 * PLATE_STRAY, 100 * (1 - PLATE_STRAY)])
+        v0, v1 = np.percentile(v, [100 * PLATE_STRAY, 100 * (1 - PLATE_STRAY)])
+        return u, v, [float(u0), float(v0), float(u1 + 1), float(v1 + 1)]
+
+    def size(box: list[float]) -> float:
+        return (box[2] - box[0]) * (box[3] - box[1])
+
+    u, v, box = boxed(0.0)
+    if PLATE_TURN_LEAST < abs(turn) <= PLATE_TURN:
+        tu, tv, tbox = boxed(turn)
+        if size(tbox) <= PLATE_TURN_GAIN * size(box):
+            u, v, box = tu, tv, tbox
+        else:
+            turn = 0.0
+    else:
+        turn = 0.0
+    keep = (u >= box[0]) & (u <= box[2]) & (v >= box[1]) & (v <= box[3])
+    u, v = u[keep], v[keep]
+    box[0], box[2] = _cut_caption(u, box[0], box[2], box[3] - box[1])
+    box[1], box[3] = _cut_caption(v, box[1], box[3], box[2] - box[0])
+    middle = (float(cx), float(cy))
+    edges = (box[0], box[1], box[2], box[3])
+    found = Impression(edges, float(turn), middle, (cols, rows), to_sheet)
+    # Plain paper round it: alike on every side, light, and little on it.
+    sides = [
+        lab[e:b, e : cols - e],
+        lab[rows - b : rows - e, e : cols - e],
+        lab[e : rows - e, e:b],
+        lab[e : rows - e, cols - b : cols - e],
+    ]
+    med = [np.median(x.reshape(-1, 3), axis=0) for x in sides]
+    sides_apart = max(float(np.linalg.norm(p - q)) for p in med for q in med)
+    filled = np.zeros((rows, cols), np.uint8)
+    cv2.fillPoly(filled, [np.round(found.corners()).astype(np.int32)], 1)
+    beyond = cv2.dilate(filled, np.ones((2 * r + 1, 2 * r + 1), np.uint8)) == 0
+    beyond[:e, :] = False
+    beyond[rows - e :, :] = False
+    beyond[:, :e] = False
+    beyond[:, cols - e :] = False
+    loose = (apart > PLATE_LOOSE) | (grain > PLATE_LOOSE_GRAIN)
+    busy = float(loose[beyond].mean()) if beyond.sum() > 50 else 1.0
+    plain = (
+        busy <= PLATE_BUSY
+        and rough <= PLATE_GRAIN_MOST
+        and count[k] / max(1, int(work.sum())) >= PLATE_WHOLE
+        and sides_apart <= PLATE_SIDES
+        and paper[0] >= PLATE_LIGHT
+        and size(box) >= PLATE_LEAST * cols * rows
+    )
+    return found if plain else None
+
+
+def overlap(
+    a: Sequence[Sequence[float]], b: Sequence[Sequence[float]], size: tuple[int, int]
+) -> float:
+    """How much two quads (fractions of a photograph of ``size``: w, h)
+    overlap: intersection over union."""
+    w, h = size
+    s = 512 / max(w, h)
+    cols, rows = max(1, round(w * s)), max(1, round(h * s))
+    masks = []
+    for quad in (a, b):
+        m = np.zeros((rows, cols), np.uint8)
+        cv2.fillPoly(m, [np.round(np.array(quad, float) * [cols, rows]).astype(np.int32)], 1)
+        masks.append(m.astype(bool))
+    union = int((masks[0] | masks[1]).sum())
+    return float((masks[0] & masks[1]).sum()) / union if union else 0.0
+
+
+def plate(
+    rgb: np.ndarray, sheet: Sequence[Sequence[float]], over: float = PLATE_OVER
+) -> tuple[Quad, Quad] | None:
+    """A print's ``sheet`` (corners in order, on ``rgb``) cut down round
+    its impression when the paper's widest margin is more than ``over`` of
+    the impression's shorter side (:data:`PLATE_OVER`): the impression and
+    :data:`PLATE_MARGIN` of it round it, the same on every side, never past
+    the sheet; and the impression alone (:func:`kept`). None: the sheet
+    stays."""
+    found = impression(rgb, sheet)
+    if found is None:
+        return None
+    u0, v0, u1, v1 = found.box
+    least = min(u1 - u0, v1 - v0)
+    margins = found.margins()
+    if max(margins) <= over * least:
+        return None
+    pad = max(0.0, min(PLATE_MARGIN * least, *margins))
+    h, w = rgb.shape[:2]
+    cut = valid(found.on_photo(found.corners((pad, pad, pad, pad)), w, h))
+    if cut is None:
+        return None
+    return cut, kept(found.on_photo(found.corners(), w, h))
+
+
+def kept(quad: Sequence[Sequence[float]]) -> Quad:
+    """Corners as they are kept (within the picture, five places), with no
+    question of their being a cut worth making (an impression kept beside
+    its cut, ``Cut.plate``)."""
+    inside = [(min(max(float(x), 0.0), 1.0), min(max(float(y), 0.0), 1.0)) for x, y in quad]
+    return [(round(x, 5), round(y, 5)) for x, y in inside]
+
+
+@dataclass(frozen=True)
 class Found:
     """What the model made of a photograph: "cut", "whole" or "unsure"
     (:func:`decide`), the work's corners set on the photograph's edges and
     the frame's or passe-partout's outer edge (None where there is none),
-    and how sure it was a cut is wanted."""
+    and how sure it was a cut is wanted. Of a print whose sheet was cut
+    down round its impression (:func:`plate`): the sheet the model found
+    and the impression alone."""
 
     verdict: str
     work: Quad | None
     surround: Quad | None
     sure: float
+    sheet: Quad | None = None
+    plate: Quad | None = None
 
 
-def find(rgb: np.ndarray, logits: np.ndarray, sure: float, cut_at: float = SURE) -> Found:
+def find(
+    rgb: np.ndarray, logits: np.ndarray, sure: float, cut_at: float = SURE, kind: int | None = None
+) -> Found:
     """The phone's look at a museum photograph (``rgb``: the one it
     letterboxed), from the model's ``masks`` and ``cut`` (a cut at
-    ``cut_at``, :func:`sure_of` its kind)."""
+    ``cut_at``, :func:`sure_of` its kind); a print's (``kind``) sheet cut
+    down round its impression (:func:`plate`)."""
     h, w = rgb.shape[:2]
     _, box = letterbox(rgb)
     probs = probabilities(logits, box, (w, h))
@@ -346,4 +673,9 @@ def find(rgb: np.ndarray, logits: np.ndarray, sure: float, cut_at: float = SURE)
         or not framed(rgb, work, surround)
     ):
         surround = None
-    return Found(decide(sure, work, (w, h), cut_at), work, surround, sure)
+    verdict = decide(sure, work, (w, h), cut_at)
+    if kind == KINDS.index("print") and work is not None:
+        cut = plate(rgb, work)
+        if cut is not None:
+            return Found(verdict, cut[0], surround, sure, sheet=work, plate=cut[1])
+    return Found(verdict, work, surround, sure)
