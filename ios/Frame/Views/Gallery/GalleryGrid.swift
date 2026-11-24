@@ -422,11 +422,12 @@ struct GridZoom: ViewModifier {
 
 /// Telling swiping past from looking: so many works in a row, each left
 /// this soon (Mateusz 2026-11-24 08:30: "nie pojedyncze dzieło tylko
-/// serię"). Four works, each left within a second and a half: no work is
-/// looked at that soon (12:06: "dzieła nie da się obejrzeć w 0,8 sekundy",
-/// six under 0.8 s was too slow to come).
+/// serię"). Each left within a second and a half: no work is looked at
+/// that soon (12:06: "dzieła nie da się obejrzeć w 0,8 sekundy"; six
+/// under 0.8 s was too slow to come). Eight of them: four came too soon
+/// (17:23: "po 2x większej ilości szybkooglądanych dzieł niż teraz").
 struct SwipeSpeed {
-    static let run = 4
+    static let run = 8
     static let quick: TimeInterval = 1.5
 
     private var times: [Date] = []

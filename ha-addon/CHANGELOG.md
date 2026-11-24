@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.366
+
+- Galeria: bez czarnych pasów u góry i u dołu dzieła; siatka przy szybkim
+  przewijaniu dopiero po ośmiu dziełach.
+
 ## 1.145.365
 
 - Galeria: siatka historii po powolnym przeciągnięciu w dół; bez machnięcia
