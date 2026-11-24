@@ -230,7 +230,7 @@ struct GalleryView: View {
     private func page(_ work: RemoteItem, at index: Int, insets: EdgeInsets) -> some View {
         GalleryPage(
             work: work, current: work.id == shown?.id, whole: peek == work.id, still: grid,
-            insets: insets, pull: pull,
+            insets: insets, pull: pull, stock: stock,
             above: index > 0 ? works[index - 1] : nil,
             below: index + 1 < works.count ? works[index + 1] : nil,
             ready: { pageReady(work.id) }
@@ -694,7 +694,8 @@ struct GalleryView: View {
                 while case let (done, image, focus)? = await group.next() {
                     if let image {
                         kept.images[done] = image
-                        kept.focus[done] = focus
+                        // Its page's, where that found one first.
+                        if kept.focus[done] == nil { kept.focus[done] = focus }
                     }
                     if case let (id, request)? = next.next() { group.addTask { await Self.fetch(id, request, pixel) } }
                 }
@@ -914,6 +915,12 @@ private struct GalleryPage: View {
     var insets = EdgeInsets()
     /// How far the finger that holds it has been drawn up.
     let pull: GalleryPull
+    /// The grid's thumbnails and the points they are cut about: a page
+    /// starts as its tile, with the tile's picture and about its point,
+    /// and what it finds first is its tile's (the film of 2026-11-24: a
+    /// page that had waited for its own was empty for a moment after its
+    /// tile had grown, and then cut about another point).
+    let stock: GridStock
     /// The works before and after it, whose grounds its own flows into at
     /// its top and foot (Mateusz 2026-11-24: "na łączeniu tła przy
     /// przewijaniu widać ostrą krawędź. Zróbmy tam płynne przejście").
@@ -1188,6 +1195,9 @@ private struct GalleryPage: View {
         guard let thumbRequest = model.backend.request(for: .thumb(work.id)),
               let fullRequest = model.backend.request(for: .image(work.id))
         else { return }
+        if focus == nil, let point = stock.focus[work.id] { focus = point }
+        // Born under the grid: its tile's own picture till a larger comes.
+        if still, thumb == nil, full == nil, focus != nil, let image = stock.images[work.id] { thumb = image }
         // In memory already (seen a moment ago): from the first frame.
         if let image = ImageLoader.inMemory(for: fullRequest, maxPixel: Self.fullPixel) {
             await settle(image, key: ImageLoader.pictureKey(fullRequest))
@@ -1197,10 +1207,13 @@ private struct GalleryPage: View {
         if let image = ImageLoader.inMemory(for: thumbRequest, maxPixel: Self.thumbPixel) {
             await settle(image, key: ImageLoader.pictureKey(thumbRequest))
             thumb = image
-        } else if let image = try? await ImageLoader.shared.image(for: thumbRequest, maxPixel: Self.thumbPixel) {
+        } else if let image = try? await ImageLoader.shared.image(
+            for: thumbRequest, maxPixel: Self.thumbPixel, priority: current ? .high : .normal
+        ) {
             await settle(image, key: ImageLoader.pictureKey(thumbRequest))
-            // In the grid it is to be there at once, under its tile.
-            withAnimation(still ? nil : .easeOut(duration: 0.3)) { thumb = image }
+            // In the grid it is to be there at once, under its tile; over
+            // its tile's own picture, too.
+            withAnimation(still || thumb != nil ? nil : .easeOut(duration: 0.3)) { thumb = image }
         }
         guard !Task.isCancelled,
               let image = try? await ImageLoader.shared.image(
@@ -1223,7 +1236,12 @@ private struct GalleryPage: View {
     /// picture comes first, and kept for the other.
     private func settle(_ image: UIImage, key: String) async {
         guard focus == nil else { return }
-        focus = await SubjectFocus.shared.point(in: image, key: key, subject: true)
+        let found = await SubjectFocus.shared.point(in: image, key: key, subject: true)
+        guard focus == nil else { return }
+        // Its tile's, where that was found meanwhile.
+        let point = stock.focus[work.id] ?? found
+        stock.focus[work.id] = point
+        focus = point
     }
 
     private func drawBack(_ box: CGSize) async {

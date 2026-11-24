@@ -233,7 +233,10 @@ private struct GridPicture: View {
             guard let got = loaded, !Task.isCancelled else { return }
             let waited = (ContinuousClock.now - asked) / .seconds(1)
             if waited > 2 { GalleryLog.note("tile \(work.id): its picture after \(Int(waited)) s") }
-            let point = await SubjectFocus.shared.point(in: got, key: ImageLoader.pictureKey(request), subject: true)
+            let found = await SubjectFocus.shared.point(in: got, key: ImageLoader.pictureKey(request), subject: true)
+            guard !Task.isCancelled else { return }
+            // Its page's, where that found one first: the two are one picture.
+            let point = stock.focus[work.id] ?? found
             stock.images[work.id] = got
             stock.focus[work.id] = point
             focus = point
