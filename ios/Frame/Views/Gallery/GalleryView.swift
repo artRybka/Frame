@@ -185,7 +185,7 @@ struct GalleryView: View {
                             changed: { move in pulled(move) },
                             ended: { move, speed, seconds in released(work, move: move, speed: speed, seconds: seconds) }
                         ))
-                        .gesture(PressHold {
+                        .gesture(GalleryHold {
                             guard !whole else { return }
                             flip(work)
                         })

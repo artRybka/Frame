@@ -529,7 +529,7 @@ struct SideDrag: UIGestureRecognizerRepresentable {
 }
 
 /// A hold, beside the scroll: a finger that moves is a scroll, not a hold.
-struct PressHold: UIGestureRecognizerRepresentable {
+struct GalleryHold: UIGestureRecognizerRepresentable {
     let action: () -> Void
 
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
