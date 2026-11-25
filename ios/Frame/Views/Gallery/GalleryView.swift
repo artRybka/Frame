@@ -1255,13 +1255,13 @@ private struct GalleryPage: View {
     /// then (points): the screen's own, about.
     static let pressedIn: CGFloat = 0.955
     static let pressedCorner: CGFloat = 44
-    /// Seconds from the whole work let go to the work cut to the screen
-    /// again, sharp and at its size (Mateusz 2026-11-25 12:21: "Powrót po
-    /// puszczeniu podglądu całego dzieła - wolniej, płynniej - teraz jest
-    /// zbyt agresywnie"; it took a fifth of a second and sprang). The
-    /// whole work goes into its glow first, the glow then off the cut one
-    /// coming sharp under it; nothing springs.
-    static let back: Double = 0.55
+    /// Seconds from the work held to the whole of it, and from the whole
+    /// work let go to the work cut to the screen again (Mateusz 2026-11-25
+    /// 12:21: "Powrót po puszczeniu podglądu całego dzieła - wolniej,
+    /// płynniej - teraz jest zbyt agresywnie"; it took a fifth of a second
+    /// and sprang).
+    static let out: Double = 0.42
+    static let back: Double = 0.5
     /// Seconds to draw back from `closer` to the whole picture.
     static let drawBack: Double = 20
 
@@ -1280,14 +1280,18 @@ private struct GalleryPage: View {
                 if let shown = full ?? thumb, let focus {
                     let layout = Fill(picture: shown.size, box: geo.size, focus: focus)
                     let place = Whole(picture: shown.size, box: geo.size, insets: insets, head: headHeight)
-                    // Two pictures, never one moved between them (Mateusz
-                    // 2026-11-23 20:14: the scaling "nadal nie wygląda
-                    // dobrze. Zaproponuj zupełnie inne rozwiązanie"; B,
-                    // "Rozpływ w łunę"): the cut one melts into its glow, and
-                    // the whole one surfaces out of it where it will stay.
-                    cut(layout, geo)
+                    // One picture, drawn back from the screen it is cut
+                    // to till the whole of it is seen, and closer again
+                    // (Mateusz 2026-11-25 14:21: "płynnie - przejście od
+                    // zoomu do pełnego i na odwrót (bez skoku
+                    // i przenikania)"; `Lens`, `Window`). Its glow lies
+                    // under it from the first tap and is only uncovered.
+                    // Before, two pictures and one melting into the other
+                    // (2026-11-23 20:14, "Rozpływ w łunę").
                     glowLayer(place, geo)
-                    wholeLayer(place, geo)
+                    shade(place, geo)
+                    cut(layout, place, geo)
+                    headLayer(place, geo)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
@@ -1296,8 +1300,8 @@ private struct GalleryPage: View {
         .background {
             ZStack {
                 placeholder
-                ground.opacity(whole ? 1 : 0)
-                    .animation(whole ? .easeOut(duration: 0.16) : .easeInOut(duration: Self.back * 0.8), value: whole)
+                ground.opacity(lit ? 1 : 0)
+                    .animation(lit ? nil : Self.unlit, value: lit)
             }
             .ignoresSafeArea()
         }
@@ -1368,44 +1372,72 @@ private struct GalleryPage: View {
     /// Pressed in: under a finger on its way to the hold, and held.
     private var sunk: Bool { (pressed || whole) && !reduceMotion }
 
-    /// The work cut to the screen, its title and artist low on it.
-    private func cut(_ layout: Fill, _ geo: GeometryProxy) -> some View {
-        ZStack {
-            ZStack {
-                if let stale {
-                    let own = Fill(picture: stale.picture.size, box: geo.size, focus: stale.focus)
-                    picture(stale.picture, size: own.size, offset: own.offset)
-                        .scaleEffect(zoom, anchor: own.anchor)
-                }
-                ZStack {
-                    if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
-                    if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
-                }
-                .scaleEffect(zoom, anchor: layout.anchor)
+    /// What lies under the work is there: from the first tap, behind the
+    /// work that still covers it, till the work covers it again.
+    private var lit: Bool { pressed || whole }
+    /// Gone at once, once the work is back over it.
+    private static let unlit = Animation.linear(duration: 0.01).delay(back + 0.1)
+
+    /// The way out to the whole work and the way back: no spring in
+    /// either, nothing fading.
+    private static let outWay = Animation.smooth(duration: out)
+    private static let backWay = Animation.smooth(duration: back)
+
+    /// The work cut to the screen, its title and artist low on it; held,
+    /// the same picture drawn back to the whole of it.
+    private func cut(_ layout: Fill, _ place: Whole, _ geo: GeometryProxy) -> some View {
+        let sink = sunk ? Self.pressedIn : 1
+        let way: CGFloat = whole ? 1 : 0
+        return ZStack {
+            if let stale {
+                let own = Fill(picture: stale.picture.size, box: geo.size, focus: stale.focus)
+                picture(stale.picture, size: own.size, offset: own.offset)
+                    .scaleEffect(zoom, anchor: own.anchor)
+                    .offset(x: pan)
+                    .scaleEffect(sink)
+                    .opacity(whole ? 0 : 1)
             }
-            .offset(x: pan)
+            ZStack {
+                if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
+                if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
+            }
+            .modifier(Lens(zoom: zoom, pan: pan, sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
             if current {
+                // Gone before the work draws back, there again once it
+                // is nearly back.
                 caption(geo)
-                    .opacity(still ? 0 : 1)
+                    .opacity(still || whole ? 0 : 1)
                     .animation(still ? .easeOut(duration: 0.12) : .easeOut(duration: 0.3), value: still)
+                    .animation(whole ? .easeOut(duration: 0.12) : .easeOut(duration: 0.22).delay(Self.back * 0.6), value: whole)
+                    .scaleEffect(sink)
             }
         }
         .frame(width: geo.size.width, height: geo.size.height)
-        .clipped()
-        // Pressed in while the finger lies, all the time the phone taps;
-        // let go before the hold, it springs back out. Held, it melts as
-        // small as it is, and grows back as calmly as the rest of the way
-        // back goes (`back`), with no spring.
-        .clipShape(RoundedRectangle(cornerRadius: sunk ? Self.pressedCorner : 0, style: .continuous))
-        .scaleEffect(sunk ? Self.pressedIn : 1)
-        .transaction(value: whole) { if !whole { $0.animation = .easeInOut(duration: Self.back) } }
+        // Seen through a window: the screen, pressed in and its corners
+        // rounded while the finger lies and the phone taps; then drawn in
+        // with the picture till it is the picture's own edge.
+        .clipShape(Window(sink: sink, corner: sunk ? Self.pressedCorner : 0, way: way, place: place))
+        // Let go before the hold, the page springs back out; to the whole
+        // work and back from it, all of it goes as one.
+        .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
         .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
-        // Back from the whole work it is there soon, under the glow that
-        // is still going, and comes sharp slowly.
-        .blur(radius: whole ? Self.melt : 0)
-        .animation(whole ? .easeIn(duration: 0.16) : .easeInOut(duration: Self.back), value: whole)
-        .opacity(whole ? 0 : 1)
-        .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: Self.back * 0.55), value: whole)
+        .modifier(PulledUp(pull: pull, on: whole))
+    }
+
+    /// The whole work's faint shadow (2026-11-23 21:41: "cień za dziełem
+    /// znacznie słabszy"), under the window the work is seen through.
+    private func shade(_ place: Whole, _ geo: GeometryProxy) -> some View {
+        Window(sink: sunk ? Self.pressedIn : 1, corner: sunk ? Self.pressedCorner : 0, way: whole ? 1 : 0, place: place)
+            .fill(.black.opacity(0.14))
+            .frame(width: geo.size.width, height: geo.size.height)
+            .blur(radius: 8)
+            .offset(y: 3)
+            .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
+            .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
+            .opacity(lit ? 1 : 0)
+            .animation(lit ? nil : Self.unlit, value: lit)
+            .modifier(PulledUp(pull: pull, on: whole))
+            .allowsHitTesting(false)
     }
 
     /// The colours of the whole work's edges, the screen full of them
@@ -1422,22 +1454,16 @@ private struct GalleryPage: View {
         }
         .frame(width: geo.size.width, height: geo.size.height)
         .modifier(PulledUp(pull: pull, on: whole))
-        .opacity(whole ? 1 : 0)
-        .animation(whole ? .easeOut(duration: 0.2) : .easeInOut(duration: Self.back * 0.8), value: whole)
+        .opacity(lit ? 1 : 0)
+        .animation(lit ? nil : Self.unlit, value: lit)
     }
 
-    /// The whole work, as large as on its card, and the card's head under
-    /// it where the card has it. It comes up a little from below and
-    /// settles (19:12, variant A of the hint).
-    private func wholeLayer(_ place: Whole, _ geo: GeometryProxy) -> some View {
+    /// Under the whole work, the sign that a pull up brings its card and
+    /// the card's head where the card has it: they come once the work is
+    /// nearly there, and go before it leaves.
+    private func headLayer(_ place: Whole, _ geo: GeometryProxy) -> some View {
         let lies = spot(place, geo)
         return ZStack {
-            ZStack {
-                if let thumb { picture(thumb, size: place.size, offset: place.offset, rounded: true) }
-                if let full { picture(full, size: place.size, offset: place.offset, rounded: true).opacity(fullShown) }
-            }
-            // Faint (2026-11-23 21:41: "cień za dziełem znacznie słabszy").
-            .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
             if current {
                 sign(place, geo)
                 head(place, geo)
@@ -1445,10 +1471,9 @@ private struct GalleryPage: View {
         }
         .frame(width: geo.size.width, height: geo.size.height)
         .modifier(PulledUp(pull: pull, on: whole))
-        .scaleEffect(whole ? 1 : 0.96, anchor: UnitPoint(x: 0.5, y: 0.5 + place.offset.height / max(geo.size.height, 1)))
-        .offset(y: whole ? 0 : 14)
+        .offset(y: whole ? 0 : 10)
         .opacity(whole ? 1 : 0)
-        .animation(whole ? .spring(duration: 0.42, bounce: 0.32).delay(0.06) : .easeInOut(duration: Self.back * 0.6), value: whole)
+        .animation(whole ? .easeOut(duration: 0.26).delay(Self.out * 0.55) : .easeIn(duration: 0.12), value: whole)
         .allowsHitTesting(false)
         .onChange(of: current ? lies : CGRect.null, initial: true) { _, rect in
             guard !rect.isNull else { return }
@@ -1568,19 +1593,13 @@ private struct GalleryPage: View {
         return (Color(hexString: hex) ?? .black).opacity(0.35)
     }
 
-    /// Rounded a little when whole, as on the work's card (Mateusz
-    /// 2026-11-23 22:08: "Narożniki dzieła odrobinę zaokrąglone").
-    private func picture(_ image: UIImage, size: CGSize, offset: CGSize, rounded: Bool = false) -> some View {
+    private func picture(_ image: UIImage, size: CGSize, offset: CGSize) -> some View {
         Image(uiImage: image)
             .resizable()
             .interpolation(.high)
             .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: rounded ? 8 : 0, style: .continuous))
             .offset(offset)
     }
-
-    /// How far the cut work is blurred as it melts into its glow (points).
-    static let melt: CGFloat = 36
 
     /// The caption's Polish texts: asked for once the work has stayed a
     /// moment, not for each one swiped past; one for both its captions.
@@ -1794,6 +1813,93 @@ private struct GalleryPage: View {
 
     /// How far a work drifts sideways while it draws back (points), at most.
     static let drift: CGFloat = 22
+}
+
+/// The work's one picture on its way between the two ways it is seen:
+/// cut to the screen (closer about the point it is cut around, drifted,
+/// pressed in about the screen's middle) and the whole of it where it
+/// lies when held. Every frame is a share of the way from the one to the
+/// other, so the picture only grows and moves; the draw-back and the
+/// drift go on under the way out and are left behind by its end.
+private struct Lens: GeometryEffect {
+    var zoom: CGFloat
+    var pan: CGFloat
+    /// How small the page pressed is of itself.
+    var sink: CGFloat
+    /// From the work cut to the screen (0) to the whole of it (1).
+    var way: CGFloat
+    let layout: Fill
+    let place: Whole
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(AnimatablePair(zoom, pan), AnimatablePair(sink, way)) }
+        set {
+            zoom = newValue.first.first
+            pan = newValue.first.second
+            sink = newValue.second.first
+            way = newValue.second.second
+        }
+    }
+
+    /// `size`: the picture's own frame, centred on the page, the picture
+    /// drawn `layout.offset` off it.
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let middle = CGPoint(x: size.width / 2, y: size.height / 2)
+        let anchor = CGPoint(x: layout.anchor.x * size.width, y: layout.anchor.y * size.height)
+        let cutScale = sink * zoom
+        let cutX = middle.x + sink * (anchor.x * (1 - zoom) + pan - middle.x)
+        let cutY = middle.y + sink * (anchor.y * (1 - zoom) - middle.y)
+        let wholeScale = place.size.width / max(layout.size.width, 1)
+        let wholeX = middle.x + place.offset.width - place.size.width / 2 - wholeScale * layout.offset.width
+        let wholeY = middle.y + place.offset.height - place.size.height / 2 - wholeScale * layout.offset.height
+        let scale = cutScale + (wholeScale - cutScale) * way
+        if way > 0.002, way < 0.998, Thread.isMainThread {
+            // The probe's: every frame of the way, to be read beside its film.
+            let share = Int((way * 100).rounded()), across = Int((scale * layout.size.width).rounded())
+            MainActor.assumeIsolated { GalleryLog.trace("whole work: \(share)% of the way, \(across) pt across") }
+        }
+        return ProjectionTransform(CGAffineTransform(
+            a: scale, b: 0, c: 0, d: scale,
+            tx: cutX + (wholeX - cutX) * way, ty: cutY + (wholeY - cutY) * way
+        ))
+    }
+}
+
+/// What of the page the work is seen through: all of it (pressed in a
+/// little, its corners rounded, while a finger lies on it), drawn in with
+/// the picture (`Lens`) till it is the whole work's own edge.
+private struct Window: Shape {
+    var sink: CGFloat
+    var corner: CGFloat
+    var way: CGFloat
+    let place: Whole
+
+    /// The whole work's corners, as on its card (Mateusz 2026-11-23
+    /// 22:08: "Narożniki dzieła odrobinę zaokrąglone").
+    static let round: CGFloat = 8
+
+    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
+        get { AnimatablePair(sink, AnimatablePair(corner, way)) }
+        set {
+            sink = newValue.first
+            corner = newValue.second.first
+            way = newValue.second.second
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let cut = rect.insetBy(dx: rect.width * (1 - sink) / 2, dy: rect.height * (1 - sink) / 2)
+        let whole = CGRect(
+            x: rect.midX + place.offset.width - place.size.width / 2,
+            y: rect.midY + place.offset.height - place.size.height / 2,
+            width: place.size.width, height: place.size.height
+        )
+        let seen = CGRect(
+            x: cut.minX + (whole.minX - cut.minX) * way, y: cut.minY + (whole.minY - cut.minY) * way,
+            width: cut.width + (whole.width - cut.width) * way, height: cut.height + (whole.height - cut.height) * way
+        )
+        return Path(roundedRect: seen, cornerRadius: corner + (Self.round - corner) * way, style: .continuous)
+    }
 }
 
 /// How far the finger that holds a work has been drawn up: the whole work
