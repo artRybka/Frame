@@ -269,7 +269,7 @@ struct ItemDetailView: View {
         .paperPage(glow: edgeGlow == nil ? glow : [], lift: scrolled)
         // From Galeria the way back is the way in turned round: its own
         // back button, and the swipe from the left edge.
-        .modifier(GalleryWayBack(on: arrival?.back != nil) { leaveToGallery() })
+        .modifier(GalleryWayBack(on: arrival?.back != nil, down: leave, scrolled: scrolled > 6) { leaveToGallery() })
         .onAppear {
             if CardArrival.pending[itemID] != nil { GalleryLog.note("card: appeared") }
             CardArrival.pending[itemID] = nil
@@ -2256,7 +2256,12 @@ private struct CardScroll: ViewModifier {
 
 private struct GalleryWayBack: ViewModifier {
     let on: Bool
+    /// The card can be drawn down to Galeria's whole work (`CardLeave`).
+    var down: CardLeave?
+    /// The card is scrolled on from its top.
+    var scrolled = false
     let leave: () -> Void
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         content
@@ -2267,8 +2272,34 @@ private struct GalleryWayBack: ViewModifier {
                         Button("Wróć", systemImage: "chevron.backward", action: leave)
                     }
                 }
+                if on, let down {
+                    // Over the work, the chevron Galeria has over the whole
+                    // work turned round: a pull down takes the card back
+                    // there (Mateusz 2026-11-25 21:54: "W drugą stronę (z
+                    // karty dzieła) trzeba w tym miejscu nad dziełem dać
+                    // strzałkę w dół"). Between the bar's buttons, with no
+                    // glass of its own; gone once the card is read on, and
+                    // as the card goes back.
+                    ToolbarItem(placement: .principal) {
+                        CardDown(leave: down, scrolled: scrolled, light: scheme == .light)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
             }
             .gesture(SideSwipe(fromEdge: true, action: leave))
+    }
+}
+
+private struct CardDown: View {
+    let leave: CardLeave
+    let scrolled: Bool
+    let light: Bool
+
+    var body: some View {
+        CardChevron(light: light, down: true)
+            .opacity(scrolled ? 0 : 1 - Double(leave.share))
+            .animation(.easeOut(duration: 0.2), value: scrolled)
+            .allowsHitTesting(false)
     }
 }
 

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.383
+
+- Galeria: w drodze z pełnego ekranu do całego dzieła narożniki zaokrąglają
+  się płynnie. Okno, przez które widać dzieło, jest teraz jednym kształtem:
+  od wciśniętego ekranu zamyka się na oddalającym się obrazie, a jego
+  narożniki przechodzą od promienia ekranu do lekkiego zaokrąglenia dzieła
+  (wcześniej w jednej klatce okrągłe narożniki ekranu zastępował ostry róg
+  obrazu).
+- Wciśnięty ekran ma równy margines ze wszystkich stron (12 pt) i narożniki
+  współśrodkowe z narożnikami ekranu telefonu (wcześniej 9 pt po bokach,
+  20 pt u góry i u dołu, promień 44 pt).
+- Nad całym dziełem prosty daszek w górę, który razem z belką pod dziełem
+  podpowiada pociągnięcie do karty; na karcie dzieła otwartej z całego
+  dzieła daszek w dół nad dziełem podpowiada powrót pociągnięciem w dół.
+- Karta dzieła: łuna za dziełem schodzi dużo niżej i gaśnie łagodniej.
+
 ## 1.145.382
 
 - Galeria: przytrzymane dzieło nie przesuwa się już w bok, zanim zacznie się
