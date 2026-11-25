@@ -37,8 +37,11 @@ jobs:
           load: true
           cache-from: type=gha,scope=addon-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=addon-${{ matrix.arch }}
-      - name: Smoke test (CLI starts, numba kernel compiles)
+      # A painting on a passe-partout: the mat is dithered (numba compiles).
+      - name: Smoke test (CLI starts, a picture is made for the panel)
         run: >
           docker run --rm frame-addon:${{ matrix.arch }}
-          sh -c "frame --help >/dev/null && frame testchart ramps /tmp/r.png
-          && frame render /tmp/r.png /tmp/out.png --preset photo"
+          sh -c "frame --help >/dev/null && python -c 'from PIL import Image;
+          from frame_server.imaging.pipeline import PRESETS, render;
+          r = render(Image.linear_gradient(\"L\").convert(\"RGB\"), PRESETS[\"painting\"]);
+          assert r.panel.shape == (1440, 2560, 3), r.panel.shape; print(r.encode()[1])'"
