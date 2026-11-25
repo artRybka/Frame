@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.370
+
+- Kadr dzieła z muzeum pojawia się od razu po wejściu w kartę: telefon tnie
+  obraz, który karta już pobrała, nie czekając na serwer.
+
 ## 1.145.369
 
 - Ramka: obraz przewija się palcem w lewo i w prawo zamiast strzałek;
