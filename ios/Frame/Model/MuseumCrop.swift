@@ -4,6 +4,7 @@ import CoreML
 import Foundation
 import FrameScan
 import ImageIO
+import UIKit
 
 /// A museum photograph cut down to the work by a small model on the phone,
 /// with no Claude (Mateusz 2026-11-20: "Celem jest całkowite uniknięcie
