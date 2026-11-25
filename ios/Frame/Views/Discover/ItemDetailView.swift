@@ -16,9 +16,11 @@ struct ItemDetailView: View {
     /// The work fresh from the server: its photograph is looked at by the
     /// phone's model at once, not after the card's texts.
     @State private var fresh: String?
-    /// The work as the phone's model cut it, shown while the server cuts
-    /// its picture (Mateusz 2026-11-25: „niejednokrotnie mija kilka czy
-    /// kilkanaście sekund zanim dzieło się wykadruje”).
+    /// The work as the phone cut it from the picture on the screen, shown
+    /// at once (Mateusz 2026-11-25: „niejednokrotnie mija kilka czy
+    /// kilkanaście sekund zanim dzieło się wykadruje”) and kept: the
+    /// server's cut picture is the same picture, never downloaded for the
+    /// card (06:30 UTC: „na chwilę wraca do poprzedniej postaci”).
     @State private var cutNow: (id: String, image: UIImage)?
     @State private var view = ViewMode.original
     /// "W ramie" (`FrameToggle`, Mateusz 2026-11-17): the framed
@@ -824,20 +826,33 @@ struct ItemDetailView: View {
             let request = model.backend.request(for: shown)
             let sharp = request.flatMap { ImageLoader.inMemory(for: $0, maxPixel: 1800) } ?? image
             let made = await Task.detached(priority: .userInitiated) { OwnPicture.cut(sharp, corners: work) }.value
-            guard !Task.isCancelled, id == itemID, self.item?.cutAspect == nil else { return }
+            guard !Task.isCancelled, id == itemID, let item = self.item, item.cutAspect == nil else { return }
+            // Every picture of the work takes it (the card's, the lists'
+            // thumbnails), as when the full screen switches its colours.
+            await model.phoneShows(item, on: PhonePicture.on(in: item.pictureVersion), picture: made)
             withAnimation(.easeInOut(duration: 0.35)) { cutNow = (id, made) }
         }
-        guard let found else {
-            if cutNow?.id == id { withAnimation { cutNow = nil } }
+        let made = cutNow?.id == id ? cutNow?.image : nil
+        guard let found, found.cut else {
+            // Not cut after all (or not told): the photograph whole again.
+            if made != nil {
+                model.phoneForget(id)
+                withAnimation(.easeInOut(duration: 0.35)) { cutNow = nil }
+            }
+            if let found, !found.verdict.isEmpty { await model.refreshCropReview() }
             return
+        }
+        if let made, let server = found.item.cutAspect, made.size.height > 0,
+           abs(Double(made.size.width / made.size.height) / server - 1) < 0.02 {
+            // The server's cut is the phone's: its picture stays, nothing
+            // is downloaded and nothing changes on the screen.
+            await model.phoneShows(found.item, on: PhonePicture.on(in: found.item.pictureVersion), picture: made, pending: false)
+        } else if made != nil {
+            model.phoneForget(id)  // cut otherwise there: the server's picture
         }
         // Cut, or left to him: "Sprawdź kadry" in Diagnostyka shows it at once.
         if !found.verdict.isEmpty { await model.refreshCropReview() }
         guard !Task.isCancelled, id == itemID else { return }
-        guard found.cut else {
-            if cutNow?.id == id { withAnimation(.easeInOut(duration: 0.35)) { cutNow = nil } }
-            return
-        }
         cutChanged(found.item)
     }
 
@@ -1486,31 +1501,16 @@ struct ItemDetailView: View {
                             // work, the camera pulling back from the work to it;
                             // the work itself always this picture.
                             WorkInFrame(pull: pull, inner: inFrame ? item.framed?.inner : nil) {
-                                let now = cutNow?.id == item.id ? cutNow?.image : nil
-                                // Cut on the phone, the server's picture not here yet:
-                                // the photograph whole is not shown under it.
-                                let waiting = now != nil && item.cutAspect == nil
                                 ArtImage(
                                     ref: item.originalRef, fallback: .thumb(item.id), placeholder: .clear,
                                     maxPixel: 1800, contentMode: .fit, priority: .high, crossfade: true, brighten: true
                                 )
-                                    .opacity(waiting ? 0 : 1)
                                     .background {
-                                        ZStack {
-                                            if !waiting {
-                                                ArtImage(
-                                                    ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
-                                                    placeholder: item.placeholderColor, maxPixel: 700,
-                                                    contentMode: .fit, priority: .high, brighten: true
-                                                )
-                                            }
-                                            if let now {
-                                                Image(uiImage: now)
-                                                    .resizable()
-                                                    .aspectRatio(contentMode: .fit)
-                                                    .transition(.opacity)
-                                            }
-                                        }
+                                        ArtImage(
+                                            ref: ItemPeeks.tiles[item.id]?.thumb ?? .thumb(item.id),
+                                            placeholder: item.placeholderColor, maxPixel: 700,
+                                            contentMode: .fit, priority: .high, brighten: true
+                                        )
                                     }
                             } around: {
                                 ArtImage(
