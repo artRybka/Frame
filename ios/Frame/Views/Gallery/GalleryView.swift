@@ -888,6 +888,7 @@ struct GalleryView: View {
         pulling = true
         engaged = false
         pull.up = 0
+        pull.signless = false
         withAnimation(GalleryPage.toWhole) { peek = shown.id }
         GalleryLog.note("held")
     }
@@ -952,6 +953,7 @@ struct GalleryView: View {
                     Self.melt(seconds: 0.26, bars: true)
                     withTransaction(Self.quiet) {
                         engaged = false
+                        pull.signless = true
                         pull.up = 0
                         if !path.isEmpty { path.removeLast() }
                     }
@@ -2031,6 +2033,9 @@ private struct Window: Shape {
 /// follows a little, and far enough its card comes (`GalleryView.held`).
 @MainActor @Observable final class GalleryPull {
     var up: CGFloat = 0
+    /// No sign under the whole work: it is seen for a moment only, the
+    /// card drawn down just gone from over it (`GalleryView.open`).
+    var signless = false
 
     /// How far the work goes up for a finger drawn `up`.
     nonisolated static func lift(_ up: CGFloat) -> CGFloat { min(max(up, 0), 160) * 0.55 }
@@ -2055,7 +2060,7 @@ private struct CardSign: View {
             .fill((light ? Color.black : Color.white).opacity(up ? (light ? 0.5 : 0.75) : (light ? 0.32 : 0.5)))
             .frame(width: 40, height: 5)
             .offset(y: up ? -Self.rise : 0)
-            .opacity(1 - min(max(pull.up / GalleryView.cardPull, 0), 1))
+            .opacity(pull.signless ? 0 : 1 - min(max(pull.up / GalleryView.cardPull, 0), 1))
             .accessibilityHidden(true)
     }
 }
