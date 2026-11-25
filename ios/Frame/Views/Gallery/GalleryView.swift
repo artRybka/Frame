@@ -87,6 +87,8 @@ struct GalleryView: View {
     @MainActor private static var looked: Set<String> = []
     /// Works cut down here, whose pictures Galeria has had anew already.
     @State private var cutHere: Set<String> = []
+    /// Scrolled to the work it starts with (`begin`): shown from then on.
+    @State private var begun = false
 
     private enum Hand {
         /// `gone`: drawn back by a finger far enough, the rest of the way
@@ -176,7 +178,15 @@ struct GalleryView: View {
         .task {
             // Those kept from the last launch: their thumbnails too.
             prefetch(works)
-            if works.count < Self.batch { await more() }
+            // With works kept from before, at once: no black screen while
+            // the server is asked for more.
+            if works.count > Self.above { begin() }
+            if works.count < Self.batch {
+                await more()
+                // The pages are there first, then scrolled.
+                if !begun { try? await Task.sleep(for: .milliseconds(40)) }
+            }
+            begin()
             await staged()
         }
         .task {
@@ -213,7 +223,7 @@ struct GalleryView: View {
         }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
-            Self.remember(Array(works.dropFirst(index + 1)))
+            if begun { remember() }
             if index >= works.count - Self.ahead { Task { await more() } }
             cutAhead()
         }
@@ -252,7 +262,7 @@ struct GalleryView: View {
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .modifier(WindowZoom(camera: camera))
-        .opacity(windowShown ? 1 : 0)
+        .opacity(windowShown && begun ? 1 : 0)
         // Not by `grid`: it comes while a finger of the pages' own is still
         // down (the swipe down, the pinch), and that gesture is to go on.
         .allowsHitTesting(!gridOpen && returning == nil)
@@ -354,8 +364,22 @@ struct GalleryView: View {
     static let gridReady = 160
     /// Works asked for at once while the grid is up.
     static let gridBatch = 40
-    /// Works seen before, above the one shown.
-    static let seen = 60
+    /// Works seen before, above the one shown, at most.
+    nonisolated static let seen = 61
+
+    /// How many of the works before the one at `index` the grid shows
+    /// above it: so many that its first row is full and the work lies in
+    /// the middle column, with no empty squares before the first (Mateusz
+    /// 2026-11-25: "Gdy oddalę do siatki, a jestem na początku
+    /// przeglądania, to widać puste kwadraty"). One or two of the oldest
+    /// are left out for it: Galeria starts with two works above the first
+    /// shown (`begin`), so those are never ones just looked at. The very
+    /// first work of all has none above and lies in the left column.
+    nonisolated static func history(before index: Int) -> Int {
+        guard index > 0 else { return 0 }
+        let most = min(index, seen)
+        return most - (most - 1) % GridMetrics.columns
+    }
 
     private var wall: some View {
         GalleryGrid(
@@ -382,9 +406,9 @@ struct GalleryView: View {
     @discardableResult
     private func layGrid(at index: Int, top: CGFloat) -> CGFloat {
         let metrics = metrics
-        let seen = min(index, Self.seen)
-        // The work in the middle column: (seen + lead) is one past a row's start.
-        let lead = ((1 - seen) % GridMetrics.columns + GridMetrics.columns) % GridMetrics.columns
+        // The work in the middle column, a full row before it (`history`).
+        let seen = Self.history(before: index)
+        let lead = 0
         let cell = metrics.cell(lead + seen)
         // The grid cannot lie lower than its own first row at the top.
         let top = min(top, cell.minY)
@@ -906,10 +930,16 @@ struct GalleryView: View {
     // MARK: The works
 
     private static let rememberedKey = "gallery.next"
+    private static let rememberedSeenKey = "gallery.next.seen"
     private static let rememberedMost = 24
+    /// Works above the one Galeria starts with: the last looked at before
+    /// (the first of a batch, the first time), so the grid has a full row
+    /// above from the start (`history`).
+    private static let above = 2
 
-    /// The works left to see, kept for the next launch (CI screenshots
-    /// start from the demo's own order).
+    /// The works left to see, after the last ones looked at (`remember`),
+    /// kept for the next launch (CI screenshots start from the demo's own
+    /// order).
     private static func remembered() -> [RemoteItem] {
         guard LaunchRoute.screen.isEmpty,
               let data = UserDefaults.standard.data(forKey: rememberedKey),
@@ -918,9 +948,32 @@ struct GalleryView: View {
         return works
     }
 
-    private static func remember(_ works: [RemoteItem]) {
-        guard let data = try? JSONEncoder().encode(Array(works.prefix(rememberedMost))) else { return }
-        UserDefaults.standard.set(data, forKey: rememberedKey)
+    /// The works from the one before the one shown on: those two were
+    /// looked at and lie above the first the next launch starts with.
+    private func remember() {
+        guard !works.isEmpty else { return }
+        let at = works.firstIndex { $0.id == position } ?? 0
+        let from = max(at - (Self.above - 1), 0)
+        let kept = Array(works[from...].prefix(Self.rememberedMost + Self.above))
+        guard let data = try? JSONEncoder().encode(kept) else { return }
+        UserDefaults.standard.set(data, forKey: Self.rememberedKey)
+        UserDefaults.standard.set(at - from + 1, forKey: Self.rememberedSeenKey)
+    }
+
+    /// Galeria starts with the first work not looked at yet, the last ones
+    /// looked at above it; of a first batch, two are put above. A list
+    /// kept by an app from before this (no count with it) is all works to
+    /// see: two of them go above as well.
+    private func begin() {
+        guard !begun else { return }
+        defer { begun = true }
+        guard works.count > 1 else { return }
+        let kept = UserDefaults.standard.object(forKey: Self.rememberedSeenKey) as? Int
+        let seen = LaunchRoute.screen.isEmpty ? kept ?? Self.above : Self.above
+        let at = min(max(seen, 0), Self.above, works.count - 1)
+        run.reset(at: at)
+        withTransaction(Self.quiet) { position = works[at].id }
+        GalleryLog.note("begins at \(at) of \(works.count)")
     }
 
     private func more(count: Int = GalleryView.batch) async {
@@ -946,8 +999,7 @@ struct GalleryView: View {
                 }
             }
             if position == nil { position = works.first?.id }
-            let at = works.firstIndex { $0.id == position } ?? 0
-            Self.remember(Array(works.dropFirst(at + 1)))
+            if begun { remember() }
             cutAhead()
         } catch {
             failed = works.isEmpty
@@ -992,8 +1044,7 @@ struct GalleryView: View {
         stock.drop(item.id)
         Glow.forget(item.id)
         prefetch([works[index]])
-        let at = works.firstIndex { $0.id == position } ?? 0
-        Self.remember(Array(works.dropFirst(at + 1)))
+        if begun { remember() }
         GalleryLog.note("work \(item.id): another picture, had anew")
     }
 
