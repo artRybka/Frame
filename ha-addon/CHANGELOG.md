@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.145.368
+
+- Galeria od nowa: dwa widoki, pełny ekran i siatka miniatur od brzegu do
+  brzegu (z paskiem kart), bez osobnego „całego dzieła”. Przejście między
+  nimi to jedno powiększenie albo pomniejszenie tego samego kadru.
+- Do siatki: seria szybkich machnięć (dzieło oddala się w biegu, ściana
+  płynie dalej), machnięcie w dół z górnej części ekranu (granica uczy się
+  z Twoich machnięć w górę) albo szczypnięcie. Z siatki: dotknięcie
+  miniatury albo rozsunięcie palców.
+- Przytrzymanie pokazuje całe dzieło na łunie wypełniającej ekran, ze
+  stuknięciem telefonu; pociągnięcie w górę otwiera kartę dzieła. Jedno
+  dotknięcie nic nie robi, dwa dają serce.
+
 ## 1.145.367
 
 - Ustawienia ramki: bez trybika (u domownika ludzika) w prawym górnym rogu;

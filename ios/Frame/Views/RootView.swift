@@ -77,7 +77,7 @@ struct RootView: View {
             return switch LaunchRoute.screen {
             // The app starts on Odkrywaj (Mateusz 2026-11-23 17:42).
             case "": .discover
-            case "gallery", "gallery-caption": .gallery
+            case "gallery", "gallery-caption", "gallery-grid", "gallery-whole": .gallery
             case "discover", "discover-group", "discover-theme", "daily", "detail", "original": .discover
             case "museums", "search", "search-picker", "search-colors", "search-tones", "search-empty", "search-styles", "search-subjects", "search-techniques", "search-chosen", "search-museums", "search-photo", "search-like", "search-typed": .search
             case "playlists", "playlist", "playlist-search", "suggestions", "editor", "editor-new", "editor-manual",

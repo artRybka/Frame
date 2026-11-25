@@ -47,19 +47,29 @@ actor SubjectFocus {
     /// na temat"): the main faces; else the largest figure's head; else the
     /// most telling of the places that draw the eye, not all of them
     /// together (a middle between two of them is often empty).
+    ///
+    /// `ahead` false: a picture fetched before it is shown (Galeria's
+    /// stock for its grid). It waits for all that are on the screen: a
+    /// hundred of them in the line held the tiles shown back till their
+    /// patience ran out, and those were then cut about the middle, not as
+    /// their pages are (the film of 2026-11-24).
     func point(
-        in image: UIImage, key: String, near: UnitPoint? = nil, subject: Bool = false, patience: Double = 2.5
+        in image: UIImage, key: String, near: UnitPoint? = nil, subject: Bool = false, patience: Double = 2.5,
+        ahead: Bool = true
     ) async -> UnitPoint {
         let key = near.map { Self.key(key, near: $0) } ?? (subject ? key + "|subject" : key)
         if let cached = Self.found.point(key) { return cached }
         let fallback = near ?? .center
         let job = Job()
         let operation = BlockOperation {
+            // Asked for twice (a tile, and the stock fetched ahead): found once.
+            if let known = Self.found.point(key) { return job.finish(known) }
             let point = near.map { Self.find(in: image, near: $0) }
                 ?? (subject ? Self.findSubject(in: image) : Self.find(in: image))
+            Self.found.remember(point, for: key)
             job.finish(point)
-            Task { await SubjectFocus.shared.remember(point, for: key) }
         }
+        if !ahead { operation.queuePriority = .low }
         return await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<UnitPoint, Never>) in
                 job.start(continuation)
@@ -78,10 +88,6 @@ actor SubjectFocus {
     /// picture's own (the same picture cropped elsewhere without it).
     nonisolated static func key(_ key: String, near: UnitPoint) -> String {
         String(format: "%@|near:%.3f,%.3f", key, near.x, near.y)
-    }
-
-    private func remember(_ point: UnitPoint, for key: String) {
-        Self.found.remember(point, for: key)
     }
 
     /// Readable from any thread (a view's body), apart from the actor.
