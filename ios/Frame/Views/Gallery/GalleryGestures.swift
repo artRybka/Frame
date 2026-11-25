@@ -198,9 +198,10 @@ struct HoldPull: UIGestureRecognizerRepresentable {
     let moved: (CGFloat) -> Void
     let ended: () -> Void
 
-    static let touch = 0.1
-    static let taps: [Double] = [0, 0.1, 0.08, 0.065, 0.05, 0.04]
-    static let last = 0.035
+    /// Longer than a finger rests before it swipes: a swipe gives no tap.
+    static let touch = 0.14
+    static let taps: [Double] = [0, 0.09, 0.075, 0.06, 0.05, 0.04]
+    static let last = 0.03
     /// How far a finger may stray before the hold and still be holding.
     static let stray: CGFloat = 10
 

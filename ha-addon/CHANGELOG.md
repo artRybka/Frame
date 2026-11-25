@@ -14,6 +14,8 @@
 - Powrót z karty dzieła: karta rozpływa się w dzieło na pełnym ekranie,
   bez skoku.
 - Więcej gotowych miniatur zaraz po wejściu w Galerię.
+- Siatka na początku przeglądania nie ma pustych pól: Galeria zaczyna
+  z dwoma dziełami nad pierwszym, a pierwszy rząd siatki jest zawsze pełny.
 
 ## 1.145.368
 
