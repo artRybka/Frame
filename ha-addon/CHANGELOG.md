@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.145.369
+
+- Galeria: miniatura i pełne dzieło są zawsze z tego samego kadru. Dzieło
+  wykadrowane w tle dostaje nową miniaturę, zanim wejdzie na ekran, a to,
+  na co patrzysz, nie zmienia się w trakcie (był przeskok proporcji przy
+  wyostrzaniu).
+- Przeciągnięcie w dół z górnej części ekranu: po kawałku drogi przejście
+  do siatki kończy się samo, bez puszczania palca.
+- Przytrzymanie: telefon stuka coraz szybciej, a mocno, gdy pojawia się
+  całe dzieło. Pod dziełem belka, która co chwilę lekko podjeżdża: znak,
+  że pociągnięcie w górę otwiera kartę dzieła.
+- Powrót z karty dzieła: karta rozpływa się w dzieło na pełnym ekranie,
+  bez skoku.
+- Więcej gotowych miniatur zaraz po wejściu w Galerię.
+
 ## 1.145.368
 
 - Galeria od nowa: dwa widoki, pełny ekran i siatka miniatur od brzegu do
