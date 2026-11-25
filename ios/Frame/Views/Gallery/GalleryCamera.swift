@@ -236,22 +236,48 @@ struct WindowZoom: ViewModifier {
 
 /// Telling swiping past from looking: so many works in a row, each left
 /// this soon (Mateusz 2026-11-24 08:30: "nie pojedyncze dzieło tylko
-/// serię"). Each left within a second and a half: no work is looked at
-/// that soon (12:06: "dzieła nie da się obejrzeć w 0,8 sekundy"; six
-/// under 0.8 s was too slow to come). Eight of them: four came too soon
-/// (17:23: "po 2x większej ilości szybkooglądanych dzieł niż teraz").
+/// serię"). The quicker the swipes, the fewer it takes (2026-11-25 08:43:
+/// "6 dzieł oglądanych po 1,5 s … 12 dzieł oglądanych po mniej niż 3 s
+/// też przechodzi w siatkę … 3 kolejne dzieła obejrzane po mniej niż
+/// 0,8 s także … A może pomiędzy tymi założeniami da się zrobić jakieś
+/// płynne przejście?"): his three marks, and for every number of works
+/// between two of them the seconds between theirs. Before that it was
+/// eight works within a second and a half each.
 struct SwipeSpeed {
-    static let run = 8
-    static let quick: TimeInterval = 1.5
+    /// So many works in a row, each reached within so many seconds of the
+    /// one before: the fewest and quickest first.
+    static let marks: [(works: Int, within: TimeInterval)] = [(3, 0.8), (6, 1.5), (12, 3)]
 
+    /// Within how many seconds of the one before each of `works` in a row
+    /// is reached for the grid to come; nil for fewer than the fewest. A
+    /// longer run than the longest is held to the longest's.
+    static func within(_ works: Int) -> TimeInterval? {
+        guard let first = marks.first, let last = marks.last, works >= first.works else { return nil }
+        guard works < last.works else { return last.within }
+        for (low, high) in zip(marks, marks.dropFirst()) where works <= high.works {
+            let share = Double(works - low.works) / Double(high.works - low.works)
+            return low.within + (high.within - low.within) * share
+        }
+        return last.within
+    }
+
+    /// When the last works were reached, the newest last.
     private var times: [Date] = []
 
-    /// A work reached; true when the run is quick enough for the grid.
+    /// A work reached; true when the run is quick enough for the grid:
+    /// the last so many works each came soon enough after the one before
+    /// for a run of that many.
     mutating func reached(at now: Date = .now) -> Bool {
+        let most = Self.marks.last?.works ?? 0
         times.append(now)
-        if times.count > Self.run { times.removeFirst(times.count - Self.run) }
-        guard times.count == Self.run else { return false }
-        return zip(times, times.dropFirst()).allSatisfy { $1.timeIntervalSince($0) < Self.quick }
+        if times.count > most { times.removeFirst(times.count - most) }
+        var slowest: TimeInterval = 0
+        for back in 1 ..< max(times.count, 1) {
+            let newer = times[times.count - back], older = times[times.count - back - 1]
+            slowest = max(slowest, newer.timeIntervalSince(older))
+            if let within = Self.within(back + 1), slowest < within { return true }
+        }
+        return false
     }
 
     mutating func reset() { times = [] }

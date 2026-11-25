@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.375
+
+- Galeria: im szybciej przewijasz, tym wcześniej wchodzi siatka. Wystarczą
+  3 dzieła z rzędu po mniej niż 0,8 s, 6 po mniej niż 1,5 s albo 12 po mniej
+  niż 3 s, a dla liczb pomiędzy próg rośnie płynnie (np. 4 dzieła po ok.
+  1 s, 8 po 2 s). Dotąd: 8 dzieł po mniej niż 1,5 s.
+
 ## 1.145.374
 
 - Grafiki przycinane także wtedy, gdy model się waha, a kartka wyraźnie to
