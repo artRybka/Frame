@@ -178,6 +178,12 @@ struct RootView: View {
             await model.offerServerUpdate()  // the app was updated, the server not yet
         }
         .task {
+            // The crop models ready before a card asks them (the owner's cards cut).
+            guard model.isOwner else { return }
+            try? await Task.sleep(for: .seconds(3))
+            await MuseumCrop.warm()
+        }
+        .task {
             // CI screenshots: the cards at the bottom, one of each kind.
             guard LaunchRoute.screen == "notices" else { return }
             try? await Task.sleep(for: .seconds(2))
