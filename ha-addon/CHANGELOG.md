@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.372
+
+- Galeria: przeciąganie w dół z górnej części ekranu prowadzi dzieło równo
+  aż do siatki, bez „wskakiwania” w połowie. Puszczone wcześniej, dzieło
+  idzie dalej tak szybko, jak szedł palec.
+- Przytrzymane dzieło stopniowo lekko maleje razem ze stukaniem, jakby dało
+  się je wcisnąć.
+- W lewym górnym rogu szklana ikona siatki: jeszcze jeden sposób na wejście
+  w siatkę 3×3.
+
 ## 1.145.371
 
 - Kadr w karcie dzieła nie wraca już na chwilę do całego zdjęcia: zostaje

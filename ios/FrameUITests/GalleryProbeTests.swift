@@ -67,17 +67,45 @@ final class GalleryProbeTests: XCTestCase {
         mark(app, "spread")
         shot("07-from-a-spread")
 
-        // A finger drawn down slowly from the upper part and left lying:
-        // the grid comes by itself (Mateusz 2026-11-25: the work stopped
-        // half way and waited for the finger to lift).
+        // A finger drawn down slowly from the upper part, all the way, and
+        // left lying: the work follows it evenly into its tile, and the
+        // grid is there under it (Mateusz 2026-11-25: the work stopped
+        // half way and waited for the finger to lift; then, going the
+        // rest by itself from there: "w połowie „wskakuje”").
         mark(app, "slow drag down begins")
-        at(0.5, 0.14).press(forDuration: 0.05, thenDragTo: at(0.5, 0.5), withVelocity: .slow, thenHoldForDuration: 1.6)
+        at(0.5, 0.14).press(forDuration: 0.05, thenDragTo: at(0.5, 0.58), withVelocity: .slow, thenHoldForDuration: 1.2)
         sleep(2)
         mark(app, "drawn down and held: the grid")
         shot("07b-grid-under-the-finger")
         at(0.5, 0.5).tap()
         sleep(3)
         mark(app, "tile tapped again")
+
+        // Half the way, held there, then let go: it waits under the finger
+        // and goes on to the grid when the finger lifts.
+        mark(app, "half drag down begins")
+        at(0.5, 0.14).press(forDuration: 0.05, thenDragTo: at(0.5, 0.32), withVelocity: .slow, thenHoldForDuration: 1.2)
+        sleep(2)
+        mark(app, "drawn half way, held, let go: the grid")
+        shot("07c-grid-after-half-a-drag")
+        at(0.5, 0.5).tap()
+        sleep(3)
+        mark(app, "tile tapped a third time")
+
+        // The grid's own button on the page's corner.
+        let gridButton = app.buttons["Pokaż siatkę"].firstMatch
+        if gridButton.waitForExistence(timeout: 3) {
+            shot("07d-the-grid-button")
+            gridButton.tap()
+        } else {
+            mark(app, "no grid button on the page")
+        }
+        sleep(3)
+        mark(app, "grid button tapped: the grid")
+        shot("07e-grid-by-its-button")
+        at(0.5, 0.5).tap()
+        sleep(3)
+        mark(app, "tile tapped a fourth time")
 
         // Held: the whole work while the finger lies.
         mark(app, "hold begins")
