@@ -1409,12 +1409,13 @@ private struct GalleryPage: View {
             }
             .modifier(Lens(zoom: zoom, pan: pan, sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
             if current {
-                // Gone before the work draws back, there again once it
-                // is nearly back.
+                // Gone before the work has drawn back from under it (its
+                // shade lay on the glow for two frames of the probe's
+                // film), there again once the work is back.
                 caption(geo)
                     .opacity(still || whole ? 0 : 1)
                     .animation(still ? .easeOut(duration: 0.12) : .easeOut(duration: 0.3), value: still)
-                    .animation(whole ? .easeOut(duration: 0.12) : .easeOut(duration: 0.22).delay(Self.back * 0.6), value: whole)
+                    .animation(whole ? .easeOut(duration: 0.07) : .easeOut(duration: 0.2).delay(Self.back * 0.75), value: whole)
                     .scaleEffect(sink)
             }
         }
