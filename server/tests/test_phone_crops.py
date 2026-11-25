@@ -312,6 +312,38 @@ def test_a_prints_wide_sheet_is_cut_round_its_impression(
         assert lesson["model"]["work"] == mine
 
 
+def test_a_print_left_whole_is_looked_at_again_and_its_sheet_cut(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-25: a print photographed as its sheet alone, with
+    # wide paper round the impression, was left whole by the model.
+    from test_crop_plate import SHEET, print_photo
+
+    x0, y0, x1, y1 = SHEET
+    picture = Image.fromarray(np.ascontiguousarray(print_photo((250, 200, 650, 500))[y0:y1, x0:x1]))
+    _work(service, "mnw:1", picture=picture, pooled=True, medium="akwaforta, papier")
+    phone = service.phone_crops
+    with _client(service) as client:
+        whole = {"verdict": "whole", "sure": 0.02, "work": None, "surround": None}
+        size = {"width": 1024, "height": round(1024 * (y1 - y0) / (x1 - x0))}
+        # Left whole by an app that cut no whole sheet (1): asked again.
+        _found("mnw:1", client, plates=1, **whole, **size)
+        looked = phone._state()["looked"]["mnw:1"]
+        looked["v"], looked["pl"] = "whole", 1
+        state = phone._state()
+        state["looked"]["mnw:1"] = looked
+        phone._save(state)
+        service.library.update("mnw:1", cut=None)
+        assert client.get("/api/crops/phone/mnw:1").json()["look"]
+        # Such an app's "whole" is cut here, the photograph its sheet.
+        answer = _found("mnw:1", client, plates=1, **whole, **size)
+        assert answer["verdict"] == "cut"
+        cut = answer["item"]["cut"]
+        assert cut["plate"] is not None and cut["work"][0][0] > 0.15
+        assert not client.get("/api/crops/phone/mnw:1").json()["look"]
+
+
 def test_prints_cut_before_are_cut_round_their_impression_once(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811

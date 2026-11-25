@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.374
+
+- Grafiki przycinane także wtedy, gdy model się waha, a kartka wyraźnie to
+  potwierdza; margines wokół odbitki liczony razem z napisami, więc kadr nie
+  przechodzi przez tytuł ani nazwisko. Grafiki obejrzane wcześniej są
+  oglądane raz jeszcze.
+
 ## 1.145.373
 
 - Galeria: przeciąganie w dół z górnej części ekranu prowadzi dzieło równo

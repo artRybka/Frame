@@ -368,6 +368,10 @@ def test_the_phone_finds_a_museum_work_as_the_server_does() -> None:
     assert found is not None and int(found.group(1)) == cm.PLATE
     found = re.search(r"static let plateOver = ([0-9.]+)\n", text)
     assert found is not None and float(found.group(1)) == cm.PLATE_OVER
+    found = re.search(r"static let upright = ([0-9.]+)\n", text)
+    assert found is not None and float(found.group(1)) == cm.UPRIGHT
+    found = re.search(r"static let plateSame = ([0-9.]+)\n", text)
+    assert found is not None and float(found.group(1)) == cm.PLATE_SAME
     found = re.search(r"static let printKind = (\d+)\n", text)
     assert found is not None and int(found.group(1)) == cm.KINDS.index("print")
     sheet = np.full((h, w, 3), 50, np.uint8)
