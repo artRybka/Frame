@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.145.373
+
+- Galeria: przeciąganie w dół z górnej części ekranu prowadzi dzieło równo
+  aż do siatki, bez „wskakiwania” w połowie. Puszczone wcześniej, dzieło
+  idzie dalej tak szybko, jak szedł palec.
+- Przytrzymane dzieło stopniowo lekko maleje razem ze stukaniem, jakby dało
+  się je wcisnąć.
+- W lewym górnym rogu szklana ikona siatki: jeszcze jeden sposób na wejście
+  w siatkę 3×3.
+- Galeria pewniej zaczyna od właściwego dzieła (zdarzało się pierwsze dzieło
+  bez podpisu, z cudzym sercem).
+- Dobór dzieł w Galerii: polubione dzieło wychodzi tylko jako „polubione”.
+  To, co przychodzi jako podobne do Twoich serc, jako inne dzieło lubianego
+  artysty albo jako nowość, jest zawsze czymś, czego jeszcze nie masz
+  w ulubionych.
+
 ## 1.145.372
 
 - Pusta „Historia przesłanych” nie ma kafelka w Playlistach; z zawartością

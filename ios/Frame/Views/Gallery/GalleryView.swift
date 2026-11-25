@@ -60,6 +60,9 @@ struct GalleryView: View {
     /// A gesture of Galeria's own under way: the pages' scroll gives way.
     @State private var pulling = false
     @State private var heartShown = true
+    /// The work a finger lies on, on its way to the hold: pressed in a
+    /// little (`GalleryPage.pressedIn`).
+    @State private var pressed: String?
     @State private var camera = GalleryCamera()
     @State private var coast = Coast()
     @State private var track = GridTrack()
@@ -91,8 +94,9 @@ struct GalleryView: View {
     @State private var begun = false
 
     private enum Hand {
-        /// `gone`: drawn back by a finger far enough, the rest of the way
-        /// to the grid by itself while the finger still lies.
+        /// `gone`: on its way to the grid with no finger's say any more
+        /// (drawn all the way while the finger still lies, or asked for
+        /// by the grid's button).
         case idle, sweep, swipe, gone, pinch, spread, back
     }
 
@@ -154,6 +158,9 @@ struct GalleryView: View {
                 // before, the red is there already, not pouring in.
                 if let shown, heartShown { heartButton(shown).id(shown.id).transition(.opacity) }
             }
+            .overlay(alignment: .topLeading) {
+                if shown != nil, heartShown, peek == nil { gridButton.transition(.opacity) }
+            }
             .overlay {
                 if works.isEmpty { emptyState }
             }
@@ -180,13 +187,9 @@ struct GalleryView: View {
             prefetch(works)
             // With works kept from before, at once: no black screen while
             // the server is asked for more.
-            if works.count > Self.above { begin() }
-            if works.count < Self.batch {
-                await more()
-                // The pages are there first, then scrolled.
-                if !begun { try? await Task.sleep(for: .milliseconds(40)) }
-            }
-            begin()
+            if works.count > Self.above { await begin() }
+            if works.count < Self.batch { await more() }
+            await begin()
             await staged()
         }
         .task {
@@ -253,6 +256,7 @@ struct GalleryView: View {
         .scrollPosition(id: $position)
         .scrollDisabled(pulling || grid)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in scrolled(y) }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, tall in flow.tall = tall }
         .onScrollGeometryChange(for: [CGFloat].self) {
             [$0.contentInsets.top, $0.contentInsets.bottom, $0.containerSize.height]
         } action: { _, now in
@@ -270,7 +274,7 @@ struct GalleryView: View {
 
     private func page(_ work: RemoteItem, at index: Int, insets: EdgeInsets) -> some View {
         GalleryPage(
-            work: work, current: work.id == shown?.id, whole: peek == work.id, still: grid,
+            work: work, current: work.id == shown?.id, whole: peek == work.id, pressed: pressed == work.id, still: grid,
             insets: insets, pull: pull, stock: stock,
             above: index > 0 ? works[index - 1] : nil,
             below: index + 1 < works.count ? works[index + 1] : nil,
@@ -296,7 +300,9 @@ struct GalleryView: View {
             ended: { scale, speed in unpinched(scale, speed) }
         ))
         .gesture(HoldPull(
-            on: !grid, ready: { canHold }, began: { hold() }, moved: { held($0) }, ended: { letGo() }
+            on: !grid, ready: { canHold },
+            pressing: { pressed = $0 ? work.id : nil },
+            began: { hold() }, moved: { held($0) }, ended: { letGo() }
         ))
         .id(work.id)
     }
@@ -334,6 +340,22 @@ struct GalleryView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: on)
         .accessibilityLabel(on ? "Usuń z ulubionych" : "Dodaj do ulubionych")
         .padding(.trailing, Theme.gutter - 10)
+        .padding(.top, 2)
+    }
+
+    /// The grid's button, glass as the heart across from it.
+    private var gridButton: some View {
+        Button {
+            showGrid()
+        } label: {
+            GridMark()
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+                .padding(10)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Pokaż siatkę")
+        .padding(.leading, Theme.gutter - 10)
         .padding(.top, 2)
     }
 
@@ -546,15 +568,24 @@ struct GalleryView: View {
 
     // MARK: Drawn back by hand
 
-    /// How far a finger goes down for the whole way to the tile, how much
-    /// of the way it takes the work with it, and how much of the finger's
-    /// way the work follows. That far, the work goes the rest of the way
-    /// by itself, the finger still down (Mateusz 2026-11-25: it "jakby
-    /// zatrzymuje skalowanie w połowie … pomaga tylko puszczenie palca":
-    /// the work stopped there and waited for the finger to lift).
-    static let swipeFull: CGFloat = 400
-    static let swipeMost: CGFloat = 0.3
+    /// How far a finger goes down for the whole way to the tile, and how
+    /// much of the finger's way the work follows. The finger takes the
+    /// work all the way, evenly: at the way's end the grid is there under
+    /// it, and let go before, the work goes on as fast as the finger went
+    /// (Mateusz 2026-11-25 00:39: it "jakby zatrzymuje skalowanie w
+    /// połowie … pomaga tylko puszczenie palca", the work stopped at 30%
+    /// and waited for the finger to lift; 07:09, of the work going the
+    /// rest by itself from there: "nadal nie jest płynne. Mniej więcej w
+    /// połowie „wskakuje”").
+    static let swipeFull: CGFloat = 300
     static let swipeFollow: CGFloat = 0.35
+    /// The slowest the work goes on once let go (of the way, a second),
+    /// and the seconds that may take.
+    static let swipeSlowest: CGFloat = 2.5
+    static let swipeSeconds: ClosedRange<Double> = 0.2 ... 0.45
+    /// How the work slows once let go (`GalleryCamera.out`'s power): it
+    /// starts `swipePower` times as fast as it goes on average.
+    static let swipePower: CGFloat = 3
     /// Seconds from the finger's letting go to the grid (Mateusz
     /// 2026-11-24 19:12: "przejście do siatki - A, może odrobinę wolniej").
     static let toGrid = 0.42
@@ -576,17 +607,43 @@ struct GalleryView: View {
 
     private func dragged(_ move: CGFloat) {
         guard hand == .swipe else { return }
-        let z = min(max(move / Self.swipeFull, 0), Self.swipeMost)
+        let z = min(max(move / Self.swipeFull, 0), 1)
         camera.pose(z, drop: max(move, 0) * Self.swipeFollow * (1 - z))
-        guard z >= Self.swipeMost else { return }
+        GalleryLog.trace("drawn \(Int(move)): \(Int(z * 100))% of the way")
+        guard z >= 1 else { return }
+        // All the way, the finger still down: the grid, with no step.
         hand = .gone
-        GalleryLog.note("drawn far enough: to the grid by itself")
-        settle(toGrid: true, seconds: Self.toGrid)
+        GalleryLog.note("drawn all the way: the grid under the finger")
+        gridSettled(on: shown?.id)
     }
 
+    /// Let go on the way: on to the grid, or back when the finger had
+    /// hardly moved or was going back up; as fast at first as the finger
+    /// went, so letting go is no step either.
     private func dropped(_ move: CGFloat, _ speed: CGFloat) {
         guard hand == .swipe else { return }
-        settle(toGrid: move > 40 || speed > 250, seconds: Self.toGrid)
+        let toGrid = speed > 250 || (move > 40 && speed > -250)
+        let left = max(toGrid ? 1 - camera.z : camera.z, 0.05)
+        let pace = max(abs(speed) / Self.swipeFull, Self.swipeSlowest)
+        let seconds = min(
+            max(Double(Self.swipePower * left / pace), Self.swipeSeconds.lowerBound), Self.swipeSeconds.upperBound
+        )
+        GalleryLog.note(
+            "let go at \(Int(camera.z * 100))%, \(Int(speed)) pt/s: "
+                + "\(toGrid ? "the grid" : "back") in \(Int(seconds * 1000)) ms"
+        )
+        settle(toGrid: toGrid, lasting: seconds, curve: { GalleryCamera.out($0, power: Self.swipePower) })
+    }
+
+    /// The grid by its own button on the page's corner (Mateusz 2026-11-25
+    /// 07:09: "szklaną ikonkę pokazania siatki - kolejny sposób na wejście
+    /// w siatkę 3x3"): as a swipe down from the top, by itself.
+    private func showGrid() {
+        guard hand == .idle, !grid else { return }
+        drawBack(.gone)
+        guard hand == .gone else { return }
+        ticks += 1
+        settle(toGrid: true, seconds: Self.toGrid, curve: { GalleryCamera.ease($0) })
     }
 
     private func pinched(_ scale: CGFloat) {
@@ -621,12 +678,15 @@ struct GalleryView: View {
     }
 
     /// The camera the rest of its way, to the tile or to the page.
+    /// `seconds` for the whole way, less for a part of it; `lasting`:
+    /// just that long.
     private func settle(
-        toGrid: Bool, seconds: Double, curve: @escaping (CGFloat) -> CGFloat = { GalleryCamera.out($0) }
+        toGrid: Bool, seconds: Double = 0, lasting: Double? = nil,
+        curve: @escaping (CGFloat) -> CGFloat = { GalleryCamera.out($0) }
     ) {
         let from = camera.z, drop = camera.drop
         let to: CGFloat = toGrid ? 1 : 0
-        let seconds = seconds * Double(max(abs(to - from), 0.4))
+        let seconds = lasting ?? seconds * Double(max(abs(to - from), 0.4))
         let id = returning ?? shown?.id
         if toGrid { withTransaction(Self.quiet) { bars = true } }
         coast.run { now in
@@ -964,16 +1024,45 @@ struct GalleryView: View {
     /// looked at above it; of a first batch, two are put above. A list
     /// kept by an app from before this (no count with it) is all works to
     /// see: two of them go above as well.
-    private func begin() {
+    ///
+    /// The pages are laid out first, and the work is seen to lie on the
+    /// screen before Galeria shows: a scroll asked for while the pages
+    /// were still coming was lost (the probe of 2026-11-25 began on the
+    /// first work, with no caption and another's heart: the pages lay at
+    /// the first, Galeria held the third).
+    private func begin() async {
         guard !begun else { return }
         defer { begun = true }
         guard works.count > 1 else { return }
         let kept = UserDefaults.standard.object(forKey: Self.rememberedSeenKey) as? Int
         let seen = LaunchRoute.screen.isEmpty ? kept ?? Self.above : Self.above
         let at = min(max(seen, 0), Self.above, works.count - 1)
+        let id = works[at].id
         run.reset(at: at)
-        withTransaction(Self.quiet) { position = works[at].id }
-        GalleryLog.note("begins at \(at) of \(works.count)")
+        guard at > 0 else {
+            withTransaction(Self.quiet) { position = id }
+            GalleryLog.note("begins at 0 of \(works.count)")
+            return
+        }
+        for _ in 0 ..< 60 where !(area.height > 0 && flow.tall >= CGFloat(at + 1) * area.height - 1) {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        withTransaction(Self.quiet) { position = id }
+        var asked = 1
+        for _ in 0 ..< 20 {
+            try? await Task.sleep(for: .milliseconds(30))
+            guard position == id, !lies(at: id) else { break }
+            // Asked again, by way of the work before: the same id set
+            // twice is no change, and no scroll.
+            withTransaction(Self.quiet) { position = works[at - 1].id }
+            try? await Task.sleep(for: .milliseconds(16))
+            withTransaction(Self.quiet) { position = id }
+            asked += 1
+        }
+        GalleryLog.note(
+            "begins at \(at) of \(works.count), asked \(asked == 1 ? "once" : "\(asked) times")"
+                + (lies(at: id) ? "" : ", not there")
+        )
     }
 
     private func more(count: Int = GalleryView.batch) async {
@@ -1103,6 +1192,11 @@ private struct GalleryPage: View {
     /// Held: the whole of it, the head of its card under it (Mateusz
     /// 2026-11-24 18:51, 19:12).
     var whole = false
+    /// A finger lies on it, the phone tapping towards the hold: it sinks
+    /// in a little, as a thing that can be pressed (Mateusz 2026-11-25
+    /// 07:09: "delikatne, stopniowe pomniejszenie dzieła, sugestie że da
+    /// się je wcisnąć").
+    var pressed = false
     /// The grid is up: cut as its tile is, no closer and no further, and
     /// no caption, so the two are one picture on the way between them.
     var still = false
@@ -1155,6 +1249,10 @@ private struct GalleryPage: View {
     /// startowym zoomie i bardzo delikatny ruch w bok (kierunek zmienny)").
     @State private var zoom: CGFloat = GalleryPage.closer
     static let closer = GalleryView.closer
+    /// How small the work pressed is of itself, and how round its corners
+    /// then (points): the screen's own, about.
+    static let pressedIn: CGFloat = 0.955
+    static let pressedCorner: CGFloat = 44
     /// Seconds to draw back from `closer` to the whole picture.
     static let drawBack: Double = 20
 
@@ -1258,6 +1356,9 @@ private struct GalleryPage: View {
         let loaded: Bool
     }
 
+    /// Pressed in: under a finger on its way to the hold, and held.
+    private var sunk: Bool { (pressed || whole) && !reduceMotion }
+
     /// The work cut to the screen, its title and artist low on it.
     private func cut(_ layout: Fill, _ geo: GeometryProxy) -> some View {
         ZStack {
@@ -1282,6 +1383,11 @@ private struct GalleryPage: View {
         }
         .frame(width: geo.size.width, height: geo.size.height)
         .clipped()
+        // Pressed in while the finger lies, all the time the phone taps;
+        // let go, it springs back out. Held, it melts as small as it is.
+        .clipShape(RoundedRectangle(cornerRadius: sunk ? Self.pressedCorner : 0, style: .continuous))
+        .scaleEffect(sunk ? Self.pressedIn : 1)
+        .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
         .blur(radius: whole ? Self.melt : 0)
         .opacity(whole ? 0 : 1)
         .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: 0.2).delay(0.05), value: whole)
@@ -1853,6 +1959,42 @@ struct Glow: View {
 /// 2026-11-23 17:42: "bez tego wielkiego rozbłysku na zewnątrz"; 19:01:
 /// "wypełnianie od środka a nie od dołu. Szybsze. Z lekkim, chwilowym
 /// rozbłyskiem żywszą czerwienią wewnątrz serca, przy jego krawędzi").
+/// Nine small squares of the heart's clear glass: the grid's button on the
+/// page's other corner.
+private struct GridMark: View {
+    private static let size: CGFloat = 28
+
+    var body: some View {
+        Color.clear
+            .frame(width: Self.size, height: Self.size)
+            .glassEffect(Glass.clear.interactive(), in: GridShape())
+            // The same glass in dark mode as in light, as the heart's.
+            .environment(\.colorScheme, .light)
+    }
+}
+
+/// Three rows of three squares, their corners rounded a little.
+private struct GridShape: Shape {
+    /// The gap between two squares, of a square's side.
+    private static let gap: CGFloat = 0.3
+
+    func path(in rect: CGRect) -> Path {
+        let columns = CGFloat(GridMetrics.columns)
+        let side = min(rect.width, rect.height) / (columns + (columns - 1) * Self.gap)
+        let pitch = side * (1 + Self.gap)
+        var path = Path()
+        for row in 0 ..< GridMetrics.columns {
+            for column in 0 ..< GridMetrics.columns {
+                let square = CGRect(
+                    x: rect.minX + CGFloat(column) * pitch, y: rect.minY + CGFloat(row) * pitch, width: side, height: side
+                )
+                path.addRoundedRect(in: square, cornerSize: CGSize(width: side * 0.28, height: side * 0.28))
+            }
+        }
+        return path
+    }
+}
+
 private struct GalleryHeart: View {
     let on: Bool
     let flashes: Int
