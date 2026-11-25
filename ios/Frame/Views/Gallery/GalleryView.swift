@@ -78,6 +78,9 @@ struct GalleryView: View {
     @State private var pull = GalleryPull()
     /// The held work's card opened by the finger drawn up.
     @State private var engaged = false
+    /// The card, drawn down, is being taken from over the whole work: the
+    /// work goes closer a moment after that, not with it (`open`).
+    @State private var landing = false
     /// The phone's taps: the hold, the card.
     @State private var ticks = 0
     /// The end page's glow over the first new work as it fades away.
@@ -208,7 +211,7 @@ struct GalleryView: View {
         .onChange(of: path) { _, now in
             // Back from the card: the work held there is cut to the screen
             // again, as when a finger lets it go.
-            guard now.isEmpty, peek != nil else { return }
+            guard now.isEmpty, peek != nil, !landing else { return }
             engaged = false
             pulling = false
             withAnimation(GalleryPage.fromWhole) {
@@ -938,15 +941,27 @@ struct GalleryView: View {
                     // as it rests here by now, on the same ground and
                     // glow: the card is gone from over it with nothing
                     // moving but the bars, and the work grows to the
-                    // screen as when a finger lets it go (`path`'s change
-                    // above).
+                    // screen as when a finger lets it go. That in a
+                    // change of its own, a moment later: made with the
+                    // card's going, which has no animation at all, what
+                    // has a timing of its own here (the glow's wait, the
+                    // head, the caption) went at once, and the work grew
+                    // on a bare ground (the probe's film).
                     GalleryLog.note("back from the card, drawn down: the whole work, and closer from there")
+                    landing = true
                     Self.melt(seconds: 0.26, bars: true)
                     withTransaction(Self.quiet) {
                         engaged = false
-                        pulling = false
                         pull.up = 0
                         if !path.isEmpty { path.removeLast() }
+                    }
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(34))
+                        landing = false
+                        pulling = false
+                        guard peek != nil, path.isEmpty else { return }
+                        withAnimation(GalleryPage.fromWhole) { peek = nil }
+                        GalleryLog.note("let go, the card gone")
                     }
                     return
                 }

@@ -156,12 +156,7 @@ struct ArrivingPicture: ViewModifier {
             .background {
                 Color.clear
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { lies in
-                        if let leave {
-                            if leave.on, let was = leave.home, abs(was.minY - lies.minY) > 0.5 {
-                                GalleryLog.trace("card drawn down: its work's place moved to \(Int(lies.minY))")
-                            }
-                            leave.home = lies
-                        }
+                        leave?.home = lies
                         measured(lies)
                     }
             }
