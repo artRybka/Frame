@@ -478,3 +478,47 @@ def test_the_api(service: FrameService, looks: tuple[Looks, FakeModel]) -> None:
         # An older app's switch changes nothing.
         assert client.put("/api/ai", json={"looks": False}).status_code == 200
         assert client.get("/api/looks/search", params={"q": "red"}).status_code == 200
+
+
+def test_museum_works_not_numbered_in_time_come_after_the_judged(
+    service: FrameService, looks: tuple[Looks, FakeModel], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mateusz 2026-11-25 ("taniec na sali baletowej" took some 40 s): a
+    museum's works whose numbers are not made within the wait are shown
+    all the same, after those judged, not left out until the next search."""
+    import threading
+
+    from frame_server import looks as looks_module
+
+    found, _model = looks
+    _work(service, "met:1", "red")
+    _numbers(found)
+    museum = []
+    for n, colour in enumerate(["red", "blue", "red"], start=10):
+        item = Item(
+            id=f"cma:{n}",
+            source="cma",
+            source_id=str(n),
+            title=f"Work {n}",
+            thumb_url=f"https://example.org/{n}.jpg",
+            kind=ItemKind.ARTWORK,
+        )
+        path = service.images.thumb_path(item)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (64, 48), COLOURS[colour]).save(path, "JPEG")
+        museum.append(item)
+    assert [i.id for i in found.judge("czerwony red", museum[:2])] == ["cma:10"]
+
+    held = threading.Event()
+    numbering = found._number
+
+    def slow(items: Any) -> None:
+        held.wait(5)
+        numbering(items)
+
+    monkeypatch.setattr(found, "_number", slow)
+    monkeypatch.setattr(looks_module, "LOOK_JUDGE_WAIT", 0.05)
+    shown = found.judge("czerwony red", museum)
+    held.set()
+    # cma:11 (blue) judged and left out; cma:12 shown, judged at the next search.
+    assert [i.id for i in shown] == ["cma:10", "cma:12"]

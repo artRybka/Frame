@@ -533,7 +533,10 @@ struct LiveBackend: FrameBackend {
     func terms(_ text: String, playlist: Int?) async throws -> [TermHit] {
         // While typing: a phrase's translation sent ahead, not waited for
         // (the server asks for how its words look as they are suggested).
-        if text.contains(where: \.isWhitespace) {
+        // Not halfway through a word ("taniec n"): the server translates
+        // none such either (`TRANSLATED_FROM`).
+        if text.contains(where: \.isWhitespace),
+           (text.split(whereSeparator: \.isWhitespace).last?.count ?? 0) >= 3 {
             let phrase = text
             Task { await self.teach([phrase]) }
         }

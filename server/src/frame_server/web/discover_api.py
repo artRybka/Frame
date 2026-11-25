@@ -16,7 +16,7 @@ from typing import Annotated, cast
 from weakref import WeakKeyDictionary
 
 import httpx
-from anyio import CapacityLimiter, to_thread
+from anyio import CapacityLimiter, move_on_after, to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -1230,12 +1230,16 @@ _TERMS_LOCK = threading.Lock()
 #: How long the suggestions wait for the English and French of two words
 #: or more, for the titles ("gwiaździsta noc": "The Starry Night").
 TITLE_TRANSLATE_SECONDS = 0.6
+#: ... once its last word has this many letters: "taniec n", "taniec na s"
+#: are halfway through a word, and asking Haiku for each such (some ten
+#: while one phrase was typed, the NAS 2026-11-25) only kept it busy.
+TRANSLATED_FROM = 3
 
 
 def _title_forms(svc: FrameService, words: str) -> tuple[str, ...]:
     """The words as the museums are asked them: known already, or for two
     words or more a moment's wait for the translation."""
-    if " " in words and len(words) >= 5:
+    if " " in words and len(words) >= 5 and len(words.split()[-1]) >= TRANSLATED_FROM:
         said = svc.importer.wording(words, TITLE_TRANSLATE_SECONDS)
         return tuple(w for w in (said.en, said.fr) if w)
     return svc.library.wording(words) if svc.library.wording else ()
@@ -1311,6 +1315,8 @@ MUSEUM_THREADS = CapacityLimiter(24)
 #: kept all the same, so the next round of pulling finds it at once ("Jeżeli
 #: muzeum odpowie po tym czasie, to przyjmujmy wynik").
 MUSEUM_PATIENCE = 8.0
+#: At most this long the museums' patience waits for a look's searches.
+LOOK_SEARCHES_WAIT = 20.0
 
 
 class TaughtWord(BaseModel):
@@ -1771,6 +1777,14 @@ async def stream_museums(
         ]
         waiting = set(keys)  # no answer yet
         left = set(keys)  # not done
+        # A look's museums are asked by the searches Haiku makes of it: the
+        # museums' patience starts once those are here (the NAS 2026-11-25,
+        # 4.4 s of the 8 gone before any museum was asked, and none of the
+        # 19 answered in time).
+        searches = svc.importer.look_searches
+        if search.rules.look.strip() and searches is not None:
+            with move_on_after(LOOK_SEARCHES_WAIT):
+                await to_thread.run_sync(searches, search.rules.look, abandon_on_cancel=True)
         until = loop.time() + MUSEUM_PATIENCE
         try:
             while left:
