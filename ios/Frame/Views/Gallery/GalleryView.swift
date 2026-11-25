@@ -1853,6 +1853,11 @@ private struct Lens: GeometryEffect {
         let wholeX = middle.x + place.offset.width - place.size.width / 2 - wholeScale * layout.offset.width
         let wholeY = middle.y + place.offset.height - place.size.height / 2 - wholeScale * layout.offset.height
         let scale = cutScale + (wholeScale - cutScale) * way
+        if way > 0.002, way < 0.998, Thread.isMainThread {
+            // The probe's: every frame of the way, to be read beside its film.
+            let share = Int((way * 100).rounded()), across = Int((scale * layout.size.width).rounded())
+            MainActor.assumeIsolated { GalleryLog.trace("whole work: \(share)% of the way, \(across) pt across") }
+        }
         return ProjectionTransform(CGAffineTransform(
             a: scale, b: 0, c: 0, d: scale,
             tx: cutX + (wholeX - cutX) * way, ty: cutY + (wholeY - cutY) * way
