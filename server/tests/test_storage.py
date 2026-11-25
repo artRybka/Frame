@@ -176,7 +176,7 @@ def test_the_view_says_when_the_catalogue_is_full(service: FrameService) -> None
     assert service.storage.view().catalogue_full is False
     service.images.thumbs.mkdir(parents=True, exist_ok=True)
     (service.images.thumbs / "a.jpg").write_bytes(b"x" * 1024 * 1024)
-    service.storage.forget()
+    service.storage.measure_now()  # the night's
     assert service.storage.view().catalogue_full is True
 
 

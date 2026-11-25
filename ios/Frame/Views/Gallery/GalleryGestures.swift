@@ -182,19 +182,35 @@ struct GalleryPinch: UIGestureRecognizerRepresentable {
 /// przytrzymaniu … po przytrzymaniu … pociągnięcie w górę otwiera płynnie
 /// kartę dzieła"). A finger that moves before the hold is a scroll, not
 /// a hold.
+///
+/// The phone taps on the way to the hold, faster and faster, and hard
+/// when the whole work comes (2026-11-25: "Gdy przytrzymuję ekran, to
+/// zaczynaj coraz szybciej stukać i przy przejściu na widok całego dzieła
+/// mocne stuknięcie"): the finger has lain `touch` seconds by the first
+/// tap, and `taps` say how long after the one before each comes; the
+/// hold `last` seconds after the last of them.
 struct HoldPull: UIGestureRecognizerRepresentable {
     var on = true
+    /// A hold can begin now: asked before the first tap and before the hold.
+    let ready: () -> Bool
     let began: () -> Void
     /// How far up from where it was held the finger is now (points).
     let moved: (CGFloat) -> Void
     let ended: () -> Void
 
+    /// Longer than a finger rests before it swipes: a swipe gives no tap.
+    static let touch = 0.14
+    static let taps: [Double] = [0, 0.09, 0.075, 0.06, 0.05, 0.04]
+    static let last = 0.03
+    /// How far a finger may stray before the hold and still be holding.
+    static let stray: CGFloat = 10
+
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator { Coordinator() }
 
     func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
         let hold = UILongPressGestureRecognizer()
-        hold.minimumPressDuration = 0.35
-        hold.allowableMovement = 10
+        hold.minimumPressDuration = Self.touch
+        hold.allowableMovement = Self.stray
         hold.cancelsTouchesInView = false
         hold.delegate = context.coordinator
         hold.isEnabled = on
@@ -206,22 +222,61 @@ struct HoldPull: UIGestureRecognizerRepresentable {
     }
 
     func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
-        let y = recognizer.location(in: nil).y
+        let coordinator = context.coordinator
+        let at = recognizer.location(in: nil)
         switch recognizer.state {
         case .began:
-            context.coordinator.start = y
-            began()
+            coordinator.stop()
+            coordinator.origin = at
+            guard ready() else { return }
+            coordinator.soft.prepare()
+            coordinator.hard.prepare()
+            coordinator.towards = Task { @MainActor in
+                for (n, wait) in Self.taps.enumerated() {
+                    if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+                    guard !Task.isCancelled else { return }
+                    coordinator.soft.impactOccurred(intensity: 0.35 + 0.1 * CGFloat(n))
+                    GalleryLog.trace("hold: tap \(n + 1)")
+                }
+                try? await Task.sleep(for: .seconds(Self.last))
+                guard !Task.isCancelled, ready() else { return }
+                coordinator.towards = nil
+                coordinator.held = true
+                coordinator.start = recognizer.location(in: nil).y
+                coordinator.hard.impactOccurred(intensity: 1)
+                began()
+            }
         case .changed:
-            moved(context.coordinator.start - y)
+            if coordinator.held {
+                moved(coordinator.start - at.y)
+            } else if hypot(at.x - coordinator.origin.x, at.y - coordinator.origin.y) > Self.stray {
+                // It moved before the hold: a scroll, and no more taps.
+                coordinator.stop()
+            }
         case .ended, .cancelled, .failed:
-            ended()
+            let held = coordinator.held
+            coordinator.stop()
+            if held { ended() }
         default:
             break
         }
     }
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// Where the finger was when the hold began, and where it first lay.
         var start: CGFloat = 0
+        var origin = CGPoint.zero
+        var held = false
+        /// The taps on the way to the hold.
+        var towards: Task<Void, Never>?
+        let soft = UIImpactFeedbackGenerator(style: .light)
+        let hard = UIImpactFeedbackGenerator(style: .heavy)
+
+        func stop() {
+            towards?.cancel()
+            towards = nil
+            held = false
+        }
 
         func gestureRecognizer(
             _ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer

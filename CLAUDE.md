@@ -146,7 +146,12 @@ camera's zooms are one geometry effect ignored by layout (`Seen`): with
 `scaleEffect` and `offset` the pages' scroll view took safe-area insets
 while it lay near the screen's edges and was scrolled out of place. The
 probe's logs trace every frame of a way (`-galleryTrace YES`): read them
-beside the film, which drops frames.
+beside the film, which drops frames. A work's thumbnail and full picture
+are one cut: Galeria asks for both by the picture's version
+(`GalleryView.thumb(of:)`, `Item.originalRef`) and drops its stock when a
+work is cut down (`taken`); a page looked at never changes its picture
+(`GalleryPage`'s `Recut`), and two pictures of different shapes are never
+laid out as one (`arrived`).
 `.confirmationDialog` goes on the button (or menu, or card) that asks, never
 on a page or section: on iOS 26 it is a popover pointing at that view.
 Polish line breaking (no "i", "w" left at a line's end, `Design/Typography.swift`):

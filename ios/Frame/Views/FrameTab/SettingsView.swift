@@ -111,6 +111,10 @@ struct ConnectionSettingsView: View {
     /// „Do sprawdzenia" opened from the top of the list (Mateusz 2026-11-16:
     /// „wejście w »do sprawdzenia« daj także od razu z ekranu konfiguracji").
     @State private var reviewing = false
+    /// "Sprawdź kadry" and "Ucz kadrowania", right under it (Mateusz
+    /// 2026-11-25: were in Diagnostyka, beside "Kadruj partię", gone).
+    @State private var checkingCrops = LaunchRoute.cropCheck
+    @State private var teachingCrops = false
     /// Pushed on "Ramka" from its own button (Mateusz 2026-11-23: "nie jako
     /// wyskakująca karta, tylko zwykły ekran"): no stack of its own, no
     /// "Gotowe".
@@ -135,8 +139,25 @@ struct ConnectionSettingsView: View {
     private var list: some View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
-                    if let count = model.aiSettings?.reviewCount, count > 0 {
-                        ReviewShortcut(count: count) { reviewing = true }
+                    VStack(spacing: 10) {
+                        if let count = model.aiSettings?.reviewCount, count > 0 {
+                            TopShortcut(
+                                symbol: "checklist", title: "Do sprawdzenia",
+                                subtitle: "Strażnik i nocny przegląd", count: count,
+                                hint: "Otwiera listę do sprawdzenia"
+                            ) { reviewing = true }
+                        }
+                        TopShortcut(
+                            symbol: "checkmark.rectangle.stack", title: "Sprawdź kadry",
+                            subtitle: "Kadry modelu: zatwierdź, popraw albo pomiń",
+                            count: model.cropReview.map { $0.cut.count + $0.unsure.count } ?? 0,
+                            hint: "Otwiera kadry modelu jeden po drugim"
+                        ) { checkingCrops = true }
+                        TopShortcut(
+                            symbol: "graduationcap", title: "Ucz kadrowania",
+                            subtitle: "Twoje oceny, z których model uczy się od nowa",
+                            hint: "Otwiera zdjęcia z katalogu do oceny"
+                        ) { teachingCrops = true }
                     }
                     ForEach(SettingsPage.Block.allCases, id: \.self) { block in
                         SettingsBlockView(block: block)
@@ -150,6 +171,11 @@ struct ConnectionSettingsView: View {
             .paperPage()
             .navigationTitle("Konfiguracja")
             .navigationBarTitleDisplayMode(.inline)
+            .fullScreenCover(isPresented: $checkingCrops) { CropCheckView() }
+            .fullScreenCover(isPresented: $teachingCrops) { TeachCropView() }
+            .onChange(of: checkingCrops || teachingCrops) { _, open in
+                if !open { Task { await model.refreshCropReview() } }
+            }
             .toolbar {
                 if !embedded {
                     ToolbarItem(placement: .confirmationAction) {
@@ -164,10 +190,11 @@ struct ConnectionSettingsView: View {
     }
 
     private func load() async {
-            // The disk is measured after the rest has come: the server
-            // looks at every picture for it (up to 45 s on the NAS, the
-            // audit of 2026-11-14), and the page's other rows waited
-            // behind it for the server and for a connection.
+            // The disk's size comes at once now, the last measurement kept
+            // (the server measures again beside it): it no longer waits
+            // behind the rest, which kept "Miejsce na serwerze" spinning
+            // (Mateusz 2026-11-25).
+            async let storage: Void = model.loadLibraryStorage()
             async let counts: Void = model.loadCatalogueCounts()
             async let night: Void = model.loadNightTasks()
             async let panel: Void = model.loadPanelApp()
@@ -175,37 +202,44 @@ struct ConnectionSettingsView: View {
             async let ai: Void = model.loadAiSettings()
             async let keys: Void = model.loadSourceKeys()
             async let notifications: Void = model.loadNotifications()
-            _ = await (counts, night, panel, update, ai, keys, notifications)
-            await model.loadLibraryStorage()
+            async let crops: Void = model.refreshCropReview()
+            _ = await (storage, counts, night, panel, update, ai, keys, notifications, crops)
     }
 }
 
-/// „Do sprawdzenia" at the top of Konfiguracja while anything waits there,
-/// as on Konfiguracja → Claude, with how many.
-private struct ReviewShortcut: View {
-    let count: Int
+/// A row at the top of Konfiguracja, over the blocks: „Do sprawdzenia" while
+/// anything waits there, as on Konfiguracja → Claude, with how many; then
+/// "Sprawdź kadry" and "Ucz kadrowania" (Mateusz 2026-11-25).
+private struct TopShortcut: View {
+    let symbol: String
+    let title: String
+    let subtitle: String
+    var count = 0
+    let hint: String
     let open: () -> Void
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 12) {
-                Image(systemName: "checklist")
+                Image(systemName: symbol)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.white)
                     .frame(width: 30, height: 30)
                     .background(Theme.vermilion, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Do sprawdzenia")
+                    Text(bound: title)
                         .foregroundStyle(Theme.ink)
-                    Text(bound: "Strażnik i nocny przegląd")
+                    Text(bound: subtitle)
                         .font(.caption)
                         .foregroundStyle(Theme.inkSoft)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Text("\(count)")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(Theme.inkSoft)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.subheadline.monospacedDigit())
+                        .foregroundStyle(Theme.inkSoft)
+                }
                 Image(systemName: "chevron.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(Theme.inkSoft.opacity(0.6))
@@ -221,7 +255,7 @@ private struct ReviewShortcut: View {
                 .strokeBorder(Theme.hairline.opacity(0.7))
         )
         .accessibilityElement(children: .combine)
-        .accessibilityHint(Text("Otwiera listę do sprawdzenia"))
+        .accessibilityHint(Text(bound: hint))
     }
 }
 
@@ -389,6 +423,14 @@ struct SettingsPageView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 40)
             }
+            .task(id: page) {
+                // Opened before Konfiguracja's rows came, or again later:
+                // its own numbers, fresh.
+                guard page == .library, !model.demoMode else { return }
+                async let storage: Void = model.loadLibraryStorage()
+                async let counts: Void = model.loadCatalogueCounts()
+                _ = await (storage, counts)
+            }
             .task {
                 // CI screenshots: `-scroll restorer` on the Gemini page,
                 // `-scroll leftover` (the period and the reserve) on
@@ -397,7 +439,6 @@ struct SettingsPageView: View {
                 let target = LaunchRoute.scroll
                 let onTasks = ["study", "night", "rest", "off", "server"]
                 guard (page == .gemini && target == "restorer") || (page == .ai && target == "leftover")
-                    || (page == .diagnostics && target == "crop")
                     || (page == .tasks && onTasks.contains(target ?? "")),
                     let target
                 else { return }
@@ -488,8 +529,6 @@ struct SettingsPageView: View {
             SourceRequestsSection()
             TailnetSection(parts: [.log])
             NotificationsSection(parts: [.test])
-            MuseumCropSection()
-                .id("crop")
             LooksSection()
         }
     }

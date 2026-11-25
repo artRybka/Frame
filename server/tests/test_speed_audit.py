@@ -20,7 +20,6 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from frame_server import memory, night
-from frame_server import storage as storage_module
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.config import STATE_KEY
 from frame_server.ai.keywords import KIND
@@ -35,7 +34,7 @@ from frame_server.library.term_index import TermIndex
 from frame_server.library.verdict import Why, whys
 from frame_server.player import TILE_WORKS_KEY
 from frame_server.service import FrameService
-from frame_server.storage import MEASURE_MAX_AGE, USAGE_KEY, StorageUsage
+from frame_server.storage import USAGE_KEY, StorageUsage
 from frame_server.web import app as app_module
 from frame_server.web import create_app, discover_api
 from frame_server.web.compress import GZIP_FROM
@@ -552,48 +551,49 @@ def test_the_apps_larger_answers_go_out_gzipped(tmp_path: Path) -> None:
 # -- the disk's measure, kept --------------------------------------------------
 
 
-def test_konfiguracja_is_shown_the_kept_measure_and_a_new_one_next_time(
+def test_konfiguracja_is_shown_the_nights_measure_carried_forward(
     service: FrameService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The disk is measured once a night; by day the page is shown that
+    # measure carried forward by the library's counts, never waiting for the
+    # disk (Mateusz 2026-11-25).
     storage = service.storage
-    item = service.library.upsert(_work("aic:1"))
-    service.images.store(item, jpeg_bytes((200, 40, 40)))
+    first_item = service.library.upsert(_work("aic:1"))
+    service.images.store(first_item, jpeg_bytes((200, 40, 40)))
     first = storage.view().usage  # never measured: measured now
-    assert first.originals_bytes > 0
-    assert storage.view().usage == first  # fresh: the one kept
+    assert first.originals_bytes > 0 and first.originals_count == 1
+    assert not first.estimated
 
-    # Old by now, and the disk is slow: the page gets the one kept at once.
-    old = first.model_copy(update={"measured_at": first.measured_at - 2 * MEASURE_MAX_AGE})
-    storage._usage = old
-    service.images.remove(item)
-    slow, measure = threading.Event(), storage._measure
+    def never() -> StorageUsage:
+        raise AssertionError("the disk is not measured by day")
 
-    def slowly() -> StorageUsage:
-        slow.wait(10)
-        return measure()
+    measure = storage._measure
+    monkeypatch.setattr(storage, "_measure", never)
+    second = service.library.upsert(_work("aic:2"))
+    service.images.store(second, jpeg_bytes((40, 200, 40)))
+    storage._counts = None  # counted anew (kept a minute)
+    shown = storage.view().usage
+    assert shown.estimated
+    # One more picture and original, each at the measured average.
+    assert shown.originals_bytes == 2 * first.originals_bytes
+    assert shown.catalogue_bytes == 2 * first.catalogue_bytes
+    assert shown.total_bytes == first.total_bytes + first.originals_bytes + first.catalogue_bytes
+    assert storage._usage == first  # the night's, as it was
 
-    monkeypatch.setattr(storage, "_measure", slowly)
-    monkeypatch.setattr(storage_module, "SHOWN_WAIT", 0.05)
-    assert storage.view().usage == old
-    again = storage._again
-    assert again is not None and again.is_alive()
-    assert storage.view().usage == old and storage._again is again  # one at a time
-    slow.set()
-    again.join(10)
-    assert storage.view().usage.originals_bytes == 0  # the new one
+    # Trimmed: Konfiguracja still carries forward, what decides measures anew.
+    storage.forget()
+    assert storage.view().usage.estimated
+    monkeypatch.setattr(storage, "_measure", measure)
+    exact = storage.usage()
+    assert exact.measured_at > first.measured_at and exact.originals_count == 2
+    assert storage.view().usage == exact  # nothing changed since
 
-    # A fast disk answers within the wait: the new one at once.
-    storage._usage = old
-    monkeypatch.setattr(storage_module, "SHOWN_WAIT", 10.0)
-    assert storage.view().usage.originals_bytes == 0
-    # What decides by the measure never takes an old one.
-    storage._usage = old
-    assert storage.usage().measured_at > old.measured_at
+    # The night's measure, after its tidying.
+    service.images.remove(second)
+    assert storage.measure_now().originals_bytes < exact.originals_bytes
 
 
-def test_the_disks_measure_is_kept_over_a_restart_and_taken_anew_after_a_trim(
-    tmp_path: Path,
-) -> None:
+def test_the_disks_measure_is_kept_over_a_restart(tmp_path: Path) -> None:
     settings = Settings(data_dir=tmp_path, seed_library=False, scheduler=False)
     service = FrameService(settings)
     assert service.storage._usage is None
@@ -610,19 +610,9 @@ def test_the_disks_measure_is_kept_over_a_restart_and_taken_anew_after_a_trim(
 
     service = FrameService(settings)
     assert service.storage._usage == measured
-    # Trimmed: that number is wrong now, and a new one is taken at once,
-    # beside, for Konfiguracja opened later.
-    item = service.library.upsert(_work("aic:1"))
-    service.images.store(item, jpeg_bytes((200, 40, 40)))
-    service.storage.forget()
-    again = service.storage._again
-    assert again is not None
-    again.join(10)
-    anew = service.storage._usage
-    assert anew is not None and anew != measured and anew.originals_bytes > 0
-    _written(service.library, USAGE_KEY)
+    service.storage.forget()  # trimmed: nothing measured beside
+    assert service.storage._again is None
     service.library.close()
-    assert FrameService(settings).storage._usage == anew
 
 
 def _written(library: Library, key: str) -> None:

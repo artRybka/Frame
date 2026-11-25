@@ -85,16 +85,27 @@ struct GalleryView: View {
     @State private var cutting: Task<Void, Never>?
     /// Works looked at for a cut here since the app started.
     @MainActor private static var looked: Set<String> = []
+    /// Works cut down here, whose pictures Galeria has had anew already.
+    @State private var cutHere: Set<String> = []
+    /// Scrolled to the work it starts with (`begin`): shown from then on.
+    @State private var begun = false
 
     private enum Hand {
-        case idle, sweep, swipe, pinch, spread, back
+        /// `gone`: drawn back by a finger far enough, the rest of the way
+        /// to the grid by itself while the finger still lies.
+        case idle, sweep, swipe, gone, pinch, spread, back
     }
 
     /// Works asked for at once, and how near the end the next are asked for.
     /// Asked for well before the end (Mateusz 2026-11-24: "niech aplikacja
-    /// wcześniej prosi o kolejne"), so the end is seldom reached.
-    private static let batch = 16
-    private static let ahead = 8
+    /// wcześniej prosi o kolejne"), so the end is seldom reached, and the
+    /// grid has its thumbnails when it first comes (2026-11-25: "Na start
+    /// mogłoby być ciut więcej gotowych miniatur").
+    private static let batch = 24
+    private static let ahead = 30
+    /// Works had ahead, their thumbnails fetched, a moment after Galeria
+    /// starts: the grid's first screens.
+    private static let early = 54
     /// The page after the last work, while more are on their way.
     static let endID = "gallery.end"
 
@@ -165,8 +176,31 @@ struct GalleryView: View {
             }
         }
         .task {
-            if works.count < Self.batch { await more() }
+            // Those kept from the last launch: their thumbnails too.
+            prefetch(works)
+            // With works kept from before, at once: no black screen while
+            // the server is asked for more.
+            if works.count > Self.above { begin() }
+            if works.count < Self.batch {
+                await more()
+                // The pages are there first, then scrolled.
+                if !begun { try? await Task.sleep(for: .milliseconds(40)) }
+            }
+            begin()
             await staged()
+        }
+        .task {
+            // After the first work's own pictures: the grid's first screens.
+            try? await Task.sleep(for: .seconds(1.5))
+            for _ in 0 ..< 3 where !Task.isCancelled && works.count - (shownIndex ?? 0) < Self.early {
+                if loading { try? await Task.sleep(for: .milliseconds(300)) }
+                await more()
+            }
+        }
+        .onChange(of: model.pictureChanges) { before, now in
+            // A work's picture made anew elsewhere (cut down on its card):
+            // Galeria's own is had anew too.
+            for (id, count) in now where before[id] != count { repictured(id) }
         }
         .onChange(of: path) { _, now in
             // Back from the card: the work held there is cut to the screen
@@ -189,7 +223,7 @@ struct GalleryView: View {
         }
         .onChange(of: position) { _, id in
             guard let id, let index = works.firstIndex(where: { $0.id == id }) else { return }
-            Self.remember(Array(works.dropFirst(index + 1)))
+            if begun { remember() }
             if index >= works.count - Self.ahead { Task { await more() } }
             cutAhead()
         }
@@ -228,7 +262,7 @@ struct GalleryView: View {
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .modifier(WindowZoom(camera: camera))
-        .opacity(windowShown ? 1 : 0)
+        .opacity(windowShown && begun ? 1 : 0)
         // Not by `grid`: it comes while a finger of the pages' own is still
         // down (the swipe down, the pinch), and that gesture is to go on.
         .allowsHitTesting(!gridOpen && returning == nil)
@@ -261,7 +295,9 @@ struct GalleryView: View {
             changed: { pinched($0) },
             ended: { scale, speed in unpinched(scale, speed) }
         ))
-        .gesture(HoldPull(on: !grid, began: { hold() }, moved: { held($0) }, ended: { letGo() }))
+        .gesture(HoldPull(
+            on: !grid, ready: { canHold }, began: { hold() }, moved: { held($0) }, ended: { letGo() }
+        ))
         .id(work.id)
     }
 
@@ -328,8 +364,22 @@ struct GalleryView: View {
     static let gridReady = 160
     /// Works asked for at once while the grid is up.
     static let gridBatch = 40
-    /// Works seen before, above the one shown.
-    static let seen = 60
+    /// Works seen before, above the one shown, at most.
+    nonisolated static let seen = 61
+
+    /// How many of the works before the one at `index` the grid shows
+    /// above it: so many that its first row is full and the work lies in
+    /// the middle column, with no empty squares before the first (Mateusz
+    /// 2026-11-25: "Gdy oddalę do siatki, a jestem na początku
+    /// przeglądania, to widać puste kwadraty"). One or two of the oldest
+    /// are left out for it: Galeria starts with two works above the first
+    /// shown (`begin`), so those are never ones just looked at. The very
+    /// first work of all has none above and lies in the left column.
+    nonisolated static func history(before index: Int) -> Int {
+        guard index > 0 else { return 0 }
+        let most = min(index, seen)
+        return most - (most - 1) % GridMetrics.columns
+    }
 
     private var wall: some View {
         GalleryGrid(
@@ -356,9 +406,9 @@ struct GalleryView: View {
     @discardableResult
     private func layGrid(at index: Int, top: CGFloat) -> CGFloat {
         let metrics = metrics
-        let seen = min(index, Self.seen)
-        // The work in the middle column: (seen + lead) is one past a row's start.
-        let lead = ((1 - seen) % GridMetrics.columns + GridMetrics.columns) % GridMetrics.columns
+        // The work in the middle column, a full row before it (`history`).
+        let seen = Self.history(before: index)
+        let lead = 0
         let cell = metrics.cell(lead + seen)
         // The grid cannot lie lower than its own first row at the top.
         let top = min(top, cell.minY)
@@ -497,10 +547,13 @@ struct GalleryView: View {
     // MARK: Drawn back by hand
 
     /// How far a finger goes down for the whole way to the tile, how much
-    /// of the way it can take the work before it lets go, and how much of
-    /// the finger's way the work follows.
+    /// of the way it takes the work with it, and how much of the finger's
+    /// way the work follows. That far, the work goes the rest of the way
+    /// by itself, the finger still down (Mateusz 2026-11-25: it "jakby
+    /// zatrzymuje skalowanie w połowie … pomaga tylko puszczenie palca":
+    /// the work stopped there and waited for the finger to lift).
     static let swipeFull: CGFloat = 400
-    static let swipeMost: CGFloat = 0.5
+    static let swipeMost: CGFloat = 0.3
     static let swipeFollow: CGFloat = 0.35
     /// Seconds from the finger's letting go to the grid (Mateusz
     /// 2026-11-24 19:12: "przejście do siatki - A, może odrobinę wolniej").
@@ -525,6 +578,10 @@ struct GalleryView: View {
         guard hand == .swipe else { return }
         let z = min(max(move / Self.swipeFull, 0), Self.swipeMost)
         camera.pose(z, drop: max(move, 0) * Self.swipeFollow * (1 - z))
+        guard z >= Self.swipeMost else { return }
+        hand = .gone
+        GalleryLog.note("drawn far enough: to the grid by itself")
+        settle(toGrid: true, seconds: Self.toGrid)
     }
 
     private func dropped(_ move: CGFloat, _ speed: CGFloat) {
@@ -712,8 +769,10 @@ struct GalleryView: View {
     private func prefetch(_ some: some Sequence<RemoteItem>) {
         let kept = stock
         let jobs = some.filter { kept.images[$0.id] == nil }
-            .compactMap { work in model.backend.request(for: .thumb(work.id)).map { (work.id, $0) } }
+            .compactMap { work in Self.thumb(of: work.item, model.backend).map { (work.id, $0) } }
         guard !jobs.isEmpty else { return }
+        // A thumbnail asked for before its work was cut is not kept.
+        let made = Dictionary(jobs.map { ($0.0, kept.made[$0.0] ?? 0) }) { first, _ in first }
         let pixel = Self.gridPixel
         Task(priority: .utility) {
             await withTaskGroup(of: (String, UIImage?, UnitPoint).self) { group in
@@ -722,7 +781,7 @@ struct GalleryView: View {
                     if case let (id, request)? = next.next() { group.addTask { await Self.fetch(id, request, pixel) } }
                 }
                 while case let (done, image, focus)? = await group.next() {
-                    if let image {
+                    if let image, kept.made[done] ?? 0 == made[done] {
                         kept.images[done] = image
                         // Its page's, where that found one first.
                         if kept.focus[done] == nil { kept.focus[done] = focus }
@@ -754,19 +813,22 @@ struct GalleryView: View {
     /// How far up the finger is drawn from the hold for the card.
     static let cardPull: CGFloat = 70
 
-    /// Held: the phone taps, and the whole work is shown on its own
-    /// colours while the finger lies (Mateusz 2026-11-24 18:51: "Podoba mi
-    /// się koncept z całym dziełem po przytrzymaniu. Można dodać do tego
-    /// haptyke - stukanie").
+    /// Held: the whole work is shown on its own colours while the finger
+    /// lies (Mateusz 2026-11-24 18:51: "Podoba mi się koncept z całym
+    /// dziełem po przytrzymaniu. Można dodać do tego haptyke - stukanie").
+    /// The phone's taps on the way to it and the hard one with it are the
+    /// gesture's own (`HoldPull`).
     private func hold() {
         guard hand == .idle, !grid, path.isEmpty, peek == nil, let shown else { return }
         pulling = true
         engaged = false
         pull.up = 0
-        ticks += 1
         withAnimation(GalleryPage.toWhole) { peek = shown.id }
         GalleryLog.note("held")
     }
+
+    /// A hold can begin: the phone taps towards it only then (`HoldPull`).
+    private var canHold: Bool { hand == .idle && !grid && path.isEmpty && peek == nil && shown != nil }
 
     /// The finger drawn up from the hold: the work follows a little, and
     /// far enough the phone taps again and the work's card comes out from
@@ -800,18 +862,42 @@ struct GalleryView: View {
     private func open(_ work: RemoteItem) {
         ItemPeeks.remember(work.summary, thumb: .thumb(work.id))
         let from = GalleryPage.spots[work.id]?.offsetBy(dx: 0, dy: -GalleryPull.lift(pull.up))
-        // The way back is the way in turned round (14:06: "Powrót z karty
-        // dzieła … odwrócona animacją wejścia"): the card gives its work
-        // back here, then leaves without a slide.
+        // The way back: the card melts into the work cut to the screen,
+        // which is there under it already (Mateusz 2026-11-25: "Powrót z
+        // karty dzieła do pełnego ekranu źle wygląda - jest jakiś skok":
+        // the work went back to where it was held, the card's head under
+        // it for a moment, and all of that gave way to the cut work).
         CardArrival.pending[work.id] = CardArrival.Pending(
             from: from, ground: GalleryPage.ground(of: work, light: scheme == .light),
             back: {
-                var quiet = Transaction(animation: nil)
-                quiet.disablesAnimations = true
-                withTransaction(quiet) { if !path.isEmpty { path.removeLast() } }
+                GalleryLog.note("back from the card: it melts into the work")
+                Self.melt()
+                withTransaction(Self.quiet) {
+                    engaged = false
+                    pulling = false
+                    peek = nil
+                    pull.up = 0
+                    if !path.isEmpty { path.removeLast() }
+                }
             }
         )
         withTransaction(Self.quiet) { path.append(work.id) }
+    }
+
+    /// What is on the screen now fades off what comes under it with the
+    /// next change: the screen as it is, laid over the window and let go.
+    private static func melt(seconds: Double = 0.32) {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard let window = scenes.first?.keyWindow ?? scenes.first?.windows.first,
+              let was = window.snapshotView(afterScreenUpdates: false)
+        else { return }
+        was.isUserInteractionEnabled = false
+        window.addSubview(was)
+        UIView.animate(withDuration: seconds, delay: 0.03, options: [.curveEaseInOut]) {
+            was.alpha = 0
+        } completion: { _ in
+            was.removeFromSuperview()
+        }
     }
 
     // MARK: Staged
@@ -844,10 +930,16 @@ struct GalleryView: View {
     // MARK: The works
 
     private static let rememberedKey = "gallery.next"
+    private static let rememberedSeenKey = "gallery.next.seen"
     private static let rememberedMost = 24
+    /// Works above the one Galeria starts with: the last looked at before
+    /// (the first of a batch, the first time), so the grid has a full row
+    /// above from the start (`history`).
+    private static let above = 2
 
-    /// The works left to see, kept for the next launch (CI screenshots
-    /// start from the demo's own order).
+    /// The works left to see, after the last ones looked at (`remember`),
+    /// kept for the next launch (CI screenshots start from the demo's own
+    /// order).
     private static func remembered() -> [RemoteItem] {
         guard LaunchRoute.screen.isEmpty,
               let data = UserDefaults.standard.data(forKey: rememberedKey),
@@ -856,9 +948,32 @@ struct GalleryView: View {
         return works
     }
 
-    private static func remember(_ works: [RemoteItem]) {
-        guard let data = try? JSONEncoder().encode(Array(works.prefix(rememberedMost))) else { return }
-        UserDefaults.standard.set(data, forKey: rememberedKey)
+    /// The works from the one before the one shown on: those two were
+    /// looked at and lie above the first the next launch starts with.
+    private func remember() {
+        guard !works.isEmpty else { return }
+        let at = works.firstIndex { $0.id == position } ?? 0
+        let from = max(at - (Self.above - 1), 0)
+        let kept = Array(works[from...].prefix(Self.rememberedMost + Self.above))
+        guard let data = try? JSONEncoder().encode(kept) else { return }
+        UserDefaults.standard.set(data, forKey: Self.rememberedKey)
+        UserDefaults.standard.set(at - from + 1, forKey: Self.rememberedSeenKey)
+    }
+
+    /// Galeria starts with the first work not looked at yet, the last ones
+    /// looked at above it; of a first batch, two are put above. A list
+    /// kept by an app from before this (no count with it) is all works to
+    /// see: two of them go above as well.
+    private func begin() {
+        guard !begun else { return }
+        defer { begun = true }
+        guard works.count > 1 else { return }
+        let kept = UserDefaults.standard.object(forKey: Self.rememberedSeenKey) as? Int
+        let seen = LaunchRoute.screen.isEmpty ? kept ?? Self.above : Self.above
+        let at = min(max(seen, 0), Self.above, works.count - 1)
+        run.reset(at: at)
+        withTransaction(Self.quiet) { position = works[at].id }
+        GalleryLog.note("begins at \(at) of \(works.count)")
     }
 
     private func more(count: Int = GalleryView.batch) async {
@@ -884,8 +999,7 @@ struct GalleryView: View {
                 }
             }
             if position == nil { position = works.first?.id }
-            let at = works.firstIndex { $0.id == position } ?? 0
-            Self.remember(Array(works.dropFirst(at + 1)))
+            if begun { remember() }
             cutAhead()
         } catch {
             failed = works.isEmpty
@@ -895,20 +1009,71 @@ struct GalleryView: View {
     /// The works coming next cut down to the work in the background, as the
     /// card does when it opens (Mateusz 2026-11-23 21:41: "Dzieła idące na
     /// Galerię kadruj w tle (usuwaj zbędne tło)"): the server looks first,
-    /// then, on the owner's phone, its own model. Not the one shown nor the
-    /// next, whose pictures are on their way already.
+    /// then, on the owner's phone, its own model. Not the one shown: what
+    /// is looked at does not change (`GalleryPage`).
     private func cutAhead() {
         guard cutting == nil else { return }
         cutting = Task {
             defer { cutting = nil }
             while !Task.isCancelled {
                 let at = works.firstIndex { $0.id == position } ?? 0
-                guard let next = works.dropFirst(at + 2).first(where: { !Self.looked.contains($0.id) }) else { return }
+                guard let next = works.dropFirst(at + 1).first(where: { !Self.looked.contains($0.id) }) else { return }
                 Self.looked.insert(next.id)
                 guard let cut = await cutDown(next.item) else { continue }
-                if let index = works.firstIndex(where: { $0.id == next.id }) { works[index].item = cut }
+                cutHere.insert(cut.id)
+                // The lists' and the card's pictures of it, from before.
+                model.cardShows(cut, changed: true)
+                taken(cut)
             }
         }
+    }
+
+    /// A work as it is now, its picture another than Galeria had (cut down
+    /// to the work, mostly): the thumbnail and the glow made of the old
+    /// one go, and its page and its tile have theirs anew, by the
+    /// picture's own address (`thumb(of:)`). Before, the thumbnail fetched
+    /// ahead was of the museum's whole photograph and the full picture
+    /// that came over it of the work cut down, laid out as one (Mateusz
+    /// 2026-11-25: "przy podmianie z miniatury na pełne dzieło … przeskok,
+    /// jakby dzieło zmieniało proporcje i zoom").
+    private func taken(_ item: Item) {
+        guard let index = works.firstIndex(where: { $0.id == item.id }),
+              works[index].item.pictureVersion != item.pictureVersion
+        else { return }
+        works[index].item = item
+        stock.drop(item.id)
+        Glow.forget(item.id)
+        prefetch([works[index]])
+        if begun { remember() }
+        GalleryLog.note("work \(item.id): another picture, had anew")
+    }
+
+    /// A work's picture changed, not by Galeria: asked how it is now.
+    private func repictured(_ id: String) {
+        if cutHere.remove(id) != nil { return }
+        guard works.contains(where: { $0.id == id }) else { return }
+        Task {
+            guard let fresh = try? await model.backend.item(id: id) else { return }
+            taken(fresh)
+        }
+    }
+
+    /// A work's thumbnail and its picture, by what they are of: the copy
+    /// and the cut are in the address (`Item.pictureVersion`), so one kept
+    /// from before the work was cut down is never taken for the one after.
+    static func thumb(of item: Item, _ backend: any FrameBackend) -> URLRequest? {
+        guard var request = backend.request(for: .thumb(item.id)) else { return nil }
+        let version = item.pictureVersion
+        guard !version.isEmpty, let url = request.url, url.path.hasSuffix("/thumb"),
+              var parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        else { return request }
+        parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "v", value: version)]
+        request.url = parts.url ?? url
+        return request
+    }
+
+    static func picture(of item: Item, _ backend: any FrameBackend) -> URLRequest? {
+        backend.request(for: item.originalRef)
     }
 
     /// The work as it is once cut, nil when nothing was cut.
@@ -967,6 +1132,17 @@ private struct GalleryPage: View {
     @State private var focus: UnitPoint?
     /// The full picture over the thumbnail, 1 once it is in.
     @State private var fullShown: Double = 1
+    /// A picture of another shape than the one that came after it (the
+    /// museum's whole photograph, the work cut down since), with the point
+    /// it was cut about: it fades under the new one, each laid out as
+    /// itself, never drawn to the other's shape (`arrived`).
+    @State private var stale: (picture: UIImage, focus: UnitPoint)?
+    /// Which picture of the work this page has (`Item.pictureVersion`),
+    /// and the times it has had another since.
+    @State private var had: String?
+    @State private var anew = 0
+    /// The sign under the whole work, up for a moment (`CardSign`).
+    @State private var nudged = false
     /// The colours of the work's edges stretched far out and blurred, for
     /// behind the whole of it (`Glow`); made while it is shown.
     @State private var glow: UIImage?
@@ -983,6 +1159,8 @@ private struct GalleryPage: View {
     static let drawBack: Double = 20
 
     static let thumbPixel: CGFloat = 900
+    /// The size the work's card asks its first picture at (`ItemDetailView`).
+    static let cardPixel: CGFloat = 700
     private static let fullPixel: CGFloat = 2800
 
     /// Where the whole work lies on the screen, for its card to take it
@@ -1016,10 +1194,28 @@ private struct GalleryPage: View {
             }
             .ignoresSafeArea()
         }
-        .task(id: work.id) { await load() }
+        .task(id: Had(id: work.id, anew: anew)) { await load() }
+        .onChange(of: Recut(version: work.item.pictureVersion, current: current), initial: true) { _, now in
+            // The work has another picture (cut down since this page came):
+            // had anew, but never under his eyes (Mateusz 2026-11-25: the
+            // cut "odbywa się w trakcie i daje efekt na ekranie, a nie
+            // przed wejściem dzieła na podgląd"). The one looked at stays
+            // as it is till it is left.
+            guard let before = had else { had = now.version; return }
+            guard now.version != before, !now.current else { return }
+            had = now.version
+            anew += 1
+        }
         .task(id: current) { if current { await loadPolish() } }
+        .task(id: whole && current) { await nudge() }
+        .task(id: current ? thumb.map { ObjectIdentifier($0) } : nil) {
+            // Its card opens with this thumbnail, asked for at the plain
+            // address: there in memory, whatever address it came from here.
+            guard current, let thumb, let request = model.backend.request(for: .thumb(work.id)) else { return }
+            await ImageLoader.shared.remember(thumb, for: request, maxPixel: Self.cardPixel)
+        }
         // Made while the work is shown, before any hold: ready for it.
-        .task(id: (current || whole) && (thumb ?? full) != nil) {
+        .task(id: GlowOf(on: current || whole, picture: (thumb ?? full).map { ObjectIdentifier($0) })) {
             guard current || whole, glow == nil, let picture = thumb ?? full else { return }
             if let made = Glow.wide[work.id] { glow = made; return }
             let made = await Task.detached(priority: .utility) {
@@ -1041,6 +1237,22 @@ private struct GalleryPage: View {
         let sized: Bool
     }
 
+    /// The glow is made of the picture the page has, again of another.
+    private struct GlowOf: Hashable {
+        let on: Bool
+        let picture: ObjectIdentifier?
+    }
+
+    private struct Had: Equatable {
+        let id: String
+        let anew: Int
+    }
+
+    private struct Recut: Equatable {
+        let version: String
+        let current: Bool
+    }
+
     private struct Shown: Equatable {
         let current: Bool
         let loaded: Bool
@@ -1050,10 +1262,17 @@ private struct GalleryPage: View {
     private func cut(_ layout: Fill, _ geo: GeometryProxy) -> some View {
         ZStack {
             ZStack {
-                if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
-                if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
+                if let stale {
+                    let own = Fill(picture: stale.picture.size, box: geo.size, focus: stale.focus)
+                    picture(stale.picture, size: own.size, offset: own.offset)
+                        .scaleEffect(zoom, anchor: own.anchor)
+                }
+                ZStack {
+                    if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
+                    if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
+                }
+                .scaleEffect(zoom, anchor: layout.anchor)
             }
-            .scaleEffect(zoom, anchor: layout.anchor)
             .offset(x: pan)
             if current {
                 caption(geo)
@@ -1098,7 +1317,10 @@ private struct GalleryPage: View {
             }
             // Faint (2026-11-23 21:41: "cień za dziełem znacznie słabszy").
             .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
-            if current { head(place, geo) }
+            if current {
+                sign(place, geo)
+                head(place, geo)
+            }
         }
         .frame(width: geo.size.width, height: geo.size.height)
         .modifier(PulledUp(pull: pull, on: whole))
@@ -1132,8 +1354,9 @@ private struct GalleryPage: View {
     }
 
     /// The head of the work's card under the whole work (Mateusz
-    /// 2026-11-24 19:12: no arrow, no "KARTA DZIEŁA"; the card's own
-    /// beginning says what a pull up brings).
+    /// 2026-11-24 19:12: no "KARTA DZIEŁA"; the card's own beginning says
+    /// what a pull up brings). It follows the sign a little when that
+    /// goes up.
     private func head(_ place: Whole, _ geo: GeometryProxy) -> some View {
         let top = geo.size.height / 2 + place.offset.height + place.size.height / 2 + Whole.head
         return GalleryHead(work: work, polish: polish)
@@ -1143,6 +1366,37 @@ private struct GalleryPage: View {
             .padding(.horizontal, Theme.gutter)
             .padding(.top, top)
             .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            .offset(y: nudged ? -CardSign.follow : 0)
+    }
+
+    /// The sign that a pull up brings the card: a short bar between the
+    /// work and the card's head, which goes up a little now and then and
+    /// comes back (Mateusz 2026-11-25: "potrzebny jest jednak jakiś sygnał
+    /// / znacznik o możliwości wejścia w kartę dzieła … może belka, która
+    /// delikatnie podciąga się do góry i daje znać?").
+    private func sign(_ place: Whole, _ geo: GeometryProxy) -> some View {
+        let top = geo.size.height / 2 + place.offset.height + place.size.height / 2 + CardSign.below
+        return CardSign(pull: pull, up: nudged, light: scheme == .light)
+            .padding(.top, top)
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+    }
+
+    /// The sign's small way up and back while the work is held: after a
+    /// moment, then every few seconds.
+    private func nudge() async {
+        guard whole, current, !reduceMotion else {
+            nudged = false
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(650))
+        while !Task.isCancelled {
+            withAnimation(.easeOut(duration: 0.45)) { nudged = true }
+            try? await Task.sleep(for: .milliseconds(600))
+            guard !Task.isCancelled else { break }
+            withAnimation(.easeInOut(duration: 0.8)) { nudged = false }
+            try? await Task.sleep(for: .milliseconds(2000))
+        }
+        nudged = false
     }
 
     /// Behind the whole work: its own main colour, quiet and dark
@@ -1222,28 +1476,42 @@ private struct GalleryPage: View {
     }
 
     private func load() async {
-        guard let thumbRequest = model.backend.request(for: .thumb(work.id)),
-              let fullRequest = model.backend.request(for: .image(work.id))
+        guard let thumbRequest = GalleryView.thumb(of: work.item, model.backend),
+              let fullRequest = GalleryView.picture(of: work.item, model.backend)
         else { return }
-        if focus == nil, let point = stock.focus[work.id] { focus = point }
-        // Born under the grid: its tile's own picture till a larger comes.
-        if still, thumb == nil, full == nil, focus != nil, let image = stock.images[work.id] { thumb = image }
+        // Had anew (`anew`): what it has stays till the new one is here.
+        let again = thumb != nil || full != nil
+        if !again {
+            if focus == nil, let point = stock.focus[work.id] { focus = point }
+            // Born under the grid: its tile's own picture till a larger comes.
+            if still, focus != nil, let image = stock.images[work.id] { thumb = image }
+        }
         // In memory already (seen a moment ago): from the first frame.
         if let image = ImageLoader.inMemory(for: fullRequest, maxPixel: Self.fullPixel) {
-            await settle(image, key: ImageLoader.pictureKey(fullRequest))
-            full = image
+            let point = await cutPoint(of: image, key: ImageLoader.pictureKey(fullRequest), anew: again)
+            guard !Task.isCancelled else { return }
+            put(full: image, about: point)
             return
         }
-        if let image = ImageLoader.inMemory(for: thumbRequest, maxPixel: Self.thumbPixel) {
-            await settle(image, key: ImageLoader.pictureKey(thumbRequest))
-            thumb = image
-        } else if let image = try? await ImageLoader.shared.image(
-            for: thumbRequest, maxPixel: Self.thumbPixel, priority: current ? .high : .normal
-        ) {
-            await settle(image, key: ImageLoader.pictureKey(thumbRequest))
-            // In the grid it is to be there at once, under its tile; over
-            // its tile's own picture, too.
-            withAnimation(still || thumb != nil ? nil : .easeOut(duration: 0.3)) { thumb = image }
+        var small = ImageLoader.inMemory(for: thumbRequest, maxPixel: Self.thumbPixel)
+        let waited = small == nil
+        if small == nil {
+            small = try? await ImageLoader.shared.image(
+                for: thumbRequest, maxPixel: Self.thumbPixel, priority: current ? .high : .normal
+            )
+        }
+        guard !Task.isCancelled else { return }
+        if let image = small, UserDefaults.standard.bool(forKey: "galleryStale") { small = Self.narrowed(image) }
+        if let image = small {
+            let point = await cutPoint(of: image, key: ImageLoader.pictureKey(thumbRequest), anew: again)
+            guard !Task.isCancelled else { return }
+            if again {
+                put(thumb: image, about: point)
+            } else {
+                // In the grid it is to be there at once, under its tile; over
+                // its tile's own picture, too.
+                withAnimation(still || thumb != nil || !waited ? nil : .easeOut(duration: 0.3)) { thumb = image }
+            }
         }
         guard !Task.isCancelled,
               let image = try? await ImageLoader.shared.image(
@@ -1251,9 +1519,14 @@ private struct GalleryPage: View {
               ),
               !Task.isCancelled
         else { return }
-        await settle(image, key: ImageLoader.pictureKey(fullRequest))
-        guard thumb != nil else {
+        guard let under = thumb else {
+            _ = await cutPoint(of: image, key: ImageLoader.pictureKey(fullRequest), anew: false)
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.3)) { full = image }
+            return
+        }
+        guard Self.same(under.size, image.size) else {
+            await arrived(image, over: under, key: ImageLoader.pictureKey(fullRequest))
             return
         }
         // Over the thumbnail, gently.
@@ -1262,16 +1535,88 @@ private struct GalleryPage: View {
         withAnimation(.easeInOut(duration: 0.7)) { fullShown = 1 }
     }
 
-    /// The point the picture is cut around: found once, on whichever
-    /// picture comes first, and kept for the other.
-    private func settle(_ image: UIImage, key: String) async {
-        guard focus == nil else { return }
+    /// The probe's (`-galleryStale YES`): a thumbnail of another shape than
+    /// the full picture, as one kept from before its work was cut down.
+    private static func narrowed(_ image: UIImage) -> UIImage {
+        guard let whole = image.cgImage else { return image }
+        let part = CGRect(
+            x: CGFloat(whole.width) * 0.15, y: 0, width: CGFloat(whole.width) * 0.7, height: CGFloat(whole.height)
+        ).integral
+        guard let cut = whole.cropping(to: part) else { return image }
+        return UIImage(cgImage: cut, scale: image.scale, orientation: image.imageOrientation)
+    }
+
+    /// Two pictures of one shape: one cut of the work, to be laid out as
+    /// one. A thumbnail's sides are whole pixels, no more than that apart.
+    static func same(_ one: CGSize, _ other: CGSize) -> Bool {
+        guard one.height > 0, other.height > 0 else { return false }
+        let ratio = (one.width / one.height) / (other.width / other.height)
+        return abs(ratio - 1) < 0.02
+    }
+
+    /// The full picture came in another shape than the thumbnail under it:
+    /// the thumbnail was of the work before it was cut down (kept from
+    /// then, or the cut made between the two). Drawn to the full one's
+    /// shape, the work seemed to change its proportions and jump (Mateusz
+    /// 2026-11-25). Off the screen the thumbnail simply goes; looked at,
+    /// it fades under the new one, each as itself.
+    private func arrived(_ image: UIImage, over under: UIImage, key: String) async {
+        let point = await SubjectFocus.shared.point(in: image, key: key, subject: true)
+        guard !Task.isCancelled else { return }
+        GalleryLog.note("page \(work.id): its full picture is of another shape than its thumbnail")
+        stock.drop(work.id)
+        Glow.forget(work.id)
+        // The thumbnails kept of it are of the old picture, here and in
+        // the lists; Galeria asks how the work is now (`repictured`).
+        model.pictureSeen(work.id, copy: work.item.pictureVersion, changed: true)
+        guard current, let was = focus else {
+            put(full: image, about: point)
+            return
+        }
+        var quiet = Transaction(animation: nil)
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            stale = (under, was)
+            thumb = nil
+            focus = point
+            fullShown = 0
+            full = image
+            glow = nil
+        }
+        stock.focus[work.id] = point
+        withAnimation(.easeInOut(duration: 0.7)) { fullShown = 1 }
+        try? await Task.sleep(for: .milliseconds(750))
+        stale = nil
+    }
+
+    /// The page's pictures given way to others at once: the work's
+    /// picture as it is now.
+    private func put(thumb small: UIImage? = nil, full large: UIImage? = nil, about point: UnitPoint) {
+        var quiet = Transaction(animation: nil)
+        quiet.disablesAnimations = true
+        withTransaction(quiet) {
+            stale = nil
+            thumb = small
+            full = large
+            fullShown = 1
+            focus = point
+            glow = nil
+        }
+        if stock.focus[work.id] == nil { stock.focus[work.id] = point }
+    }
+
+    /// The point a picture is cut around: found once, on whichever picture
+    /// comes first, and kept for the other; its tile's, where that was
+    /// found meanwhile. `anew`: of the work's new picture, whatever the
+    /// page had.
+    private func cutPoint(of image: UIImage, key: String, anew: Bool) async -> UnitPoint {
+        if !anew, let focus { return focus }
         let found = await SubjectFocus.shared.point(in: image, key: key, subject: true)
-        guard focus == nil else { return }
-        // Its tile's, where that was found meanwhile.
+        if !anew, let focus { return focus }
         let point = stock.focus[work.id] ?? found
         stock.focus[work.id] = point
-        focus = point
+        if !anew { focus = point }
+        return point
     }
 
     private func drawBack(_ box: CGSize) async {
@@ -1335,6 +1680,30 @@ private struct GalleryPage: View {
 
     /// How far the work goes up for a finger drawn `up`.
     nonisolated static func lift(_ up: CGFloat) -> CGFloat { min(max(up, 0), 160) * 0.55 }
+}
+
+/// The sign under the whole work that a pull up brings its card: a short
+/// bar, which goes up a little now and then (`GalleryPage.nudge`) and is
+/// gone by the time the finger has drawn the card out.
+private struct CardSign: View {
+    let pull: GalleryPull
+    let up: Bool
+    let light: Bool
+
+    /// From the work's foot down to the bar.
+    static let below: CGFloat = 28
+    /// How far it goes up, and the card's head after it.
+    static let rise: CGFloat = 9
+    static let follow: CGFloat = 5
+
+    var body: some View {
+        Capsule()
+            .fill((light ? Color.black : Color.white).opacity(up ? (light ? 0.5 : 0.75) : (light ? 0.32 : 0.5)))
+            .frame(width: 40, height: 5)
+            .offset(y: up ? -Self.rise : 0)
+            .opacity(1 - min(max(pull.up / GalleryView.cardPull, 0), 1))
+            .accessibilityHidden(true)
+    }
 }
 
 private struct PulledUp: ViewModifier {
@@ -1408,6 +1777,12 @@ struct Glow: View {
     /// the card coming from Galeria lets fade.
     @MainActor static var kept: [String: UIImage] = [:]
     @MainActor static var wide: [String: UIImage] = [:]
+
+    /// The work has another picture: the glows of the old one go.
+    @MainActor static func forget(_ id: String) {
+        wide[id] = nil
+        kept[id] = nil
+    }
 
     @MainActor static func keep(wide far: UIImage?, near: UIImage?, for id: String) {
         if wide.count > 40 { wide.removeAll() }

@@ -140,9 +140,8 @@ struct ItemDetailView: View {
     @State private var arrivalStarted = false
     /// When the work set off for its place here.
     @State private var arrivedAt: ContinuousClock.Instant?
-    /// Going back to Galeria the way the card came (`leaveToGallery`).
+    /// Going back to Galeria (`leaveToGallery`).
     @State private var leavingCard = false
-    @State private var arrivalPlace = ArrivalPlace()
     /// The colours of the work's edges glowing out behind it, as behind the
     /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
     /// tło „łuny” za dziełem").
@@ -1345,7 +1344,6 @@ struct ItemDetailView: View {
     /// The work on its way from Galeria to its place here.
     private var arriving: ArrivingPicture {
         ArrivingPicture(pending: arrival, arrived: arrived, home: arrivalHome) { rect in
-            if rect.width > 60 { arrivalPlace.rect = rect }
             // Its place followed till the way starts: the first measure can
             // come before the box has its width (at the left, small), and a
             // way from there ran on a slant (Mateusz 2026-11-24 10:48:
@@ -1391,12 +1389,10 @@ struct ItemDetailView: View {
             // head: the title never goes while the card comes. Not by a
             // place the card's first layout passes through (above the
             // screen, for one).
-            placed = !leavingCard && home.minY >= 0 && rise > -1
+            placed = home.minY >= 0 && rise > -1
         }
         return RestOfCard(
-            shown: arrived, placed: placed,
-            animation: leavingCard ? CardArrival.restLeaving : arrival.map(CardArrival.rest) ?? .default,
-            rise: rise
+            shown: arrived, placed: placed, animation: arrival.map(CardArrival.rest) ?? .default, rise: rise
         )
     }
 
@@ -1414,20 +1410,16 @@ struct ItemDetailView: View {
         }
     }
 
-    /// Back to Galeria the way the card came, turned round (Mateusz
-    /// 2026-11-24 14:06: "Powrót z karty dzieła do „całego dzieła”
-    /// odwrócona animacją wejścia"): the rest of the card goes, the work
-    /// moves back to where it lay there, on Galeria's ground, and Galeria
-    /// is there again under it with no slide.
+    /// Back to Galeria: the card, as it is, melts into the work cut to the
+    /// screen there (`GalleryView.open`'s `back`), with no slide. Not the
+    /// way it came turned round: the whole work is there only under a
+    /// finger now, and the work's trip back to where it was held, to give
+    /// way to the cut one at once, was a jump (Mateusz 2026-11-25: "Powrót
+    /// z karty dzieła do pełnego ekranu źle wygląda - jest jakiś skok").
     private func leaveToGallery() {
-        guard let arrival, let back = arrival.back, !leavingCard else { return }
-        if let rect = arrivalPlace.rect { arrivalHome = rect }
+        guard let back = arrival?.back, !leavingCard else { return }
         leavingCard = true
-        withAnimation(arrival.from == nil ? CardArrival.sink : CardArrival.move) { arrived = false }
-        Task { @MainActor in
-            try? await Task.sleep(for: CardArrival.leaving(arrival))
-            back()
-        }
+        back()
     }
 
     /// The glow behind the work: Galeria's own when it made one, else made
@@ -2152,7 +2144,8 @@ enum FramePositionProbe {
 }
 
 /// The card's own way back to Galeria (`leaveToGallery`): a back button
-/// of its own and the swipe from the left edge, in place of the pop's.
+/// of its own and the swipe from the left edge, in place of the pop's
+/// slide.
 private struct GalleryWayBack: ViewModifier {
     let on: Bool
     let leave: () -> Void

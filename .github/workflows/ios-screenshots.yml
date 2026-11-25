@@ -212,8 +212,7 @@ jobs:
             capture playlists 12 "playlists-$appearance"
             # "Kolekcja prywatna" moved to second place among the cards.
             capture playlists-own 12 "playlists-own-$appearance"
-            capture connection 16 "crop-check-$appearance" -settingsPage diagnostics -scroll crop -cropCheck YES -demoFramed YES
-            capture connection 12 "diagnostics-crop-$appearance" -settingsPage diagnostics -scroll crop
+            capture connection 16 "crop-check-$appearance" -cropCheck YES -demoFramed YES
             capture suggestions 14 "suggestions-$appearance"
             capture playlist 12 "playlist-$appearance"
             capture playlist-search 14 "playlist-search-$appearance" -typed morze
@@ -361,7 +360,7 @@ jobs:
           xcodebuild build-for-testing -project Frame.xcodeproj -scheme FramePull \
             -destination "id=$UDID" -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO | tail -5
-          for part in testTheWaysBetweenTheTwoViews testTheSweepByItself; do
+          for part in testTheWaysBetweenTheTwoViews testTheSweepByItself testAThumbnailOfAnotherShape; do
             xcrun simctl io "$UDID" recordVideo --codec=h264 --force "shots/gallery-probe-$part.mov" &
             film=$!
             sleep 2

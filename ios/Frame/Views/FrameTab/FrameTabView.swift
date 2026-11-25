@@ -68,7 +68,8 @@ struct FrameTabView: View {
                 }
             }
             .paperPage()
-            .navigationTitle(embedded ? "Ustawienia ramki" : "Ramka")
+            // Pushed from "Ramka": no title over it (Mateusz 2026-11-25).
+            .navigationTitle(embedded ? "" : "Ramka")
             .serverLinkBadge()
             .toolbar {
                 // No gear (or a member's person) here: Konfiguracja and
