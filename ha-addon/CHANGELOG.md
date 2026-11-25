@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.377
+
+- Galeria: wejście w widok całego dzieła i wyjście z niego to teraz jedno
+  płynne oddalenie i przybliżenie tego samego obrazu, bez przenikania
+  i bez skoku. Przytrzymane dzieło oddala się z kadru, aż widać je całe na
+  łunie; puszczone, przybliża się z powrotem do kadru na pełnym ekranie.
+  Podpis i początek karty pojawiają się dopiero, gdy dzieło jest na miejscu.
+
 ## 1.145.376
 
 - Galeria: powrót po puszczeniu całego dzieła jest spokojniejszy. Zamiast
