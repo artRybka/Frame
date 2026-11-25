@@ -187,13 +187,9 @@ struct GalleryView: View {
             prefetch(works)
             // With works kept from before, at once: no black screen while
             // the server is asked for more.
-            if works.count > Self.above { begin() }
-            if works.count < Self.batch {
-                await more()
-                // The pages are there first, then scrolled.
-                if !begun { try? await Task.sleep(for: .milliseconds(40)) }
-            }
-            begin()
+            if works.count > Self.above { await begin() }
+            if works.count < Self.batch { await more() }
+            await begin()
             await staged()
         }
         .task {
@@ -260,6 +256,7 @@ struct GalleryView: View {
         .scrollPosition(id: $position)
         .scrollDisabled(pulling || grid)
         .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in scrolled(y) }
+        .onScrollGeometryChange(for: CGFloat.self) { $0.contentSize.height } action: { _, tall in flow.tall = tall }
         .onScrollGeometryChange(for: [CGFloat].self) {
             [$0.contentInsets.top, $0.contentInsets.bottom, $0.containerSize.height]
         } action: { _, now in
@@ -1027,16 +1024,45 @@ struct GalleryView: View {
     /// looked at above it; of a first batch, two are put above. A list
     /// kept by an app from before this (no count with it) is all works to
     /// see: two of them go above as well.
-    private func begin() {
+    ///
+    /// The pages are laid out first, and the work is seen to lie on the
+    /// screen before Galeria shows: a scroll asked for while the pages
+    /// were still coming was lost (the probe of 2026-11-25 began on the
+    /// first work, with no caption and another's heart: the pages lay at
+    /// the first, Galeria held the third).
+    private func begin() async {
         guard !begun else { return }
         defer { begun = true }
         guard works.count > 1 else { return }
         let kept = UserDefaults.standard.object(forKey: Self.rememberedSeenKey) as? Int
         let seen = LaunchRoute.screen.isEmpty ? kept ?? Self.above : Self.above
         let at = min(max(seen, 0), Self.above, works.count - 1)
+        let id = works[at].id
         run.reset(at: at)
-        withTransaction(Self.quiet) { position = works[at].id }
-        GalleryLog.note("begins at \(at) of \(works.count)")
+        guard at > 0 else {
+            withTransaction(Self.quiet) { position = id }
+            GalleryLog.note("begins at 0 of \(works.count)")
+            return
+        }
+        for _ in 0 ..< 60 where !(area.height > 0 && flow.tall >= CGFloat(at + 1) * area.height - 1) {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        withTransaction(Self.quiet) { position = id }
+        var asked = 1
+        for _ in 0 ..< 20 {
+            try? await Task.sleep(for: .milliseconds(30))
+            guard position == id, !lies(at: id) else { break }
+            // Asked again, by way of the work before: the same id set
+            // twice is no change, and no scroll.
+            withTransaction(Self.quiet) { position = works[at - 1].id }
+            try? await Task.sleep(for: .milliseconds(16))
+            withTransaction(Self.quiet) { position = id }
+            asked += 1
+        }
+        GalleryLog.note(
+            "begins at \(at) of \(works.count), asked \(asked == 1 ? "once" : "\(asked) times")"
+                + (lies(at: id) ? "" : ", not there")
+        )
     }
 
     private func more(count: Int = GalleryView.batch) async {
@@ -1936,7 +1962,7 @@ struct Glow: View {
 /// Nine small squares of the heart's clear glass: the grid's button on the
 /// page's other corner.
 private struct GridMark: View {
-    private static let size: CGFloat = 26
+    private static let size: CGFloat = 28
 
     var body: some View {
         Color.clear

@@ -175,6 +175,9 @@ struct WindowZoom: ViewModifier {
     private var last: (time: CFTimeInterval, y: CGFloat)?
     /// How far the pages are scrolled now.
     private(set) var y: CGFloat = 0
+    /// How tall the pages are, all of them: more than nothing once they
+    /// are laid out.
+    var tall: CGFloat = 0
 
     func note(_ y: CGFloat) {
         let now = CACurrentMediaTime()
