@@ -351,3 +351,39 @@ def test_a_museum_named_and_found_on_wikidata_is_one_row(service, monkeypatch) -
         # Learnt: the works count for it, and the search asks for it.
         assert library.get("wmc:5").held_at == PRADO
         assert [r["key"] for r in client.get("/api/places").json()][:1] == [PRADO]
+
+
+def test_a_slow_wikidata_does_not_hold_the_list(service, monkeypatch) -> None:
+    """Wikidata answered in 3-13 s on an evening and "Muzeum" waited so at
+    every letter (2026-11-25): it waits a moment at most, the answer that
+    comes later is there for the next question."""
+    import threading
+    import time
+
+    from frame_server.museum_places import PlaceHit
+    from frame_server.web import create_app, discover_api
+
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        go = threading.Event()
+        asked: list[str] = []
+
+        def slow(text: str, limit: int = 7) -> list[PlaceHit]:
+            asked.append(text)
+            go.wait(5)
+            return [PlaceHit(key=PRADO, name="Muzeum Prado")]
+
+        monkeypatch.setattr(app.state.service.museum_places, "hits", slow)
+        monkeypatch.setattr(discover_api, "PLACE_SEARCH_WAIT", 0.1)
+        started = time.monotonic()
+        first = client.get("/api/places", params={"q": "prado"}).json()
+        assert time.monotonic() - started < 2
+        assert PRADO not in [r["key"] for r in first]
+        go.set()
+        for _ in range(50):
+            rows = client.get("/api/places", params={"q": "prado"}).json()
+            if PRADO in [r["key"] for r in rows]:
+                break
+            time.sleep(0.05)
+        assert PRADO in [r["key"] for r in rows]
+        assert asked == ["prado"]  # asked once, kept

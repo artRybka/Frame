@@ -245,7 +245,16 @@ class SearchWords:
     def _from_library(self, key: str) -> str:
         """The English of ``key`` from the library's own words: the whole
         text, or every word of it; "" when something is not known."""
-        words = self._words()
+        with self._lock:
+            gathered = self._local_at >= 0
+            words = self._local
+        if gathered:
+            # Gathered again behind (some seconds on the NAS, under the
+            # lock): a translation or the phone's words never wait for it
+            # (POST /api/search/words 4-5 s, 2026-11-25).
+            self._words_later()
+        else:
+            words = self._words()
         if key in words:
             return words[key]
         parts = key.split()
