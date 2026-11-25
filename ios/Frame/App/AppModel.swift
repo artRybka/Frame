@@ -967,11 +967,32 @@ final class AppModel {
     static let ownWorksCard = -1
 
     /// The cards of Playlisty in order: the playlists, with "Kolekcja
-    /// prywatna" where it was put once there is a work of his own.
+    /// prywatna" where it was put once there is a work of his own, and
+    /// without "Historia przesłanych" while it is empty (Mateusz 2026-11-25).
     var cards: [Int] {
         var ids = playlists.map(\.id)
         if !ownWorks.isEmpty { ids.insert(Self.ownWorksCard, at: min(ownWorksAt ?? ids.count, ids.count)) }
-        return ids
+        let hidden = Set(playlists.filter(\.isHiddenCard).map(\.id))
+        return hidden.isEmpty ? ids : ids.filter { !hidden.contains($0) }
+    }
+
+    /// `ids` as moved among the cards shown, with the cards not shown back
+    /// where they were (after the card they followed), so arranging the
+    /// shown ones never drops their place.
+    private func withUnshownCards(_ ids: [Int]) -> [Int] {
+        let unshown = playlists.filter(\.isHiddenCard).map(\.id)
+        guard !unshown.isEmpty else { return ids }
+        var full = ids
+        let before = playlists.map(\.id)
+        for id in unshown where !full.contains(id) {
+            guard let at = before.firstIndex(of: id) else { continue }
+            if let prev = before[..<at].last(where: { full.contains($0) }), let i = full.firstIndex(of: prev) {
+                full.insert(id, at: i + 1)
+            } else {
+                full.insert(id, at: 0)
+            }
+        }
+        return full
     }
 
     /// The cards shown in this order at once (while one is moved).
@@ -993,7 +1014,8 @@ final class AppModel {
 
     /// The cards in Playlisty in this order: at once here, then kept by the
     /// server (each person's own); back as the server has them if it fails.
-    func arrangeCards(_ ids: [Int]) async {
+    func arrangeCards(_ shown: [Int]) async {
+        let ids = withUnshownCards(shown)
         showCards(ids)
         do {
             setPlaylists(try await backend.arrangePlaylists(ids: ids))
