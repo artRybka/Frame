@@ -7,6 +7,8 @@
   pierwsza.
 - Miejsce na serwerze otwiera się od razu: dokładny pomiar dysku raz
   w nocy, w dzień przeliczany z liczników biblioteki.
+- Ustawienia ramki bez nagłówka; „Sprawdź kadry” i „Ucz kadrowania” na
+  górze Konfiguracji pod „Do sprawdzenia”, bez „Kadruj partię” w Diagnostyce.
 
 ## 1.145.368
 

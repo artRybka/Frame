@@ -52,7 +52,7 @@ enum LaunchRoute {
     /// "Podobne do" by "subject" or "style" (`-screen search-like`; none:
     /// both together).
     static let likeBy = UserDefaults.standard.string(forKey: "likeBy")
-    /// `-cropCheck YES`: Diagnostyka opens "Sprawdź kadry" by itself.
+    /// `-cropCheck YES`: Konfiguracja opens "Sprawdź kadry" by itself.
     static let cropCheck = UserDefaults.standard.bool(forKey: "cropCheck")
     /// "Barwy" on beside them (`-likeColours YES`).
     static let likeColours = UserDefaults.standard.bool(forKey: "likeColours")
