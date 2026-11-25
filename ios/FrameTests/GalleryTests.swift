@@ -53,35 +53,70 @@ final class GalleryTests: XCTestCase {
         XCTAssertEqual(half.midY, fixed + (page.midY - fixed) * halfScale, accuracy: 0.01)
     }
 
+    /// How many works swiped past bring the grid, by how quickly (Mateusz
+    /// 2026-11-25 08:43: six within 1.5 s each, twelve within 3 s, three
+    /// within 0.8 s, "płynne przejście" between them).
     @MainActor
     func testQuickRunBringsTheGrid() {
-        let run = SwipeRun()
         let height: CGFloat = 874
-        var now = Date(timeIntervalSince1970: 1000)
-        var reached: Int?
-        // Eight works, each most of the way in within a second.
-        for page in 1 ... 8 {
-            now += 0.5
-            // Half in: not reached yet.
-            XCTAssertNil(run.scrolled(to: (CGFloat(page) - 0.5) * height, height: height, at: now))
-            reached = run.scrolled(to: (CGFloat(page) - 0.3) * height, height: height, at: now)
-            if page < 8 { XCTAssertNil(reached) }
+        /// The page at which a run of swipes `apart` seconds apart brings
+        /// the grid, nil when none of `pages` does.
+        func comes(apart: TimeInterval, pages: Int = 20) -> Int? {
+            let run = SwipeRun()
+            var now = Date(timeIntervalSince1970: 1000)
+            for page in 1 ... pages {
+                now += apart
+                // Half in: not reached yet.
+                XCTAssertNil(run.scrolled(to: (CGFloat(page) - 0.5) * height, height: height, at: now))
+                if let reached = run.scrolled(to: (CGFloat(page) - 0.3) * height, height: height, at: now) {
+                    return reached
+                }
+            }
+            return nil
         }
-        XCTAssertEqual(reached, 8)
+        // His three marks.
+        XCTAssertEqual(comes(apart: 0.7), 3)
+        XCTAssertEqual(comes(apart: 1.4), 6)
+        XCTAssertEqual(comes(apart: 2.9), 12)
+        // Between them, as many works as lie between.
+        XCTAssertEqual(comes(apart: 1.0), 4)
+        XCTAssertEqual(comes(apart: 1.2), 5)
+        XCTAssertEqual(comes(apart: 1.9), 8)
+        XCTAssertEqual(comes(apart: 2.4), 10)
+        // Looked at for three seconds and more: never.
+        XCTAssertNil(comes(apart: 3.0))
+        XCTAssertNil(comes(apart: 5))
+    }
+
+    func testTheSecondsBetweenTheMarks() {
+        XCTAssertNil(SwipeSpeed.within(2))
+        XCTAssertEqual(SwipeSpeed.within(3) ?? 0, 0.8, accuracy: 0.0001)
+        XCTAssertEqual(SwipeSpeed.within(6) ?? 0, 1.5, accuracy: 0.0001)
+        XCTAssertEqual(SwipeSpeed.within(9) ?? 0, 2.25, accuracy: 0.0001)
+        XCTAssertEqual(SwipeSpeed.within(12) ?? 0, 3, accuracy: 0.0001)
+        XCTAssertEqual(SwipeSpeed.within(40) ?? 0, 3, accuracy: 0.0001)
+        // Never less for more works: a longer run may be a slower one.
+        for works in 3 ..< 12 {
+            XCTAssertLessThan(SwipeSpeed.within(works) ?? 0, SwipeSpeed.within(works + 1) ?? 0)
+        }
     }
 
     @MainActor
-    func testSlowSwipesAndTheWayBackBringNoGrid() {
-        let run = SwipeRun()
+    func testAPauseAndTheWayBackStartTheRunAgain() {
         let height: CGFloat = 874
         var now = Date(timeIntervalSince1970: 1000)
-        for page in 1 ... 12 {
-            now += 2
-            XCTAssertNil(run.scrolled(to: CGFloat(page) * height, height: height, at: now))
+        // Two quick works, a long look, two quick ones again: no three in
+        // a row, and not enough slower ones either.
+        let run = SwipeRun()
+        for (page, apart) in [(1, 0.5), (2, 0.5), (3, 6), (4, 0.5)] {
+            now += apart
+            XCTAssertNil(run.scrolled(to: CGFloat(page) * height, height: height, at: now), "page \(page)")
         }
-        // Quick ones, but one back among them: the run starts again.
+        now += 0.5
+        XCTAssertEqual(run.scrolled(to: 5 * height, height: height, at: now), 5)
+        // Quick ones, but every third a step back: the run starts again.
         let other = SwipeRun()
-        for page in [1, 2, 3, 4, 5, 4, 5, 6, 7, 8, 9, 10] {
+        for page in [1, 2, 1, 2, 3, 2, 3, 4, 3, 4] {
             now += 0.4
             XCTAssertNil(other.scrolled(to: CGFloat(page) * height, height: height, at: now), "page \(page)")
         }
