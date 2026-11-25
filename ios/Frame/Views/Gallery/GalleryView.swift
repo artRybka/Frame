@@ -207,11 +207,11 @@ struct GalleryView: View {
         }
         .onChange(of: path) { _, now in
             // Back from the card: the work held there is cut to the screen
-            // again.
+            // again, as when a finger lets it go.
             guard now.isEmpty, peek != nil else { return }
             engaged = false
             pulling = false
-            withAnimation(GalleryPage.toWhole) {
+            withAnimation(GalleryPage.fromWhole) {
                 peek = nil
                 pull.up = 0
             }
@@ -931,7 +931,25 @@ struct GalleryView: View {
         // it for a moment, and all of that gave way to the cut work).
         CardArrival.pending[work.id] = CardArrival.Pending(
             from: from, ground: GalleryPage.ground(of: work, light: scheme == .light),
-            back: {
+            rest: GalleryPage.spots[work.id],
+            back: { whole in
+                if whole {
+                    // The card drawn down (`CardLeave`) is the whole work
+                    // as it rests here by now, on the same ground and
+                    // glow: the card is gone from over it with nothing
+                    // moving but the bars, and the work grows to the
+                    // screen as when a finger lets it go (`path`'s change
+                    // above).
+                    GalleryLog.note("back from the card, drawn down: the whole work, and closer from there")
+                    Self.melt(bars: true)
+                    withTransaction(Self.quiet) {
+                        engaged = false
+                        pulling = false
+                        pull.up = 0
+                        if !path.isEmpty { path.removeLast() }
+                    }
+                    return
+                }
                 GalleryLog.note("back from the card: it melts into the work")
                 Self.melt()
                 withTransaction(Self.quiet) {
@@ -948,17 +966,34 @@ struct GalleryView: View {
 
     /// What is on the screen now fades off what comes under it with the
     /// next change: the screen as it is, laid over the window and let go.
-    private static func melt(seconds: Double = 0.32) {
+    /// `bars`: only its top and its foot, where the card's bars are (what
+    /// lies between them is the same under it, and is to be seen moving at
+    /// once).
+    private static func melt(seconds: Double = 0.32, bars: Bool = false) {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        guard let window = scenes.first?.keyWindow ?? scenes.first?.windows.first,
-              let was = window.snapshotView(afterScreenUpdates: false)
-        else { return }
-        was.isUserInteractionEnabled = false
-        window.addSubview(was)
+        guard let window = scenes.first?.keyWindow ?? scenes.first?.windows.first else { return }
+        var pieces: [UIView] = []
+        if bars {
+            let all = window.bounds, insets = window.safeAreaInsets
+            let top = CGRect(x: 0, y: 0, width: all.width, height: insets.top + 56)
+            let foot = CGRect(x: 0, y: all.height - insets.bottom - 70, width: all.width, height: insets.bottom + 70)
+            for part in [top, foot] {
+                guard let was = window.resizableSnapshotView(from: part, afterScreenUpdates: false, withCapInsets: .zero)
+                else { continue }
+                was.frame = part
+                pieces.append(was)
+            }
+        } else if let was = window.snapshotView(afterScreenUpdates: false) {
+            pieces.append(was)
+        }
+        for was in pieces {
+            was.isUserInteractionEnabled = false
+            window.addSubview(was)
+        }
         UIView.animate(withDuration: seconds, delay: 0.03, options: [.curveEaseInOut]) {
-            was.alpha = 0
+            for was in pieces { was.alpha = 0 }
         } completion: { _ in
-            was.removeFromSuperview()
+            for was in pieces { was.removeFromSuperview() }
         }
     }
 
@@ -1407,7 +1442,14 @@ private struct GalleryPage: View {
                 if let thumb { picture(thumb, size: layout.size, offset: layout.offset, corner: corner) }
                 if let full { picture(full, size: layout.size, offset: layout.offset, corner: corner).opacity(fullShown) }
             }
-            .modifier(Lens(zoom: zoom, pan: pan, sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
+            // Two effects, never one: what a finger does (`Lens`) has
+            // numbers of its own to animate, and the slow draw-back under
+            // it goes on as it went (`Nearer`).
+            .modifier(
+                Nearer(zoom: zoom, pan: pan, fade: way, anchor: layout.anchor, traced: pressed && !whole)
+                    .ignoredByLayout()
+            )
+            .modifier(Lens(sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
             if current {
                 // Gone before the work has drawn back from under it (its
                 // shade lay on the glow for two frames of the probe's
@@ -1446,7 +1488,7 @@ private struct GalleryPage: View {
             .offset(x: layout.offset.width, y: layout.offset.height + 3 / smaller)
             .modifier(
                 Lens(
-                    zoom: 1, pan: 0, sink: sunk ? Self.pressedIn : 1, way: whole ? 1 : 0,
+                    sink: sunk ? Self.pressedIn : 1, way: whole ? 1 : 0,
                     layout: layout, place: place, traced: false
                 ).ignoredByLayout()
             )
@@ -1836,10 +1878,9 @@ private struct GalleryPage: View {
 }
 
 /// The work's one picture on its way between the two ways it is seen:
-/// cut to the screen (closer about the point it is cut around, drifted,
-/// pressed in about the screen's middle) and the whole of it where it
-/// lies when held; the draw-back and the drift go on under the way out
-/// and are left behind by its end.
+/// cut to the screen (pressed in about the screen's middle) and the whole
+/// of it where it lies when held. The draw-back and the drift it is shown
+/// with are under this one (`Nearer`), and are left behind by the way's end.
 ///
 /// It grows smaller by the same share with every step of the way, about
 /// the screen's middle, and what is left of the way (to the side, when it
@@ -1848,11 +1889,8 @@ private struct GalleryPage: View {
 /// cut far to one side was set straight in the first tenth of a second and
 /// only then seen to draw back (Mateusz 2026-11-25 16:10: "„naprostowanie”
 /// przy wejściu w całe dzieło odbywa się na początku animacji i nie
-/// wygląda to dobrze"): half of the way to the side was gone while the eye
-/// saw a third of the drawing back.
+/// wygląda to dobrze").
 private struct Lens: GeometryEffect {
-    var zoom: CGFloat
-    var pan: CGFloat
     /// How small the page pressed is of itself.
     var sink: CGFloat
     /// From the work cut to the screen (0) to the whole of it (1).
@@ -1867,13 +1905,11 @@ private struct Lens: GeometryEffect {
         max(place.size.width / max(layout.size.width, 1), 0.01)
     }
 
-    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
-        get { AnimatablePair(AnimatablePair(zoom, pan), AnimatablePair(sink, way)) }
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(sink, way) }
         set {
-            zoom = newValue.first.first
-            pan = newValue.first.second
-            sink = newValue.second.first
-            way = newValue.second.second
+            sink = newValue.first
+            way = newValue.second
         }
     }
 
@@ -1881,10 +1917,9 @@ private struct Lens: GeometryEffect {
     /// drawn `layout.offset` off it.
     func effectValue(size: CGSize) -> ProjectionTransform {
         let middle = CGPoint(x: size.width / 2, y: size.height / 2)
-        let anchor = CGPoint(x: layout.anchor.x * size.width, y: layout.anchor.y * size.height)
-        let cutScale = max(sink * zoom, 0.01)
-        let cutX = middle.x + sink * (anchor.x * (1 - zoom) + pan - middle.x)
-        let cutY = middle.y + sink * (anchor.y * (1 - zoom) - middle.y)
+        let cutScale = max(sink, 0.01)
+        let cutX = middle.x * (1 - sink)
+        let cutY = middle.y * (1 - sink)
         let wholeScale = Self.smaller(layout, place)
         let wholeX = middle.x + place.offset.width - place.size.width / 2 - wholeScale * layout.offset.width
         let wholeY = middle.y + place.offset.height - place.size.height / 2 - wholeScale * layout.offset.height
@@ -1903,6 +1938,54 @@ private struct Lens: GeometryEffect {
             }
         }
         return ProjectionTransform(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: x, ty: y))
+    }
+}
+
+/// The work shown a little closer, about the point it is cut around, and
+/// drifted to one side: its slow draw-back, under `Lens`, and none of it
+/// left once the whole work is seen (`fade`).
+///
+/// An effect of its own, with numbers of its own. As part of `Lens`, the
+/// twenty seconds of it were finished in the third of a second a finger
+/// takes to press the page in: the press animated all of that effect's
+/// numbers to where they were going, these among them, and the work went
+/// some twenty points to the side and a twentieth smaller before it set
+/// off for the whole of it (Mateusz 2026-11-25 18:08: "Praktycznie przy
+/// każdym dziele przy przytrzymaniu palca najpierw szuka środka a potem
+/// zmniejsza"; measured on his film, frame by frame). A press changes
+/// nothing here, and the draw-back goes on under it as it went.
+private struct Nearer: GeometryEffect {
+    var zoom: CGFloat
+    var pan: CGFloat
+    /// 0 all of it … 1 none (the whole work).
+    var fade: CGFloat
+    let anchor: UnitPoint
+    /// The probe's: under a finger, every frame of it.
+    var traced = false
+
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(zoom, pan), fade) }
+        set {
+            zoom = newValue.first.first
+            pan = newValue.first.second
+            fade = newValue.second
+        }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let left = 1 - min(max(fade, 0), 1)
+        let scale = max(1 + (zoom - 1) * left, 0.01)
+        let across = pan * left
+        if traced, Thread.isMainThread {
+            let closer = String(format: "%.4f", scale), aside = String(format: "%.1f", across)
+            MainActor.assumeIsolated {
+                GalleryLog.trace("under the finger: \(closer) closer, \(aside) pt aside")
+            }
+        }
+        return ProjectionTransform(CGAffineTransform(
+            a: scale, b: 0, c: 0, d: scale,
+            tx: anchor.x * size.width * (1 - scale) + across, ty: anchor.y * size.height * (1 - scale)
+        ))
     }
 }
 

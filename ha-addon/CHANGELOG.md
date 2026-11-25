@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.379
+
+- Galeria: przytrzymane dzieło nie przesuwa się już w bok, zanim zacznie się
+  oddalać. Powolne oddalanie i dryf kadru (20 s) kończyły się w pośpiechu
+  w ciągu 0,3 s wciśnięcia: obraz uciekał o ok. 20 pt w bok i malał o kilka
+  procent, a dopiero potem ruszał do widoku całego dzieła. Teraz wciśnięcie
+  nie rusza kadru.
+- Karta dzieła otwarta z całego dzieła wraca tą samą drogą: pociągnięta
+  w dół od góry dojeżdża pod palcem do widoku całego dzieła (telefon stuka,
+  gdy tam jest), a po puszczeniu dzieło przybliża się do kadru na pełnym
+  ekranie. Puszczona wcześniej, przed połową drogi, wraca na miejsce.
+
 ## 1.145.378
 
 - Galeria: gdy kadr na pełnym ekranie pokazuje bok dzieła, wejście w całe
