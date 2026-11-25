@@ -193,6 +193,9 @@ struct HoldPull: UIGestureRecognizerRepresentable {
     var on = true
     /// A hold can begin now: asked before the first tap and before the hold.
     let ready: () -> Bool
+    /// The finger lies and the taps have begun (true), till it lifts or
+    /// moves off (false): what it lies on is seen to sink in meanwhile.
+    var pressing: (Bool) -> Void = { _ in }
     let began: () -> Void
     /// How far up from where it was held the finger is now (points).
     let moved: (CGFloat) -> Void
@@ -202,6 +205,8 @@ struct HoldPull: UIGestureRecognizerRepresentable {
     static let touch = 0.14
     static let taps: [Double] = [0, 0.09, 0.075, 0.06, 0.05, 0.04]
     static let last = 0.03
+    /// Seconds from the first tap to the hold.
+    static let press = taps.reduce(0, +) + last
     /// How far a finger may stray before the hold and still be holding.
     static let stray: CGFloat = 10
 
@@ -227,8 +232,12 @@ struct HoldPull: UIGestureRecognizerRepresentable {
         switch recognizer.state {
         case .began:
             coordinator.stop()
+            if coordinator.pressing { pressing(false) }
+            coordinator.pressing = false
             coordinator.origin = at
             guard ready() else { return }
+            coordinator.pressing = true
+            pressing(true)
             coordinator.soft.prepare()
             coordinator.hard.prepare()
             coordinator.towards = Task { @MainActor in
@@ -252,11 +261,15 @@ struct HoldPull: UIGestureRecognizerRepresentable {
             } else if hypot(at.x - coordinator.origin.x, at.y - coordinator.origin.y) > Self.stray {
                 // It moved before the hold: a scroll, and no more taps.
                 coordinator.stop()
+                if coordinator.pressing { pressing(false) }
+                coordinator.pressing = false
             }
         case .ended, .cancelled, .failed:
             let held = coordinator.held
             coordinator.stop()
             if held { ended() }
+            if coordinator.pressing { pressing(false) }
+            coordinator.pressing = false
         default:
             break
         }
@@ -267,6 +280,8 @@ struct HoldPull: UIGestureRecognizerRepresentable {
         var start: CGFloat = 0
         var origin = CGPoint.zero
         var held = false
+        /// The finger lies, said so (`HoldPull.pressing`).
+        var pressing = false
         /// The taps on the way to the hold.
         var towards: Task<Void, Never>?
         let soft = UIImpactFeedbackGenerator(style: .light)

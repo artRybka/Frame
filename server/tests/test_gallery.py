@@ -102,3 +102,28 @@ def test_no_more_than_two_of_one_artist_while_there_are_others(tmp_path: Path) -
         for item in got:
             counts[item.artist] = counts.get(item.artist, 0) + 1
         assert max(counts.values()) <= gallery.SAME_ARTIST
+
+
+def test_a_hearted_work_comes_only_as_a_heart(tmp_path: Path, monkeypatch) -> None:
+    """Works he likes that look like other works he likes are not drawn as
+    their look-alikes, nor as their artist's other works or good ones
+    (Mateusz 2026-11-25)."""
+    app = _app(tmp_path)
+    svc = app.state.service
+    with TestClient(app):
+        liked = _works(svc, "Ala Malarka", 4)
+        others = _works(svc, "Ala Malarka", 2)
+        for name in ("Ola Rytowniczka", "Ela Inna", "Iza Rzeźbiarka", "Ewa Graficzka"):
+            others += _works(svc, name, 3)
+        for i in liked:
+            svc.library.set_favorite("owner", i, True)
+        # Each hearted work's look-alikes: the other hearted ones first.
+        near = {i: [j for j in liked if j != i] + others for i in liked}
+        # No heart drawn as a heart: whatever comes is from the other pools.
+        monkeypatch.setattr(gallery, "WEIGHTS", {**gallery.WEIGHTS, "heart": 0.0})
+        got = gallery.next_works(
+            svc.library, "owner", 6, lambda i, n: near.get(i, []), day=DAY, rng=random.Random(3)
+        )
+        ids = [i.id for i in got]
+        assert ids and not set(ids) & set(liked)
+        assert set(ids) <= set(others)

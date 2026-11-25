@@ -5,7 +5,8 @@ podobieństwem do polubionych").
 Each person's own: their hearts (a guest's too, for their own Galeria), the
 works that look like the hearted ones (``Looks.neighbours``), the hearted
 artists' other works, and a few of the catalogue's good works for
-something new. A person with no hearts yet starts from their Propozycje
+something new; a hearted work comes as a heart only, never as one of the
+other three. A person with no hearts yet starts from their Propozycje
 dnia and what the household likes. The works given out lately are
 remembered for each person, so the next batch brings others.
 """
@@ -119,6 +120,13 @@ def next_works(
         for seed in rng.sample(household, min(SEEDS, len(household))):
             pools["near"].extend(neighbours(seed, NEAR))
     pools["good"] = _good_works(library, user, day)
+    # A hearted work comes from the hearts' own pool only: what is drawn as
+    # like one, as its artist's or as a good work is one he has not given a
+    # heart yet (Mateusz 2026-11-25: other sunflowers he likes too came as
+    # like the sunflowers he likes; "Wyłącz").
+    liked = set(hearts)
+    for name in ("near", "artist", "good"):
+        pools[name] = [i for i in pools[name] if i not in liked]
 
     def fits(item_id: str, own: bool) -> Item | None:
         if item_id in seen or item_id in shut:
@@ -172,7 +180,8 @@ def next_works(
         # Everything was given out lately: start the round again.
         seen.clear()
         seen_list = []
-        pools["good"] = [i for i in _good_works(library, user, day) if i not in taken]
+        shown = taken | liked
+        pools["good"] = [i for i in _good_works(library, user, day) if i not in shown]
         pools["heart"] = [i for i in hearts if i not in taken]
         rng.shuffle(pools["good"])
         while len(out) < count and draw(relax=True):
