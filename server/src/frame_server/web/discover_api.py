@@ -1484,7 +1484,11 @@ async def places(
     words = fold(q)
     if words:
         hits = [h for h in hits if words in fold(f"{h.name} {h.city}")]
-    if len(words) >= PLACE_SEARCH_LETTERS:
+    # Wikidata only for what the list has not (Mateusz 2026-11-25: "Po co
+    # pytamy wikidate o muzea zamiast znaleźć wpisywane miasto w ramach
+    # istniejącej listy muzeów?"): a museum with no work here yet, or one
+    # the works only name (its Wikidata key learnt, :func:`_one_each`).
+    if len(words) >= PLACE_SEARCH_LETTERS and not any(QID.match(h.key) for h in hits):
         extra = await _wikidata_places(svc, q)
         have = {h.key for h in hits}
         hits += [h for h in extra if h.key not in have]

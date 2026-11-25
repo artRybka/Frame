@@ -387,3 +387,24 @@ def test_a_slow_wikidata_does_not_hold_the_list(service, monkeypatch) -> None:
             time.sleep(0.05)
         assert PRADO in [r["key"] for r in rows]
         assert asked == ["prado"]  # asked once, kept
+
+
+def test_a_town_on_the_list_asks_no_wikidata(service, monkeypatch) -> None:
+    """Mateusz 2026-11-25: "Po co pytamy wikidate o muzea zamiast znaleźć
+    wpisywane miasto w ramach istniejącej listy muzeów?" """
+    from frame_server.web import create_app
+
+    app = create_app(service.settings)
+    with TestClient(app) as client:
+        app.state.service.library.upsert(_item("aic", 3, title="Nighthawks"))
+        asked: list[str] = []
+        monkeypatch.setattr(
+            app.state.service.museum_places,
+            "hits",
+            lambda text, limit=7: asked.append(text) or [],
+        )
+        rows = client.get("/api/places", params={"q": "chicago"}).json()
+        assert [r["key"] for r in rows] == ["Q239303"]
+        assert asked == []
+        client.get("/api/places", params={"q": "lyon"})
+        assert asked == ["lyon"]  # not on the list: Wikidata

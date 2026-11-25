@@ -2,9 +2,9 @@
 
 ## 1.145.383
 
-- Szukaj: lista „Muzeum” nie czeka już przy każdej literze na Wikidatę
-  (wieczorem 3–13 s); co Wikidata poda później, pokazuje się przy
-  następnej literze.
+- Szukaj: lista „Muzeum” szuka najpierw po nazwie i mieście na naszej
+  liście i pyta Wikidatę tylko wtedy, gdy nic nie pasuje (wieczorem
+  odpowiadała po 3–13 s przy każdej literze).
 - Podpowiedzi i tłumaczenie słów nie czekają, gdy serwer co 10 minut
   zbiera słowa katalogu na nowo.
 
