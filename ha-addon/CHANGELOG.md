@@ -9,6 +9,10 @@
   się je wcisnąć.
 - W lewym górnym rogu szklana ikona siatki: jeszcze jeden sposób na wejście
   w siatkę 3×3.
+- Dobór dzieł w Galerii: polubione dzieło wychodzi tylko jako „polubione”.
+  To, co przychodzi jako podobne do Twoich serc, jako inne dzieło lubianego
+  artysty albo jako nowość, jest zawsze czymś, czego jeszcze nie masz
+  w ulubionych.
 
 ## 1.145.371
 
