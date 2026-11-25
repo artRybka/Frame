@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.378
+
+- Galeria: gdy kadr na pełnym ekranie pokazuje bok dzieła, wejście w całe
+  dzieło nie zaczyna się już od szybkiego dosunięcia obrazu do środka.
+  Obraz oddala się równo wokół środka ekranu, a dosunięcie do środka jest
+  rozłożone na całą drogę; tak samo w drodze powrotnej.
+
 ## 1.145.377
 
 - Galeria: wejście w widok całego dzieła i wyjście z niego to teraz jedno

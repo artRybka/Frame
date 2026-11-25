@@ -1255,6 +1255,8 @@ private struct GalleryPage: View {
     /// then (points): the screen's own, about.
     static let pressedIn: CGFloat = 0.955
     static let pressedCorner: CGFloat = 44
+    /// The whole work's corners (points).
+    static let wholeCorner: CGFloat = 8
     /// Seconds from the work held to the whole of it, and from the whole
     /// work let go to the work cut to the screen again (Mateusz 2026-11-25
     /// 12:21: "Powrót po puszczeniu podglądu całego dzieła - wolniej,
@@ -1289,7 +1291,7 @@ private struct GalleryPage: View {
                     // Before, two pictures and one melting into the other
                     // (2026-11-23 20:14, "Rozpływ w łunę").
                     glowLayer(place, geo)
-                    shade(place, geo)
+                    shade(layout, place, geo)
                     cut(layout, place, geo)
                     headLayer(place, geo)
                 }
@@ -1388,6 +1390,10 @@ private struct GalleryPage: View {
     private func cut(_ layout: Fill, _ place: Whole, _ geo: GeometryProxy) -> some View {
         let sink = sunk ? Self.pressedIn : 1
         let way: CGFloat = whole ? 1 : 0
+        // The whole work's corners, rounded a little as on its card (Mateusz
+        // 2026-11-23 22:08: "Narożniki dzieła odrobinę zaokrąglone"): the
+        // picture's own, as large here as they are small once it is whole.
+        let corner = whole ? Self.wholeCorner / Lens.smaller(layout, place) : 0
         return ZStack {
             if let stale {
                 let own = Fill(picture: stale.picture.size, box: geo.size, focus: stale.focus)
@@ -1398,8 +1404,8 @@ private struct GalleryPage: View {
                     .opacity(whole ? 0 : 1)
             }
             ZStack {
-                if let thumb { picture(thumb, size: layout.size, offset: layout.offset) }
-                if let full { picture(full, size: layout.size, offset: layout.offset).opacity(fullShown) }
+                if let thumb { picture(thumb, size: layout.size, offset: layout.offset, corner: corner) }
+                if let full { picture(full, size: layout.size, offset: layout.offset, corner: corner).opacity(fullShown) }
             }
             .modifier(Lens(zoom: zoom, pan: pan, sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
             if current {
@@ -1414,9 +1420,10 @@ private struct GalleryPage: View {
         }
         .frame(width: geo.size.width, height: geo.size.height)
         // Seen through a window: the screen, pressed in and its corners
-        // rounded while the finger lies and the phone taps; then drawn in
-        // with the picture till it is the picture's own edge.
-        .clipShape(Window(sink: sink, corner: sunk ? Self.pressedCorner : 0, way: way, place: place))
+        // rounded while the finger lies and the phone taps, and so till
+        // the work is let go. The picture draws back inside it, and its
+        // own edges come into it one after another.
+        .clipShape(Window(sink: sink, corner: sunk ? Self.pressedCorner : 0))
         // Let go before the hold, the page springs back out; to the whole
         // work and back from it, all of it goes as one.
         .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
@@ -1425,17 +1432,28 @@ private struct GalleryPage: View {
     }
 
     /// The whole work's faint shadow (2026-11-23 21:41: "cień za dziełem
-    /// znacznie słabszy"), under the window the work is seen through.
-    private func shade(_ place: Whole, _ geo: GeometryProxy) -> some View {
-        Window(sink: sunk ? Self.pressedIn : 1, corner: sunk ? Self.pressedCorner : 0, way: whole ? 1 : 0, place: place)
+    /// znacznie słabszy"): under the picture and going with it, there as
+    /// the work draws back and gone as soon as it is let go. (It goes
+    /// without the draw-back and the drift, a point or two off on the
+    /// way: every frame of those would be a frame of this.)
+    private func shade(_ layout: Fill, _ place: Whole, _ geo: GeometryProxy) -> some View {
+        let smaller = Lens.smaller(layout, place)
+        return RoundedRectangle(cornerRadius: Self.wholeCorner / smaller, style: .continuous)
             .fill(.black.opacity(0.14))
-            .frame(width: geo.size.width, height: geo.size.height)
-            .blur(radius: 8)
-            .offset(y: 3)
+            .frame(width: layout.size.width, height: layout.size.height)
+            .blur(radius: 8 / smaller)
+            .offset(x: layout.offset.width, y: layout.offset.height + 3 / smaller)
+            .modifier(
+                Lens(
+                    zoom: 1, pan: 0, sink: sunk ? Self.pressedIn : 1, way: whole ? 1 : 0,
+                    layout: layout, place: place, traced: false
+                ).ignoredByLayout()
+            )
             .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
             .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
-            .opacity(lit ? 1 : 0)
-            .animation(lit ? nil : Self.unlit, value: lit)
+            .frame(width: geo.size.width, height: geo.size.height)
+            .opacity(whole ? 1 : 0)
+            .animation(whole ? Self.outWay : .easeOut(duration: 0.12), value: whole)
             .modifier(PulledUp(pull: pull, on: whole))
             .allowsHitTesting(false)
     }
@@ -1593,11 +1611,12 @@ private struct GalleryPage: View {
         return (Color(hexString: hex) ?? .black).opacity(0.35)
     }
 
-    private func picture(_ image: UIImage, size: CGSize, offset: CGSize) -> some View {
+    private func picture(_ image: UIImage, size: CGSize, offset: CGSize, corner: CGFloat = 0) -> some View {
         Image(uiImage: image)
             .resizable()
             .interpolation(.high)
             .frame(width: size.width, height: size.height)
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
             .offset(offset)
     }
 
@@ -1818,9 +1837,18 @@ private struct GalleryPage: View {
 /// The work's one picture on its way between the two ways it is seen:
 /// cut to the screen (closer about the point it is cut around, drifted,
 /// pressed in about the screen's middle) and the whole of it where it
-/// lies when held. Every frame is a share of the way from the one to the
-/// other, so the picture only grows and moves; the draw-back and the
-/// drift go on under the way out and are left behind by its end.
+/// lies when held; the draw-back and the drift go on under the way out
+/// and are left behind by its end.
+///
+/// It grows smaller by the same share with every step of the way, about
+/// the screen's middle, and what is left of the way (to the side, when it
+/// is cut off its middle; up to its place) is gone evenly beside that.
+/// Laid out as a share of the way from the one frame to the other, a work
+/// cut far to one side was set straight in the first tenth of a second and
+/// only then seen to draw back (Mateusz 2026-11-25 16:10: "„naprostowanie”
+/// przy wejściu w całe dzieło odbywa się na początku animacji i nie
+/// wygląda to dobrze"): half of the way to the side was gone while the eye
+/// saw a third of the drawing back.
 private struct Lens: GeometryEffect {
     var zoom: CGFloat
     var pan: CGFloat
@@ -1830,6 +1858,13 @@ private struct Lens: GeometryEffect {
     var way: CGFloat
     let layout: Fill
     let place: Whole
+    /// The probe's trace of the way is this one's.
+    var traced = true
+
+    /// How small the whole work is of the work cut to the screen.
+    static func smaller(_ layout: Fill, _ place: Whole) -> CGFloat {
+        max(place.size.width / max(layout.size.width, 1), 0.01)
+    }
 
     var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
         get { AnimatablePair(AnimatablePair(zoom, pan), AnimatablePair(sink, way)) }
@@ -1846,59 +1881,50 @@ private struct Lens: GeometryEffect {
     func effectValue(size: CGSize) -> ProjectionTransform {
         let middle = CGPoint(x: size.width / 2, y: size.height / 2)
         let anchor = CGPoint(x: layout.anchor.x * size.width, y: layout.anchor.y * size.height)
-        let cutScale = sink * zoom
+        let cutScale = max(sink * zoom, 0.01)
         let cutX = middle.x + sink * (anchor.x * (1 - zoom) + pan - middle.x)
         let cutY = middle.y + sink * (anchor.y * (1 - zoom) - middle.y)
-        let wholeScale = place.size.width / max(layout.size.width, 1)
+        let wholeScale = Self.smaller(layout, place)
         let wholeX = middle.x + place.offset.width - place.size.width / 2 - wholeScale * layout.offset.width
         let wholeY = middle.y + place.offset.height - place.size.height / 2 - wholeScale * layout.offset.height
-        let scale = cutScale + (wholeScale - cutScale) * way
-        if way > 0.002, way < 0.998, Thread.isMainThread {
+        // Smaller about the screen's middle, by `share` so far of `all`.
+        let all = wholeScale / cutScale
+        let share = pow(all, way)
+        let scale = cutScale * share
+        let x = middle.x * (1 - share) + cutX * share + way * (wholeX - middle.x * (1 - all) - cutX * all)
+        let y = middle.y * (1 - share) + cutY * share + way * (wholeY - middle.y * (1 - all) - cutY * all)
+        if traced, way > 0.002, way < 0.998, Thread.isMainThread {
             // The probe's: every frame of the way, to be read beside its film.
-            let share = Int((way * 100).rounded()), across = Int((scale * layout.size.width).rounded())
-            MainActor.assumeIsolated { GalleryLog.trace("whole work: \(share)% of the way, \(across) pt across") }
+            let gone = Int((way * 100).rounded()), across = Int((scale * layout.size.width).rounded())
+            let lies = Int((x + scale * (layout.offset.width + size.width / 2) - middle.x).rounded())
+            MainActor.assumeIsolated {
+                GalleryLog.trace("whole work: \(gone)% of the way, \(across) pt across, \(lies) pt off the middle")
+            }
         }
-        return ProjectionTransform(CGAffineTransform(
-            a: scale, b: 0, c: 0, d: scale,
-            tx: cutX + (wholeX - cutX) * way, ty: cutY + (wholeY - cutY) * way
-        ))
+        return ProjectionTransform(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: x, ty: y))
     }
 }
 
-/// What of the page the work is seen through: all of it (pressed in a
-/// little, its corners rounded, while a finger lies on it), drawn in with
-/// the picture (`Lens`) till it is the whole work's own edge.
+/// What of the page the work is seen through: all of it, pressed in a
+/// little and its corners rounded while a finger lies on it and while the
+/// work is held.
 private struct Window: Shape {
     var sink: CGFloat
     var corner: CGFloat
-    var way: CGFloat
-    let place: Whole
 
-    /// The whole work's corners, as on its card (Mateusz 2026-11-23
-    /// 22:08: "Narożniki dzieła odrobinę zaokrąglone").
-    static let round: CGFloat = 8
-
-    var animatableData: AnimatablePair<CGFloat, AnimatablePair<CGFloat, CGFloat>> {
-        get { AnimatablePair(sink, AnimatablePair(corner, way)) }
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(sink, corner) }
         set {
             sink = newValue.first
-            corner = newValue.second.first
-            way = newValue.second.second
+            corner = newValue.second
         }
     }
 
     func path(in rect: CGRect) -> Path {
-        let cut = rect.insetBy(dx: rect.width * (1 - sink) / 2, dy: rect.height * (1 - sink) / 2)
-        let whole = CGRect(
-            x: rect.midX + place.offset.width - place.size.width / 2,
-            y: rect.midY + place.offset.height - place.size.height / 2,
-            width: place.size.width, height: place.size.height
+        Path(
+            roundedRect: rect.insetBy(dx: rect.width * (1 - sink) / 2, dy: rect.height * (1 - sink) / 2),
+            cornerRadius: corner, style: .continuous
         )
-        let seen = CGRect(
-            x: cut.minX + (whole.minX - cut.minX) * way, y: cut.minY + (whole.minY - cut.minY) * way,
-            width: cut.width + (whole.width - cut.width) * way, height: cut.height + (whole.height - cut.height) * way
-        )
-        return Path(roundedRect: seen, cornerRadius: corner + (Self.round - corner) * way, style: .continuous)
     }
 }
 
