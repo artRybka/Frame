@@ -699,6 +699,14 @@ struct PlaylistCard: View {
             Collage(itemIDs: playlist.coverItemIds, title: playlist.name)
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    // "Historia przesłanych": a clock turning back in the
+                    // same glass as the eye on "Ukryte" (Mateusz 2026-11-25).
+                    if playlist.isSentHistory {
+                        GlassBadge(systemImage: Self.sentHistoryIcon)
+                            .padding(9)
+                    }
+                }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
             CardCaption {
                 Text(bound: playlist.name)
@@ -731,6 +739,9 @@ struct PlaylistCard: View {
             }
         }
     }
+
+    /// The badge of "Historia przesłanych", Time Machine's clock.
+    static let sentHistoryIcon = "clock.arrow.trianglehead.counterclockwise.rotate.90"
 
     /// Right of the count: whose it is when someone else shares it with the
     /// household; my own shared ones get the two-people icon alone (no
