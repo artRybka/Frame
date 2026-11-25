@@ -96,6 +96,11 @@ int frame_crop_find(const unsigned char* pixels, int rows, int columns, const fl
 int frame_crop_plate(const unsigned char* pixels, int rows, int columns, const double* sheet, double over,
                      double* cut, double* plate, int* found, char* error, int error_size);
 
+/* How far (degrees) `quad` (corners as `frame_crop_find` gives them) is
+ * from an upright rectangle on a photograph `columns` × `rows`.
+ * `crop_model.upright_off`. */
+double frame_crop_upright(const double* quad, int rows, int columns);
+
 /* No more threads than these from now on (0: as many as there are cores). */
 void frame_scan_threads(int threads);
 

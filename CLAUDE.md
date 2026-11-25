@@ -94,7 +94,10 @@ uv run mypy src
   round its impression where the paper is wide (`crop_model.plate`, the
   core's `frame_crop_plate`, checked with `tools/crop.py … plates`): a
   change of it raises `PLATE`, and the prints cut before are cut again
-  once. `phone_crops.py` keeps what the phone found, the owner's list
+  once. A print the model left whole or unsure is cut where its paper
+  bears it out (`crop_model.sheet_cut`, the app's `MuseumCrop.sheetCut`),
+  and the margin is round the impression with its lettering: a cut never
+  goes through anything printed or written. `phone_crops.py` keeps what the phone found, the owner's list
   "Kadrowane" and the lessons for retraining. The server has the same
   weights in ONNX (`imaging/models/kadr-*.onnx`, `crop_night.py`) and
   looks at night at what the phone has not (Mateusz 2026-11-24, „Na

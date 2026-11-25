@@ -97,7 +97,15 @@ KINDS = ("painting", "drawing", "print", "photo", "other")
 
 #: What decides which prints are cut and how: raised when :func:`plate`
 #: changes, the prints cut before are cut again once (``phone_crops``).
-PLATE = 1
+#: 2: a print the model left whole or unsure is cut where its paper bears
+#: it out (:func:`sheet_cut`; Mateusz 2026-11-25: „Dlaczego takie dzieło
+#: się nie kadruje?”), and the margin is round the impression with its
+#: lettering („prawie wcina się w napis”); those looked at before are
+#: looked at again (``phone_crops.wants``).
+PLATE = 2
+#: The photograph's own edges: the sheet of a print photographed with
+#: nothing round it.
+EDGES: Quad = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 #: The sheet is cut down when its widest margin is more than this share of
 #: the impression's shorter side…
 PLATE_OVER = 0.15
@@ -156,6 +164,8 @@ PLATE_LEAST = 0.04
 #: margin within the sheet, once (Mateusz 2026-11-24 10:39 UTC: „ręczne
 #: kadry, jeżeli obejmują samą grafikę także obejmij tą zmianą”).
 PLATE_SAME = 0.85
+#: Less of the sheet than this is a speck, not something written on it.
+PLATE_PART = 0.0002
 
 _PRINT = (
     r"print|etching|engraving|woodcut|wood engraving|lithograph|mezzotint|aquatint|drypoint|"
@@ -399,18 +409,28 @@ def probabilities(
 class Impression:
     """A print's impression found on its sheet set upright (``size``: w, h;
     ``to_sheet`` the photograph's perspective onto it): its box (``box``:
-    left, top, right, bottom) turned by ``turn`` degrees about ``middle``."""
+    left, top, right, bottom) turned by ``turn`` degrees about ``middle``;
+    ``inked``: the same with its lettering and signature (what
+    :func:`_cut_caption` leaves out), which a cut never goes through."""
 
     box: tuple[float, float, float, float]
     turn: float
     middle: tuple[float, float]
     size: tuple[int, int]
     to_sheet: np.ndarray
+    inked: tuple[float, float, float, float] | None = None
+    #: The other things printed or written on the sheet, apart from it
+    #: (a title, a name, a signature): their boxes, as ``box``.
+    others: tuple[tuple[float, float, float, float], ...] = ()
 
-    def corners(self, grow: Sequence[float] = (0.0, 0.0, 0.0, 0.0)) -> np.ndarray:
-        """The box grown by ``grow`` (left, top, right, bottom) on the
-        upright sheet, its corners in order."""
-        u0, v0, u1, v1 = self.box
+    def corners(
+        self,
+        grow: Sequence[float] = (0.0, 0.0, 0.0, 0.0),
+        box: tuple[float, float, float, float] | None = None,
+    ) -> np.ndarray:
+        """The box (or ``box``) grown by ``grow`` (left, top, right,
+        bottom) on the upright sheet, its corners in order."""
+        u0, v0, u1, v1 = box or self.box
         u0, v0, u1, v1 = u0 - grow[0], v0 - grow[1], u1 + grow[2], v1 + grow[3]
         a = np.deg2rad(self.turn)
         ca, sa = np.cos(a), np.sin(a)
@@ -422,9 +442,12 @@ class Impression:
             ]
         )
 
-    def margins(self) -> tuple[float, float, float, float]:
-        """The paper beyond it on the sheet: left, top, right, bottom (px)."""
-        q = self.corners()
+    def margins(
+        self, box: tuple[float, float, float, float] | None = None
+    ) -> tuple[float, float, float, float]:
+        """The paper beyond it (or ``box``) on the sheet: left, top,
+        right, bottom (px)."""
+        q = self.corners(box=box)
         w, h = self.size
         return (
             (q[0, 0] + q[3, 0]) / 2,
@@ -462,6 +485,33 @@ def _spread_above(values: np.ndarray) -> float:
     """The values' median and :data:`PLATE_SPREAD` median deviations."""
     mid = np.median(values)
     return float(mid + PLATE_SPREAD * np.median(np.abs(values - mid)))
+
+
+def _others(
+    work: np.ndarray,
+    parts: np.ndarray,
+    count: np.ndarray,
+    k: int,
+    middle: tuple[float, float],
+    turn: float,
+    area: int,
+) -> tuple[tuple[float, float, float, float], ...]:
+    """The boxes (as :class:`Impression`'s) of the sheet's other inked
+    parts, all but specks (:data:`PLATE_PART` of it)."""
+    ys, xs = np.nonzero(work)
+    labels = parts[ys, xs]
+    a = np.deg2rad(turn)
+    ca, sa = np.cos(a), np.sin(a)
+    u = (xs - middle[0]) * ca + (ys - middle[1]) * sa
+    v = -(xs - middle[0]) * sa + (ys - middle[1]) * ca
+    out = []
+    for j in range(1, len(count)):
+        if j == k or count[j] < PLATE_PART * area:
+            continue
+        mine = labels == j
+        uj, vj = u[mine], v[mine]
+        out.append((float(uj.min()), float(vj.min()), float(uj.max() + 1), float(vj.max() + 1)))
+    return tuple(out)
 
 
 def _cut_caption(t: np.ndarray, lo: float, hi: float, across: float) -> tuple[float, float]:
@@ -558,11 +608,13 @@ def impression(rgb: np.ndarray, sheet: Sequence[Sequence[float]]) -> Impression 
         turn = 0.0
     keep = (u >= box[0]) & (u <= box[2]) & (v >= box[1]) & (v <= box[3])
     u, v = u[keep], v[keep]
+    inked = (box[0], box[1], box[2], box[3])
     box[0], box[2] = _cut_caption(u, box[0], box[2], box[3] - box[1])
     box[1], box[3] = _cut_caption(v, box[1], box[3], box[2] - box[0])
     middle = (float(cx), float(cy))
     edges = (box[0], box[1], box[2], box[3])
-    found = Impression(edges, float(turn), middle, (cols, rows), to_sheet)
+    others = _others(work, parts, count, k, middle, float(turn), rows * cols)
+    found = Impression(edges, float(turn), middle, (cols, rows), to_sheet, inked, others)
     # Plain paper round it: alike on every side, light, and little on it.
     sides = [
         lab[e:b, e : cols - e],
@@ -626,12 +678,37 @@ def plate(
     margins = found.margins()
     if max(margins) <= over * least:
         return None
-    pad = max(0.0, min(PLATE_MARGIN * least, *margins))
+    # The margin round the impression with its lettering: a title or a
+    # name printed under it is not cut through (Mateusz 2026-11-25, an
+    # ex-libris: „kadrowanie jest za ostre - prawie wcina się w napis”).
+    inked = found.inked or found.box
+    for _ in range(3):
+        least = min(inked[2] - inked[0], inked[3] - inked[1])
+        pad = max(0.0, min(PLATE_MARGIN * least, *found.margins(inked)))
+        reach = (inked[0] - pad, inked[1] - pad, inked[2] + pad, inked[3] + pad)
+        # What the margin would cut through is taken in, and the margin
+        # is round it all.
+        touched = [o for o in found.others if _crosses(o, reach)]
+        if not touched:
+            break
+        inked = (
+            min(inked[0], *(o[0] for o in touched)),
+            min(inked[1], *(o[1] for o in touched)),
+            max(inked[2], *(o[2] for o in touched)),
+            max(inked[3], *(o[3] for o in touched)),
+        )
     h, w = rgb.shape[:2]
-    cut = valid(found.on_photo(found.corners((pad, pad, pad, pad)), w, h))
+    cut = valid(found.on_photo(found.corners((pad, pad, pad, pad), inked), w, h))
     if cut is None:
         return None
     return cut, kept(found.on_photo(found.corners(), w, h))
+
+
+def _crosses(part: Sequence[float], box: Sequence[float]) -> bool:
+    """Whether ``part`` lies across ``box``'s edge: partly in, partly out."""
+    meets = part[0] < box[2] and part[2] > box[0] and part[1] < box[3] and part[3] > box[1]
+    inside = part[0] >= box[0] and part[1] >= box[1] and part[2] <= box[2] and part[3] <= box[3]
+    return meets and not inside
 
 
 def kept(quad: Sequence[Sequence[float]]) -> Quad:
@@ -683,8 +760,63 @@ def find(
     ):
         surround = None
     verdict = decide(sure, work, (w, h), cut_at)
-    if kind == KINDS.index("print") and work is not None:
-        cut = plate(rgb, work)
-        if cut is not None:
-            return Found(verdict, cut[0], surround, sure, sheet=work, plate=cut[1])
+    if kind == KINDS.index("print"):
+        made = sheet_cut(rgb, verdict, work)
+        if made is not None:
+            verdict, sheet, cut = made
+            return Found(verdict, cut[0], surround, sure, sheet=sheet, plate=cut[1])
     return Found(verdict, work, surround, sure)
+
+
+def sheet_cut(
+    rgb: np.ndarray, verdict: str, work: Sequence[Sequence[float]] | None
+) -> tuple[str, Quad, tuple[Quad, Quad | None]] | None:
+    """A print's cut where its paper says more than the model (Mateusz
+    2026-11-25: „Dlaczego takie dzieło się nie kadruje?”): the verdict
+    after it, the sheet, and the cut and the impression alone (None where
+    the sheet itself is the cut). None: as the model left it.
+
+    - Cut by the model: its sheet cut down round its impression
+      (:func:`plate`) where the paper is wide.
+    - Wanted whole: the photograph is the sheet, cut down so too.
+    - Unsure, with a sheet standing upright: cut when the paper bears it
+      out, round the impression where it is wide (plain paper all round
+      it), else to the sheet where what the photograph shows apart from
+      its surround is that sheet (a sheet on a board).
+    - Unsure with no sheet: as when wanted whole."""
+    h, w = rgb.shape[:2]
+    if verdict == "cut":
+        if work is None:
+            return None
+        made = plate(rgb, work)
+        return (verdict, _quad(work), made) if made is not None else None
+    if verdict == "unsure" and work is not None:
+        if upright_off(work, (w, h)) > UPRIGHT:
+            return None
+        made = plate(rgb, work)
+        if made is not None:
+            return ("cut", _quad(work), made)
+        seen = plate(rgb, EDGES, over=0.0)
+        if seen is not None and box_overlap(seen[1], work) >= PLATE_SAME:
+            return ("cut", _quad(work), (_quad(work), None))
+        return None
+    made = plate(rgb, EDGES)
+    return ("cut", list(EDGES), made) if made is not None else None
+
+
+def _quad(q: Sequence[Sequence[float]]) -> Quad:
+    return [(float(x), float(y)) for x, y in q]
+
+
+def box_overlap(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> float:
+    """How much two quads' upright boxes overlap (intersection over union;
+    the same on the phone, ``MuseumCrop.boxOverlap``)."""
+    ax0, ax1 = min(p[0] for p in a), max(p[0] for p in a)
+    ay0, ay1 = min(p[1] for p in a), max(p[1] for p in a)
+    bx0, bx1 = min(p[0] for p in b), max(p[0] for p in b)
+    by0, by1 = min(p[1] for p in b), max(p[1] for p in b)
+    iw = max(0.0, min(ax1, bx1) - max(ax0, bx0))
+    ih = max(0.0, min(ay1, by1) - max(ay0, by0))
+    inter = iw * ih
+    union = (ax1 - ax0) * (ay1 - ay0) + (bx1 - bx0) * (by1 - by0) - inter
+    return float(inter / union) if union > 0 else 0.0

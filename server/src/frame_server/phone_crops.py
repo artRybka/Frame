@@ -45,6 +45,7 @@ from .imaging.crop_model import (
     model_of,
     overlap,
     plate,
+    sheet_cut,
 )
 from .imaging.crop_night import Looker
 from .imaging.cut import Quad, same_picture, valid, worth_cutting
@@ -81,6 +82,12 @@ def _now() -> str:
 SHEET_KINDS = (KINDS.index("drawing"), KINDS.index("print"))
 #: A print: its sheet cut down round its impression when the paper is wide.
 PRINT = KINDS.index("print")
+#: The prints cut before are cut down round their impression once
+#: (:meth:`PhoneCrops.plates_again`): 1 as ``crop_model.PLATE`` 1 had it;
+#: 2 the model's from their sheet again, the margin round the impression
+#: with its lettering (Mateusz 2026-11-25). Prints left whole or to him
+#: are looked at again instead (:meth:`wants`).
+PLATES_AGAIN = 2
 #: The whole photograph, as corners.
 WHOLE = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
@@ -126,8 +133,16 @@ class PhoneCrops:
         if not Crops.wanted(item) or not Crops.open_to_cut(item):
             return False
         seen = (looked if looked is not None else self._state()["looked"]).get(item.id)
-        model = model_of(kind_of(item.classification, item.medium))
-        return not (seen and seen.get("p") == item.picture_key() and seen.get("m") == model)
+        kind = kind_of(item.classification, item.medium)
+        if not (seen and seen.get("p") == item.picture_key() and seen.get("m") == model_of(kind)):
+            return True
+        # A print left whole or to him before its paper was minded there
+        # too (``crop_model.PLATE`` 2, ``sheet_cut``): looked at again.
+        return (
+            kind == PRINT
+            and seen.get("v") in ("whole", "unsure")
+            and int(seen.get("pl") or 0) < PLATE
+        )
 
     def ask(self, item: Item) -> dict[str, Any]:
         """What the card's app needs to look at ``item``."""
@@ -201,10 +216,9 @@ class PhoneCrops:
                 alone = kept(plate_alone)
         else:
             sheet = None
-            if work is not None:
-                made = plate(self._photo(stored), work)
-                if made is not None:
-                    sheet, (work, alone) = work, made
+            made_of = sheet_cut(self._photo(stored), verdict, work)
+            if made_of is not None:
+                verdict, sheet, (work, alone) = made_of
         if verdict == "cut" and (work is None or not worth_cutting(work)):
             verdict = "whole" if work is not None else "unsure"
         state = self._state()
@@ -310,7 +324,7 @@ class PhoneCrops:
         sets them. How many were cut anew: the model's, his, and of his
         those that were the impression alone."""
         state = self._state()
-        if int(state.get("plates") or 0) >= PLATE:
+        if int(state.get("plates") or 0) >= PLATES_AGAIN:
             return {}
         done = {"auto": 0, "owner": 0, "owner_impression": 0, "looked": 0}
         for item in self.library.all_items():
@@ -330,7 +344,7 @@ class PhoneCrops:
                 continue
             if made:
                 done["owner" if cut.by == "owner" else "auto"] += 1
-        state = self._state() | {"plates": PLATE, "plates_done": done}
+        state = self._state() | {"plates": PLATES_AGAIN, "plates_done": done}
         self._save(state)
         log.info(
             "phone crops: prints cut round their impression: %d of the model's, %d of his "
@@ -367,7 +381,11 @@ class PhoneCrops:
             if made is None:
                 made = plate(rgb, cut.work)
         else:
-            made = plate(rgb, cut.work)
+            # From the sheet the model found, not from the cut made of it.
+            sheet = (entry or {}).get("sheet") or cut.work
+            made = plate(rgb, sheet)
+            if made is not None and overlap(made[0], cut.work, (w, h)) >= 0.995:
+                return False  # as cut now
         if made is None:
             return False
         work, alone_kept = made
