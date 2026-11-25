@@ -218,7 +218,19 @@ final class WorkSearch {
                 catalogue = found
                 catalogueQuery = query
                 hidden = []
-                if found.later == true { lookingLater = Task { await askLater(query, key: key) } }
+                if found.later == true {
+                    if found.total < Self.plenty, asksMuseums(key) {
+                        // The words alone found few: the works that look so
+                        // may well be plenty, and the museums are asked only
+                        // after the catalogue's whole answer (Mateusz
+                        // 2026-11-25: "najpierw powinny być wyniki wyłącznie
+                        // z tego co leży już na NAS"; a busy NAS had the
+                        // words' numbers late, and the museums went first).
+                        await askLater(query, key: key)
+                    } else {
+                        lookingLater = Task { await askLater(query, key: key) }
+                    }
+                }
             }
         } catch {
             if !Task.isCancelled, !error.isCancellation { model.show(error) }

@@ -108,7 +108,10 @@ final class TermLookup {
         guard playlist == nil else { return }
         let best = hits.filter { $0.kind != "word" }.map(\.count).max() ?? 0
         guard words.count >= 3, best < Self.few else { return }
-        try? await Task.sleep(for: .milliseconds(380))
+        // A pause in typing first: each hint may have the server translate
+        // the words (Haiku), and a phrase typed fast asked for some ten
+        // (the NAS 2026-11-25).
+        try? await Task.sleep(for: .milliseconds(700))
         guard !Task.isCancelled else { return }
         askingMuseums = true
         defer { askingMuseums = false }

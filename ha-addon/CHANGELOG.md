@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.379
+
+- Szukaj: przy kilku słowach najpierw zawsze to, co jest na serwerze. Gdy
+  odcisk frazy liczy się dłużej, aplikacja czeka na dzieła dobrane
+  wyglądem z katalogu, zanim zapyta muzea.
+- Muzea odpowiadają szybciej: czas na ich odpowiedź liczy się dopiero od
+  chwili, gdy gotowe są hasła do szukania, a dzieła bez gotowej oceny
+  wyglądu pokazują się od razu za ocenionymi.
+- Mniej tłumaczeń w trakcie pisania (nie w połowie słowa).
+
 ## 1.145.378
 
 - Galeria: gdy kadr na pełnym ekranie pokazuje bok dzieła, wejście w całe
