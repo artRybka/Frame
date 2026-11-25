@@ -2180,6 +2180,8 @@ struct CardChevron: View {
     /// With less room than this over the work, none.
     static let least: CGFloat = 40
     static let height: CGFloat = 14
+    /// On the card, from the work's top up to its middle.
+    static let overCard: CGFloat = 15
 
     var body: some View {
         Image(systemName: down ? "chevron.compact.down" : "chevron.compact.up")

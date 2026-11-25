@@ -145,6 +145,7 @@ struct ArrivingPicture: ViewModifier {
     let home: CGRect?
     var leave: CardLeave?
     let measured: (CGRect) -> Void
+    @Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
         let back = leave?.share ?? 0
@@ -153,6 +154,22 @@ struct ArrivingPicture: ViewModifier {
             .offset(offset)
             .offset(fall(back))
             .opacity(opacity)
+            // Over the work at its place on the card, the chevron Galeria
+            // has over the whole work turned round: a pull down takes the
+            // card back there (Mateusz 2026-11-25 21:54: "W drugą stronę
+            // (z karty dzieła) trzeba w tym miejscu nad dziełem dać
+            // strzałkę w dół"). The card's own, close over the work and
+            // under the bar's buttons (in the bar it lay against them);
+            // there once the work is, gone as the card goes back.
+            .overlay(alignment: .top) {
+                if leave != nil {
+                    CardChevron(light: scheme == .light, down: true)
+                        .offset(y: -(CardChevron.overCard + CardChevron.height / 2))
+                        .opacity(arrived ? 1 - Double(back) : 0)
+                        .animation(.easeOut(duration: 0.25), value: arrived)
+                        .allowsHitTesting(false)
+                }
+            }
             .background {
                 Color.clear
                     .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { lies in
