@@ -209,10 +209,8 @@ struct ItemDetailView: View {
                 // a lone spinner made the page (and its paper) a narrow strip.
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeOut(duration: 0.3), value: showsCard)
-                .modifier(CardHeld(leave: leave))
             }
-            .glowLift($scrolled)
-            .modifier(DrawnDown(leave: leave) { letGoDrawnDown() })
+            .modifier(CardScroll(lift: $scrolled, leave: leave) { letGoDrawnDown() })
             .task {
                 // CI screenshots: "Podobne wyglądem" at the card's end, once
                 // the card and the row are in (whatever the Polish texts do).
@@ -272,7 +270,6 @@ struct ItemDetailView: View {
         // From Galeria the way back is the way in turned round: its own
         // back button, and the swipe from the left edge.
         .modifier(GalleryWayBack(on: arrival?.back != nil) { leaveToGallery() })
-        .sensoryFeedback(.impact(weight: .medium), trigger: leave?.reached ?? 0)
         .onAppear {
             if CardArrival.pending[itemID] != nil { GalleryLog.note("card: appeared") }
             CardArrival.pending[itemID] = nil
@@ -507,6 +504,7 @@ struct ItemDetailView: View {
         .layoutProbe("column")
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
+        .modifier(CardHeld(leave: leave))
     }
 
     /// The work, at once from the last visit if there was one, then fresh
@@ -637,6 +635,7 @@ struct ItemDetailView: View {
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
+        .modifier(CardHeld(leave: leave))
     }
 
     /// The title block as the tile knew it.
@@ -2225,15 +2224,20 @@ enum FramePositionProbe {
 /// The card's own way back to Galeria (`leaveToGallery`): a back button
 /// of its own and the swipe from the left edge, in place of the pop's
 /// slide.
-/// The card's scroll drawn past its top by a finger, and the finger
-/// lifting (`CardLeave`).
-private struct DrawnDown: ViewModifier {
+/// The card's scroll: how far it is scrolled, for the glow at its top
+/// (`glowLift`); and, where the card came from Galeria's whole work, how
+/// far a finger has drawn it past its top, and the finger lifting
+/// (`CardLeave`). One modifier on the card's body, which the compiler
+/// can only just type-check as it is.
+private struct CardScroll: ViewModifier {
+    @Binding var lift: CGFloat
     let leave: CardLeave?
     let letGo: () -> Void
 
     func body(content: Content) -> some View {
         if let leave {
             content
+                .glowLift($lift)
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     max(-(geometry.contentOffset.y + geometry.contentInsets.top), 0)
                 } action: { _, over in
@@ -2243,8 +2247,9 @@ private struct DrawnDown: ViewModifier {
                     leave.touching = now == .interacting || now == .tracking
                     if before == .interacting, now != .interacting { letGo() }
                 }
+                .sensoryFeedback(.impact(weight: .medium), trigger: leave.reached)
         } else {
-            content
+            content.glowLift($lift)
         }
     }
 }

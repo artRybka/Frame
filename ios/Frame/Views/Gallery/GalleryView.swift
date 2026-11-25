@@ -930,8 +930,8 @@ struct GalleryView: View {
         // the work went back to where it was held, the card's head under
         // it for a moment, and all of that gave way to the cut work).
         CardArrival.pending[work.id] = CardArrival.Pending(
-            from: from, ground: GalleryPage.ground(of: work, light: scheme == .light),
-            rest: GalleryPage.spots[work.id],
+            from: from, rest: GalleryPage.spots[work.id],
+            ground: GalleryPage.ground(of: work, light: scheme == .light),
             back: { whole in
                 if whole {
                     // The card drawn down (`CardLeave`) is the whole work
@@ -941,7 +941,7 @@ struct GalleryView: View {
                     // screen as when a finger lets it go (`path`'s change
                     // above).
                     GalleryLog.note("back from the card, drawn down: the whole work, and closer from there")
-                    Self.melt(bars: true)
+                    Self.melt(seconds: 0.26, bars: true)
                     withTransaction(Self.quiet) {
                         engaged = false
                         pulling = false
