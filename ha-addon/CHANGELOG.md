@@ -8,8 +8,8 @@
 - Podpowiedzi i tłumaczenie słów nie czekają, gdy serwer co 10 minut
   zbiera słowa katalogu na nowo.
 - Podpowiedzi nie czekają już przy każdej literze na tłumaczenie przez
-  Claude: biorą to, co serwer już wie, a tłumaczenie przychodzi w tle
-  i jest gotowe dla następnej litery.
+  Claude i nie pytają go wcale: biorą tłumaczenie z telefonu i to, co
+  serwer już wie.
 
 ## 1.145.382
 

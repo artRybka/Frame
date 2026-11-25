@@ -274,26 +274,12 @@ def test_the_phone_never_replaces_an_answer(service: FrameService, fake: FakeAnt
     assert len(fake.asked) == 1
 
 
-def test_the_suggestions_never_wait_for_a_translation(
-    service: FrameService, fake: FakeAnthropic
-) -> None:
+def test_the_suggestions_never_ask_the_model(service: FrameService, fake: FakeAnthropic) -> None:
     """Mateusz 2026-11-25: "najpierw pytamy to co mamy już na NAS (reakcja
-    natychmiastowa)": what is known now, the model asked behind once."""
-    import time
-
-    held = threading.Event()
-    create = fake.messages.create
-
-    def slow(**params: Any) -> Any:
-        held.wait(10)
-        return create(**params)
-
-    fake.messages.create = slow
-    started = time.monotonic()
-    assert not service.search_words.ahead("stara gitara").translated
-    assert not service.search_words.ahead("stara gitara").translated
-    assert time.monotonic() - started < 0.5
-    held.set()
-    assert service.search_words.wording("stara gitara", wait=5).en == "guitar"
-    assert service.search_words.ahead("stara gitara").en == "guitar"
-    assert len(fake.asked) == 1
+    natychmiastowa)", "po co Claude skoro tłumaczymy na iPhone?": what is
+    known now, the phone's translation, and no question to the model."""
+    assert not service.search_words.now("stara gitara").translated
+    assert fake.asked == []
+    assert service.search_words.taught("stara gitara", "old guitar", "vieille guitare")
+    assert service.search_words.now("stara gitara").en == "old guitar"
+    assert fake.asked == []

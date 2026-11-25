@@ -179,11 +179,13 @@ class SearchWords:
         except Exception:
             return Wording(text)
 
-    def ahead(self, text: str) -> Wording:
-        """:meth:`wording` without waiting: what is known of ``text`` now
-        (remembered, the phone's, the library's own words), the model asked
-        behind for what is not, for the next question (Szukaj's suggestions
-        answer from the NAS at once, Mateusz 2026-11-25)."""
+    def now(self, text: str) -> Wording:
+        """:meth:`wording` without the model: what is known of ``text`` now
+        (remembered, the phone's, the library's own words). Szukaj's
+        suggestions answer from the NAS at once, and the phone translates
+        what is typed (Mateusz 2026-11-25: "Tłumaczenie - po co Claude
+        skoro tłumaczymy na iPhone?"): the model only where the phone gave
+        nothing, when the search itself asks (:meth:`wording`)."""
         text = " ".join(text.split())
         key = _key(text)
         if not key or len(text) > MAX_CHARS or any(c in text for c in '"=&:'):
@@ -195,8 +197,6 @@ class SearchWords:
         local = self._from_library(key)
         if local:
             return Wording(text, en=local)
-        if self.config.enabled(KIND):
-            self._ask(text, key)
         return Wording(text)
 
     def known(self, text: str) -> tuple[str, ...]:

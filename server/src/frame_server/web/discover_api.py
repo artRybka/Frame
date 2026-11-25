@@ -1228,8 +1228,8 @@ TERM_THREADS = CapacityLimiter(2)
 #: was given up by the app when the next letter came.
 _TERMS_ASKED: dict[str, int] = {}
 _TERMS_LOCK = threading.Lock()
-#: Suggestions translate two words or more (behind, :func:`_title_forms`)
-#: once the last word has this many letters: "taniec n", "taniec na s"
+#: Suggestions take the phone's translation of two words or more
+#: (:func:`_title_forms`) once the last word has this many letters: "taniec n", "taniec na s"
 #: are halfway through a word, and asking Haiku for each such (some ten
 #: while one phrase was typed, the NAS 2026-11-25) only kept it busy.
 TRANSLATED_FROM = 3
@@ -1237,13 +1237,13 @@ TRANSLATED_FROM = 3
 
 def _title_forms(svc: FrameService, words: str) -> tuple[str, ...]:
     """The words as the museums are asked them, as far as known now: for two
-    words or more the translation ("gwiaździsta noc": "The Starry Night") is
-    asked behind and serves the next letter, the suggestions never wait for
-    it (Mateusz 2026-11-25: "najpierw pytamy to co mamy już na NAS (reakcja
-    natychmiastowa)"; it waited 0.6 s a letter, and the phone's own
-    translation mostly comes first)."""
+    words or more the translation ("gwiaździsta noc": "The Starry Night")
+    the phone sent while typing, never waited for and never asked of
+    Haiku here (Mateusz 2026-11-25: "najpierw pytamy to co mamy już na NAS
+    (reakcja natychmiastowa)"; it waited 0.6 s a letter, and Haiku
+    translated what the phone did too)."""
     if " " in words and len(words) >= 5 and len(words.split()[-1]) >= TRANSLATED_FROM:
-        said = svc.search_words.ahead(words)
+        said = svc.search_words.now(words)
         return tuple(w for w in (said.en, said.fr) if w)
     return svc.library.wording(words) if svc.library.wording else ()
 
