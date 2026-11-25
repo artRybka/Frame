@@ -9,8 +9,6 @@ answer. The :class:`AiWorker` asks on two threads of its own:
   result is a future;
 - in the background, one at a time: items a job wants and that have no
   up-to-date note;
-- ``describe_library(kind)``: the whole library through the Batch API (half
-  price, answers within 24 hours), in chunks of :data:`BATCH_SIZE`;
 - ``ask_later(item_id, kind)``: one item's note made for less, by and by
   (:class:`Deferred`): its long questions go through the Batch API one by
   one, the short ones are asked at once (Mateusz 2026-11-04: "Przygotuj na
@@ -307,7 +305,6 @@ class Progress(BaseModel):
     refused: int  # notes without an answer (refused or unreadable)
     batch_items: int  # questions in batches not yet ended
     batch_done: int
-    preparing: bool  # a "describe the library" being put together
 
 
 @dataclass(order=True)
@@ -336,7 +333,6 @@ class AiWorker:
         self._seq = itertools.count()
         self._pending: set[tuple[str, str]] = set()
         self._skipped: set[tuple[str, str]] = set()  # thumbnail failed: not this run
-        self._preparing: set[str] = set()
         #: A steady job's count, with what it was made of and the photos
         #: sent once, which are counted each time (:meth:`_counted`).
         self._counts: dict[str, tuple[object, tuple[int, int, int], list[Item]]] = {}
@@ -665,11 +661,9 @@ class AiWorker:
             self._do(task)
 
     def tick(self) -> None:
-        """Periodic work: prepare and poll batches, look for items to ask about."""
+        """Periodic work: poll batches, look for items to ask about."""
         now = time.monotonic()
         try:
-            for kind in list(self._preparing):
-                self._prepare_batch(kind)
             if now >= self._next_poll:
                 self._next_poll = now + POLL_SECONDS
                 self.poll_batches()
@@ -778,7 +772,6 @@ class AiWorker:
             refused=refused,
             batch_items=sum(len(b["ids"]) for b in batches),
             batch_done=sum(b.get("done", 0) for b in batches),
-            preparing=kind in self._preparing,
         )
 
     def _counted(self, job: NoteJob) -> tuple[int, int, int]:
@@ -811,11 +804,6 @@ class AiWorker:
 
     # -- the whole library through the Batch API --------------------------
 
-    def estimate(self, kind: str) -> tuple[int, float]:
-        """Items "describe the library" would ask about, and about what it costs."""
-        ids, usd = self.library_waiting(kind)
-        return len(ids), usd
-
     def library_waiting(self, kind: str) -> tuple[list[str], float]:
         """The items "describe the library" would ask about (the whole
         catalogue, not only what the background asks), and about what it
@@ -824,24 +812,6 @@ class AiWorker:
         in_batches = self._batched()
         items = [i for i in self._stale(job, job.in_library) if (kind, i.id) not in in_batches]
         return [i.id for i in items], job.estimate_items(items)
-
-    def describe_library(self, kind: str) -> int:
-        """Start asking about every item of the library without a note;
-        returns how many. Raises AiUnavailable without a key or when it would
-        cost more than this month has left."""
-        job = self.jobs[kind]
-        if not job.enabled():
-            raise AiUnavailable("the job is off or there is no API key")
-        count, usd = self.estimate(kind)
-        if usd > self.claude.budget_left():
-            raise AiUnavailable(
-                f"about {usd:.2f} USD, more than this month's limit leaves "
-                f"({max(self.claude.budget_left(), 0):.2f} USD)"
-            )
-        if count:
-            self._preparing.add(kind)
-            self._next_poll = time.monotonic() + POLL_SECONDS
-        return count
 
     def order_night(self) -> int:
         """What the background would ask one at a time for the jobs asked at
@@ -937,20 +907,6 @@ class AiWorker:
                 left = max(len(record["ids"]) - int(record.get("done", 0)), 0)
                 usd += job.estimate_usd(left, True)
         return usd
-
-    def _prepare_batch(self, kind: str) -> None:
-        """Send the next chunk of the library; done when nothing is left."""
-        job = self.jobs[kind]
-        in_batches = self._batched()
-        items = [i for i in self._stale(job, job.in_library) if (kind, i.id) not in in_batches]
-        if not items or not job.enabled():
-            self._preparing.discard(kind)
-            return
-        if not self._send_batch(job, items[:BATCH_SIZE]):
-            self._preparing.discard(kind)
-            return
-        if len(items) <= BATCH_SIZE:
-            self._preparing.discard(kind)
 
     def _send_batch(self, job: NoteJob, items: list[Item]) -> int:
         """One batch of questions about ``items``; how many went."""

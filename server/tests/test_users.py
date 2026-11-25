@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 
 from frame_server.config import Settings
 from frame_server.library import ItemKind, Look, Playlist, PlaylistRules
-from frame_server.library.repo import Library
 from frame_server.library.viewer import OWNER_ID
 from frame_server.web import create_app
 
@@ -105,7 +104,6 @@ def test_a_member_has_no_konfiguracja(tmp_path: Path) -> None:
             ("get", "/api/device/app"),
             ("get", "/api/ai"),
             ("put", "/api/ai/key"),
-            ("post", "/api/ai/keywords/describe-library"),
             ("get", "/api/sources/keys"),
             ("put", "/api/sources/keys/si"),
             ("delete", "/api/sources/keys/si"),
@@ -113,7 +111,6 @@ def test_a_member_has_no_konfiguracja(tmp_path: Path) -> None:
             ("delete", "/api/tailnet/key"),
             ("get", "/api/library/storage"),
             ("put", "/api/library/storage"),
-            ("get", "/api/calibration"),
             ("post", "/api/server/update"),
             ("post", "/api/server/update/check"),
             ("put", "/api/notifications/key"),
@@ -288,26 +285,6 @@ def test_sent_history_is_each_ones_own(tmp_path: Path) -> None:
     assert hers is not None and hers.owner == "u-1234" and hers.item_ids == [photo.id]
     assert svc.library.get_state("sent_photos_playlist") is None
     assert svc.library.sent_photo_ids() == {photo.id}
-
-
-def test_owner_hearts_from_before_people_move_over(tmp_path: Path) -> None:
-    lib = Library(tmp_path / "library.db")
-    from frame_server.library import Item
-
-    with lib._db() as db:
-        db.execute(
-            "INSERT INTO items (id, data) VALUES (?, ?)",
-            (
-                "met:1",
-                Item(
-                    id="met:1", source="met", source_id="1", title="T", favorite=True
-                ).model_dump_json(),
-            ),
-        )
-    lib.delete_state("favorites_moved")
-    lib._items = None
-    lib._move_favorites()
-    assert lib.favorites(OWNER_ID) == {"met:1"}
 
 
 def test_without_a_server_token_everyone_is_the_owner(tmp_path: Path) -> None:
@@ -521,23 +498,6 @@ def test_each_person_hides_works_for_themselves(tmp_path: Path) -> None:
         client.patch(f"/api/library/items/{one.id}", json={"excluded": False}, headers=member)
         assert one.id in ids(member) and hidden(member) == []
         assert not svc.library.get(one.id).excluded
-
-
-def test_works_hidden_before_are_the_owners(tmp_path: Path) -> None:
-    lib = Library(tmp_path / "frame.db")
-    from frame_server.library import Item
-    from frame_server.library import ItemKind as Kind
-    from frame_server.library.repo import HIDDEN_MOVED_KEY
-
-    lib.upsert(
-        Item(id="t:1", kind=Kind.ARTWORK, source="t", source_id="1", title="A", excluded=True)
-    )
-    lib.upsert(Item(id="t:2", kind=Kind.ARTWORK, source="t", source_id="2", title="B"))
-    lib.set_state(HIDDEN_MOVED_KEY, False)  # a library from before
-    again = Library(tmp_path / "frame.db")
-    assert again.hides(OWNER_ID).keys() == {"t:1"}
-    assert [i.id for i in again.hidden_items()] == ["t:1"]
-    assert "t:1" in again.hidden(OWNER_ID).ids and "t:1" in again.hidden().ids
 
 
 def test_own_works_play_as_a_playlist_never_listed(tmp_path: Path) -> None:

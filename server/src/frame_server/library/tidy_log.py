@@ -24,8 +24,6 @@ if TYPE_CHECKING:
 KEY = "tidy_log"
 #: Changes kept, the newest.
 KEEP = 2000
-#: How a change was settled; the judge's were doubtful.
-BY = ("pictures", "hash", "judge", "wikidata")
 RELATIONS = ("copy", "detail", "scene")
 
 

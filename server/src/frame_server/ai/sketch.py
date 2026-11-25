@@ -20,7 +20,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 if TYPE_CHECKING:
     from .daily import Key, Mark, Spot, View
-    from .lines import Found
 
 #: The golden section and the thirds, as the app draws them.
 GOLDEN = (0.382, 0.618)
@@ -56,7 +55,6 @@ GRID = (0, 200, 255)
 #: The places the composition rests on (P1…) and the picture's own lines (L1…).
 KEY = (255, 220, 0)
 FOUND = (0, 230, 255)
-SLANT = (255, 120, 0)
 
 
 def _xy(spot: Spot, size: tuple[int, int]) -> tuple[float, float]:
@@ -337,29 +335,6 @@ def draw_keys(picture: Image.Image, keys: list[Key]) -> Image.Image:
             stroke_width=2,
             stroke_fill=(0, 0, 0),
         )
-    return img
-
-
-def draw_found(picture: Image.Image, found: Found) -> Image.Image:
-    """The picture with its own lines (``ai.lines``): level and upright ones
-    turquoise and named L1…, slants orange."""
-    img = picture.convert("RGB").copy()
-    w, h = img.size
-    canvas = ImageDraw.Draw(img, "RGBA")
-    font = _font(max(14, w // 45))
-    for s in found.slants:
-        canvas.line(
-            [(s.x1 * w, s.y1 * h), (s.x2 * w, s.y2 * h)], fill=SLANT, width=max(2, w // 400)
-        )
-    for e in found.edges:
-        if e.axis == "y":
-            ends = [(e.start * w, e.pos * h), (e.end * w, e.pos * h)]
-            at = (e.start * w + 6, e.pos * h + 4)
-        else:
-            ends = [(e.pos * w, e.start * h), (e.pos * w, e.end * h)]
-            at = (e.pos * w + 6, e.start * h + 6)
-        canvas.line(ends, fill=FOUND, width=max(3, w // 300))
-        canvas.text(at, e.name, fill=FOUND, font=font, stroke_width=2, stroke_fill=(0, 0, 0))
     return img
 
 

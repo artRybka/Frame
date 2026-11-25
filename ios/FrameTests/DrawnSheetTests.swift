@@ -161,7 +161,7 @@ final class DrawnSheetTests: XCTestCase {
         {"key_set": true, "key_tail": "abcd", "key_from_app": true, "pl_text": true,
          "keywords_artworks": true, "keywords_photos": false, "monthly_limit_usd": 5, "spent_usd": 1.2,
          "spent_by_kind": {"sheet": 0.45},
-         "keywords_progress": {"done": 0, "waiting": 0, "refused": 0, "batch_items": 0, "batch_done": 0, "preparing": false},
+         "keywords_progress": {"done": 0, "waiting": 0, "refused": 0, "batch_items": 0, "batch_done": 0},
          "error": null,
          "gemini_key_set": true, "gemini_key_tail": "wxyz", "drawn": true, "drawn_usd": 0.15,
          "drawn_batch_usd": 0.075, "drawn_waiting": 8, "drawn_in_batch": 20, "gemini_error": null,

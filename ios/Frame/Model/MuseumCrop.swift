@@ -358,22 +358,6 @@ struct PhoneCropAsk: Codable, Hashable, Sendable {
     var side: Int
 }
 
-/// "Kadruj partię": works to look at, how many wait in all.
-struct PhoneCropsWaiting: Codable, Hashable, Sendable {
-    struct Work: Codable, Hashable, Sendable {
-        var id: String
-        var look: Bool
-        var kind: Int
-        var model: String
-        var picture: String
-    }
-
-    var model: String
-    var side: Int
-    var works: [Work]
-    var left: Int
-}
-
 /// What the model found (`MuseumCrop.Found`), of a photograph of
 /// `width` × `height`.
 struct PhoneCropFound: Codable, Hashable, Sendable {

@@ -609,56 +609,6 @@ def _png(img: object) -> bytes:
     return out.getvalue()
 
 
-def test_courtauld_white_cmyk_scans_are_asked_again_as_png(tmp_path: Path) -> None:
-    """Its IIIF server reads some CMYK scans as RGBA with nothing opaque: the
-    JPEG is white, the PNG's channels are cyan, magenta, yellow and black
-    (Borghese di Piero's predella, 2026-11-05)."""
-    from PIL import Image
-
-    from frame_server.library.images import BYTES, ImageCache
-
-    url = f"{courtauld.SITE}/iiif/3/134252/full/!600,600/0/default.jpg"
-    white = Image.new("RGB", (60, 40), (255, 255, 255))
-    red = Image.new("RGBA", (60, 40), (0, 230, 220, 0))  # cyan 0, magenta, yellow, black 0
-    jpeg = io.BytesIO()
-    white.save(jpeg, "JPEG")
-    asked: list[str] = []
-
-    def answer(request: httpx.Request) -> httpx.Response:
-        asked.append(str(request.url))
-        if request.url.path.endswith(".png"):
-            return httpx.Response(200, content=_png(red))
-        return httpx.Response(200, content=jpeg.getvalue())
-
-    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(answer)))
-    cache.repairs[courtauld.HOST] = courtauld.repair
-    img = cache.sample(url)
-    assert asked == [url, url.removesuffix(".jpg") + ".png"]
-    r, g, b = img.getpixel((5, 5))
-    assert r > 240 and g < 40 and b < 50 and img.info[BYTES] > 0
-
-    # A picture that is not white is kept as it came, with no second request.
-    asked.clear()
-    jpeg = io.BytesIO()
-    Image.new("RGB", (60, 40), (120, 80, 40)).save(jpeg, "JPEG")
-    assert cache.sample(url).getpixel((5, 5))[0] > 100 and len(asked) == 1
-    assert not courtauld.blank(Image.new("RGB", (4, 4), (200, 255, 255)))
-    # Nor are the page's own pictures asked again as PNG.
-    page = f"{courtauld.SITE}/assets/object_images/2/52/43/134252/v0_high.jpg"
-    assert courtauld.repair(page, white, lambda u: b"") is white
-    with pytest.raises(OSError):
-        courtauld.from_cmyk_png(_png(Image.new("RGB", (4, 4), (1, 2, 3))))
-    with pytest.raises(OSError):
-        courtauld.from_cmyk_png(_png(Image.new("RGBA", (4, 4), (0, 0, 0, 0))))
-
-    # White pictures kept before are removed, so they come again.
-    white.save(tmp_path / "courtauld_p-1.jpg")
-    Image.new("RGB", (4, 4), (9, 9, 9)).save(tmp_path / "courtauld_p-2.jpg")
-    white.save(tmp_path / "met_1.jpg")
-    assert courtauld.forget_white([tmp_path]) == 1
-    assert sorted(p.name for p in tmp_path.glob("*.jpg")) == ["courtauld_p-2.jpg", "met_1.jpg"]
-
-
 PARIS_WORK = {
     "entityId": "151109",
     "title": "Les Petites Baigneuses",

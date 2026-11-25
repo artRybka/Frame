@@ -125,9 +125,6 @@ GENERIC = frozenset(
         "portret",
     }
 )
-#: Aggregators: their items come from many collections, two of which may
-#: hold copies of one work.
-AGGREGATORS = frozenset({"openverse", "europeana"})
 #: Collections of files rather than works: Commons has several scans of
 #: many paintings ("Het melkmeisje" five times), as has Openverse of it.
 FILES = frozenset({"wmc", "openverse:commons.wikimedia.org", "openverse:flickr.com"})

@@ -14,7 +14,7 @@ from PIL import Image
 from frame_server.library import AlbumOrder, AlbumSource, Playlist, PlaylistKind
 from frame_server.library.icloud import album_token, is_collection, partition_host, sync_album
 from frame_server.library.models import ItemKind
-from frame_server.player import SETTINGS_KEY, album_order
+from frame_server.player import album_order
 
 URL = "https://www.icloud.com/sharedalbum/#B0aGWZuqDGKPOC"
 OTHER = "https://www.icloud.com/sharedalbum/#B1bbbbbbbbbbbb"
@@ -212,29 +212,6 @@ def test_album_order(service, icloud) -> None:
     )
     service.albums.sync(playlist_id)
     assert service.player.upcoming()[0].source_id == "NEWEST"
-
-
-def test_older_album_setting_becomes_a_playlist(service) -> None:
-    from frame_server.library import Item
-
-    service.library.upsert(
-        Item(id="icloud:G1", kind=ItemKind.PHOTO, source="icloud", source_id="G1")
-    )
-    service.library.set_state("album_sync", {"at": "2026-10-01T10:00:00+00:00", "name": "Rodzina"})
-    service.library.set_state(
-        SETTINGS_KEY, {"mode": "album", "album_url": URL, "shuffle": False, "playlist_id": None}
-    )
-
-    playlist = service.albums.migrate()
-
-    assert playlist is not None and playlist.kind == PlaylistKind.ALBUM
-    assert playlist.name == "Rodzina" and playlist.item_ids == ["icloud:G1"]
-    assert playlist.album == AlbumSource(url=URL, order=AlbumOrder.NEWEST)
-    assert service.player.settings.playlist_id == playlist.id
-    raw = service.library.get_state(SETTINGS_KEY)
-    assert "album_url" not in raw and "mode" not in raw
-    assert service.albums.migrate() is None  # once
-    assert len(service.albums.playlists()) == 1
 
 
 def test_api_album_playlists(service, icloud) -> None:

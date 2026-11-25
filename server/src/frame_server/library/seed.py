@@ -214,13 +214,6 @@ PACKS: list[Pack] = [
 ]
 
 
-def pack(key: str) -> Pack:
-    for found in PACKS:
-        if found.key == key:
-            return found
-    raise KeyError(f"unknown pack {key!r}; choose from {[p.key for p in PACKS]}")
-
-
 DEFAULT_PLAYLISTS: list[Playlist] = [
     Playlist(
         name="Japońskie drzeworyty",

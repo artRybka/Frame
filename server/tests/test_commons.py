@@ -506,23 +506,6 @@ def test_wikimedia_leaves_printed_copies_of_paintings_out() -> None:
     assert len(prints) == 3 and {i.classification for i in prints} == {"Print"}
 
 
-def test_small_thumbnails_to_judge_colour_by() -> None:
-    from frame_server.library.importer import small_thumb
-
-    base = "https://upload.wikimedia.org/wikipedia/commons/thumb/b/b6/Wilki.jpg"
-    wmc = Item(id="wmc:1", source="wmc", source_id="1", thumb_url=f"{base}/500px-Wilki.jpg")
-    assert small_thumb(wmc) == f"{base}/120px-Wilki.jpg"
-    original = wmc.model_copy(update={"thumb_url": "https://upload.wikimedia.org/x/Small.jpg"})
-    assert small_thumb(original) == original.thumb_url
-    europeana = Item(
-        id="europeana:1",
-        source="europeana",
-        source_id="1",
-        thumb_url="https://api.europeana.eu/thumbnail/v2/url.json?uri=x&type=IMAGE&size=w400",
-    )
-    assert small_thumb(europeana).endswith("&size=w200")
-
-
 SVG = "https://upload.wikimedia.org/wikipedia/commons/f/f1/Mondrian_SVG_kleeblatt.svg"
 TIFF = "https://upload.wikimedia.org/wikipedia/commons/a/ab/Wilki.tif"
 

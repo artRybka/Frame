@@ -400,8 +400,6 @@ final class AppModel {
         await refreshAll()
     }
 
-    var currentItem: Item? { player?.current?.item }
-
     /// As last seen, until the settings are in: the frame on "Teraz" keeps its shape.
     var isPortrait: Bool { (settings?.orientation ?? remembered?.orientation) == "portrait" }
 
@@ -2068,11 +2066,6 @@ final class AppModel {
     }
 
     // MARK: Drawn again (held tiles in Odkrywaj, owner only)
-
-    /// The artist of the week as Discover last loaded it.
-    var weekArtist: ArtTheme? {
-        themes?.first { $0.key.hasPrefix(ArtTheme.weekArtistPrefix) }
-    }
 
     /// A new study of the day or artist of the week is being drawn: the
     /// held tile's menu waits for it.

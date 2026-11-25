@@ -79,7 +79,7 @@ def test_render_multi_composes_one_board() -> None:
     result = render_multi(sources, settings)
     assert result.panel.shape == (1440, 2560, 3)
     settings.layout.orientation = Orientation.PORTRAIT
-    assert render_multi(sources, settings).preview.shape == (2560, 1440, 3)
+    assert render_multi(sources, settings).original_image().size == (1440, 2560)
     single = render_multi(sources[:1], settings)  # one photo: a passe-partout
     assert single.panel.shape == (1440, 2560, 3)
     board = np.asarray(render_multi(sources, settings, seed="s").original_image(), dtype=np.float32)

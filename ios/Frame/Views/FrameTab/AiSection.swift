@@ -387,7 +387,6 @@ struct AiSection: View {
     /// "gotowe 3691 · czeka 9": how far the background got.
     static func progressNote(_ progress: AiSettings.Progress) -> String? {
         var parts = ["gotowe \(count(progress.done))"]
-        if progress.preparing { parts.append("przygotowuję pakiet") }
         if progress.batchItems > 0 { parts.append("w pakiecie \(progress.batchDone) z \(progress.batchItems)") }
         if progress.waiting > 0 { parts.append("czeka \(count(progress.waiting))") }
         return parts.joined(separator: " · ")

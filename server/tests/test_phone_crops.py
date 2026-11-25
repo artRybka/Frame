@@ -117,8 +117,8 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         # A painting: its own model since 2026-11-21 („Tak, wymień dla malarstwa”).
         assert ask["look"] and ask["kind"] == 0 and ask["model"] == cm.PAINTING_MODEL
         assert cm.model_of(1) == cm.model_of(2) == cm.MODEL
-        waiting = client.get("/api/crops/phone/waiting?limit=2").json()
-        assert waiting["left"] == 4 and len(waiting["works"]) == 2
+        works, left = service.phone_crops.waiting(2)
+        assert left == 4 and len(works) == 2
 
         cut = _found("mnw:1", client)
         assert cut["cut"] and cut["item"]["cut"]["by"] == "auto"
@@ -133,7 +133,7 @@ def test_the_phone_cuts_and_claude_is_asked_nothing(
         # Looked at in another photograph (a copy took its place): nothing.
         other = _found("mnw:4", client, width=700, height=1000)
         assert other["verdict"] == "" and client.get("/api/crops/phone/mnw:4").json()["look"]
-        assert client.get("/api/crops/phone/waiting").json()["left"] == 1
+        assert service.phone_crops.waiting(10)[1] == 1
 
         review = client.get("/api/crops/review").json()
         assert [i["id"] for i in review["cut"]] == ["mnw:1"]
@@ -408,5 +408,5 @@ def test_the_server_looks_at_night_as_the_phone_would(
     assert looked["mnw:2"]["m"] == cm.MODEL and looked["mnw:2"]["pl"] == cm.PLATE
     with _client(service) as client:
         assert not client.get("/api/crops/phone/mnw:1").json()["look"]
-        assert client.get("/api/crops/phone/waiting").json()["left"] == 0
+        assert service.phone_crops.waiting(10)[1] == 0
     assert fake.asked == []

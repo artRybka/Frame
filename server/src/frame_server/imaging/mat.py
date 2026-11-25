@@ -26,7 +26,6 @@ from .gamut import compress_chroma
 from .layout import Fit, Plan
 from .palette import EM32DX, Palette
 
-MAT_COLORS = ("white", "cream", "grey", "black", "picture", "picture_dark")
 PICTURE_MATS = ("picture", "picture_dark")  # tinted by the picture
 HUE_BINS = 36
 TINT_LIGHT = (0.9, 0.024, 0.3)  # light mat: lightness (black 0, white 1), max chroma, share

@@ -52,7 +52,7 @@ from PIL import Image
 
 from ..imaging import chalk, drawn
 from .client import HAIKU, AiUnavailable, request
-from .daily import Mark, Spot, View
+from .daily import Mark, View
 from .gemini import NotDrawn, blocked
 from .sketch import _loop_box
 
@@ -402,10 +402,6 @@ def colour(view: View) -> str:
         if m.shape == "echo" and m.title and _COLOURED.search(f"{m.title} {m.text}")
     ]
     return " ".join(f"„{t.strip()}”" for t in dict.fromkeys(sentences + echoes))
-
-
-def _pc(spot: Spot) -> str:
-    return f"({round(spot.x * 100)}, {round(spot.y * 100)})"
 
 
 def _course(mark: Mark) -> tuple[list[tuple[float, float]], bool]:

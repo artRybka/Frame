@@ -12,13 +12,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from frame_server.imaging.cut import (
-    snap,
-    thin_backdrop,
-    valid,
-    warp,
-    worth_cutting,
-)
+from frame_server.imaging.cut import snap, valid, warp, worth_cutting
 from frame_server.library.models import Cut, Item, ItemKind
 from frame_server.service import FrameService
 
@@ -134,19 +128,6 @@ def test_a_cut_of_another_picture_is_never_applied(service: FrameService) -> Non
     service.images.recut(item)
     with Image.open(service.images.image_path(item)) as kept:
         assert kept.size == (W, H)
-
-
-def test_a_sheet_on_a_thin_strip_of_board_is_told_from_a_work_to_the_edges() -> None:
-    def small(img: Image.Image) -> Image.Image:
-        img.thumbnail((640, 640))
-        return img
-
-    assert thin_backdrop(small(sheet(strip=9)))
-    assert not thin_backdrop(small(sheet(strip=0)))  # the drawing runs to the edges
-    assert not thin_backdrop(small(photo()))  # a wide board: the judge sees that
-    margin = Image.new("RGB", (W, H), (236, 230, 214))  # a print's wide blank margin
-    margin.paste(Image.fromarray(np.full((300, 400, 3), 60, dtype=np.uint8)), (250, 200))
-    assert not thin_backdrop(small(margin))
 
 
 SHEET_CORNERS = {
@@ -389,7 +370,7 @@ def test_the_owner_corrects_and_restores_the_models_cut(service: FrameService) -
 def test_the_owners_framing_moves_onto_the_cut_picture(service: FrameService) -> None:
     # Wyspiański's „Macierzyństwo” (2026-11-15): a close-up of the face
     # saved for the portrait frame shows the same face once the work is cut.
-    from frame_server.ai.crops import framing_within
+    from frame_server.ai.crops import framing_moved
     from frame_server.imaging.layout import Crop
     from frame_server.library.models import Framing
 
@@ -407,8 +388,8 @@ def test_the_owners_framing_moves_onto_the_cut_picture(service: FrameService) ->
     assert abs(y0 + detail.y * (y1 - y0) - face.y) < 0.01
     assert 1.0 <= detail.zoom < face.zoom
     # A framing on a picture filling the cut stays whole.
-    whole = framing_within(
-        {"landscape": Framing(fill=Crop())}, [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
+    whole = framing_moved(
+        {"landscape": Framing(fill=Crop())}, None, [(0.1, 0.1), (0.9, 0.1), (0.9, 0.9), (0.1, 0.9)]
     )
     fill = whole["landscape"].fill
     assert fill is not None and (fill.x, fill.y, fill.zoom) == (0.5, 0.5, 1.0)

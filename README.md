@@ -25,22 +25,14 @@ brew install uv
 cd server
 uv sync                       # Python + zależności (.venv)
 cp .env.example .env          # IP / PIN / MAC ekranu
-uv run frame device info      # połączenie z ekranem (E1)
-uv run frame push ~/Pictures/obraz.jpg -p painting   # obraz na ekran (E2)
 ```
 
 Inne przydatne polecenia:
 
 ```bash
-uv run frame render in.jpg out.png -p photo --preview podglad.png   # bez ekranu
-uv run frame testchart passthrough pt.png && uv run frame push pt.png --raw
 uv run frame serve            # serwer + API (http://localhost:8099/docs)
 uv run pytest                 # testy
 ```
-
-`frame push` uruchamia na chwilę serwer HTTP na porcie 8099, z którego ekran
-pobiera obraz. Przy pierwszym uruchomieniu zezwól w zaporze macOS na
-połączenia przychodzące.
 
 ## Uruchomienie docelowe: Home Assistant Green albo Synology
 

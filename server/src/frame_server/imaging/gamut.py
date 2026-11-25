@@ -14,7 +14,7 @@ from functools import lru_cache
 
 import numpy as np
 
-from .color import FloatArray, linear_to_oklab, oklab_to_linear
+from .color import FloatArray, oklab_to_linear
 from .palette import Palette
 
 _EPS = 1e-6
@@ -109,12 +109,3 @@ def compress_chroma(lab: FloatArray, palette: Palette, knee: float) -> FloatArra
         new_ratio = np.where(ratio <= knee, ratio, knee + span * np.tanh((ratio - knee) / span))
     scale = np.where(chroma > 1e-6, new_ratio * limit / np.maximum(chroma, 1e-6), 0.0)
     return np.stack([light, a * scale, b * scale], axis=-1).astype(np.float32)
-
-
-def gamut_coverage(linear: FloatArray, palette: Palette) -> float:
-    """Fraction of pixels already inside the panel gamut (content suitability hint)."""
-    planes = hull_planes(palette.perceived_linear())
-    lab = linear_to_oklab(linear)
-    lo_l, hi_l = palette.neutral_range()
-    lab[..., 0] = lo_l + (hi_l - lo_l) * np.clip(lab[..., 0], 0, 1)
-    return float(inside(oklab_to_linear(lab), planes).mean())

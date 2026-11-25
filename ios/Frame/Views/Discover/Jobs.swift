@@ -13,9 +13,3 @@ func watchJob(
     }
 }
 
-/// "X of Y" while an import runs.
-func jobProgress(_ job: JobStatus?) -> String {
-    guard let job, job.total > 0 else { return "Wyszukiwanie…" }
-    return "Dodawanie \(job.done + job.failed) z \(job.total)…"
-}
-

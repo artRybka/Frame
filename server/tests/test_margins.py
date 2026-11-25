@@ -125,22 +125,3 @@ def test_downloads_lose_margins_own_pictures_do_not(tmp_path: Path) -> None:
     photo = _item("icloud")
     with Image.open(cache.ensure_thumb(photo)) as thumb:
         assert thumb.size == (360, 240)
-
-
-def test_kept_pictures_are_trimmed_in_place(tmp_path: Path) -> None:
-    cache = ImageCache(tmp_path, lambda: httpx.Client())
-    framed = _framed()
-    museum, own = _item("vam"), _item("upload")
-    for item in (museum, own):
-        framed.save(cache.thumb_path(item))
-        framed.save(cache.image_path(item))
-    plain = _item("vam", 2)
-    Image.fromarray(_painting(200, 150)).save(cache.thumb_path(plain))
-    assert cache.trim_kept() == 2
-    for path in (cache.thumb_path(museum), cache.image_path(museum)):
-        with Image.open(path) as img:
-            assert img.width < 300
-    for path in (cache.thumb_path(own), cache.image_path(own)):
-        with Image.open(path) as img:
-            assert img.size == (360, 240)
-    assert cache.trim_kept() == 0  # once trimmed, nothing more to cut

@@ -5,6 +5,10 @@ on:
   push:
     paths: ["server/**", ".github/workflows/server.yml"]
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,11 +17,38 @@ jobs:
         working-directory: server
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # a merge's second parent: the branch tested before it
+      # A merge into main whose server is the branch's own, already tested
+      # there and passed, is not tested a second time (some 20 minutes).
+      - name: Tested on the merged branch?
+        id: tested
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch=$(git rev-parse -q --verify HEAD^2 || true)
+          if [ -n "$branch" ] \
+            && git diff --quiet "$branch" HEAD -- ':/server' ':/.github/workflows/server.yml'; then
+            passed=$(gh run list -R "$GITHUB_REPOSITORY" --workflow server.yml \
+              --commit "$branch" --status success --json databaseId --jq length)
+            if [ "${passed:-0}" -gt 0 ]; then
+              echo "Server tested and passed on $branch: not again."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
       - uses: astral-sh/setup-uv@v6
+        if: steps.tested.outputs.skip != 'true'
         with:
           enable-cache: true
-      - run: uv sync --locked
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run mypy src
-      - run: uv run pytest -q
+      - if: steps.tested.outputs.skip != 'true'
+        run: uv sync --locked
+      - if: steps.tested.outputs.skip != 'true'
+        run: uv run ruff check src tests
+      - if: steps.tested.outputs.skip != 'true'
+        run: uv run ruff format --check src tests
+      - if: steps.tested.outputs.skip != 'true'
+        run: uv run mypy src
+      # The runner's four cores: some 9 minutes instead of 16–23 one at a time.
+      - if: steps.tested.outputs.skip != 'true'
+        run: uv run pytest -q -n auto

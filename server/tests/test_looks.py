@@ -478,25 +478,3 @@ def test_the_api(service: FrameService, looks: tuple[Looks, FakeModel]) -> None:
         # An older app's switch changes nothing.
         assert client.put("/api/ai", json={"looks": False}).status_code == 200
         assert client.get("/api/looks/search", params={"q": "red"}).status_code == 200
-
-
-def test_googles_numbers_of_before_are_deleted(
-    service: FrameService, looks: tuple[Looks, FakeModel]
-) -> None:
-    found, _model = looks
-    root = found.root
-    (root / "three").mkdir(parents=True)
-    (root / "three" / "vectors.i8").write_bytes(b"x")
-    (root / "three" / "told.jsonl").write_text("{}")
-    for name in ("vectors.i8", "ids.txt", "batches.json"):
-        (root / name).write_text("x")
-    photos = root / "photos"
-    photos.mkdir()
-    for name in ("a.f32", "a.three.f32", "a.seen.f32", "a.palette.f32"):
-        (photos / name).write_bytes(b"x")
-    assert found.forget_google() == 7
-    assert sorted(p.name for p in root.rglob("*") if p.is_file()) == [
-        "a.palette.f32",
-        "a.seen.f32",
-    ]
-    assert found.forget_google() == 0

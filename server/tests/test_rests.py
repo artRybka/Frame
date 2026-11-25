@@ -24,7 +24,6 @@ from frame_server.library.hosts import (
 from frame_server.library.policy import DAY
 
 CHALLENGE = httpx.Headers({"server": "cloudflare", "cf-mitigated": "challenge"})
-MET = "https://collectionapi.metmuseum.org/public/collection/v1/objects/1"
 LOC = "https://www.loc.gov/collections/prokudin-gorskii/?fo=json"
 SMK = "https://api.smk.dk/api/v1/art/search/?keys=x"
 MNK = "https://cdn-zbiory.mnk.pl/upload/cache/multimedia_big/1.jpg"

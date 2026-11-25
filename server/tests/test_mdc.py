@@ -8,11 +8,9 @@ from fake_panel import FakePanel, reply_frame
 
 from frame_server.device.mdc import (
     CMD_CONTENT_DOWNLOAD,
-    CMD_ON_TIMER,
     CMD_SERIAL,
     CMD_STATUS,
     MAX_URL_LENGTH,
-    ON_TIMER_REPEAT,
     BatteryStatus,
     MdcAuthError,
     MdcClient,
@@ -70,16 +68,10 @@ async def test_session_commands(server_ssl: ssl.SSLContext) -> None:
             assert await mdc.serial_number() == "0K1X3ABC00001"
             battery = await mdc.battery()
             assert battery.level == 87
-            url = "http://192.168.1.10:8099/device/content.json"
-            await mdc.content_download(url)
             with pytest.raises(MdcError, match="NAK"):
                 await mdc.command(0x99)
     finally:
         await panel.stop()
-
-    command, data = panel.received[2]
-    assert command == CMD_CONTENT_DOWNLOAD
-    assert data[:3] == bytes([0x53, 0x80, len(url)]) and data[3:] == url.encode()
 
 
 async def test_wrong_pin(server_ssl: ssl.SSLContext) -> None:
@@ -99,36 +91,9 @@ async def test_url_too_long(server_ssl: ssl.SSLContext) -> None:
     try:
         async with MdcClient("127.0.0.1", "123456", panel.port) as mdc:
             with pytest.raises(MdcError, match="longer"):
-                await mdc.content_download("http://x/" + "a" * MAX_URL_LENGTH)
+                await mdc.set_custom_app_url("http://x/" + "a" * MAX_URL_LENGTH)
     finally:
         await panel.stop()
-
-
-async def test_on_timer(server_ssl: ssl.SSLContext) -> None:
-    state = {"timer": b"\x00"}
-
-    def handler(command: int, data: bytes) -> tuple[bool, bytes]:
-        if command == CMD_ON_TIMER:
-            if data:
-                state["timer"] = data[:4]
-            return True, state["timer"]
-        return False, b"\x00"
-
-    panel = FakePanel(server_ssl, handler=handler)
-    await panel.start()
-    try:
-        async with MdcClient("127.0.0.1", "123456", panel.port, command_interval=0) as mdc:
-            disabled = await mdc.on_timer()
-            assert not disabled.enabled and disabled.hour is None
-            await mdc.set_on_timer(7, 5, ON_TIMER_REPEAT["daily"])
-            timer = await mdc.on_timer()
-            assert timer.enabled and (timer.hour, timer.minute, timer.repeat) == (7, 5, 0x02)
-            with pytest.raises(MdcError, match="invalid"):
-                await mdc.set_on_timer(24, 0)
-    finally:
-        await panel.stop()
-
-    assert (CMD_ON_TIMER, bytes([0x01, 0x02, 7, 5, 0x01])) in panel.received
 
 
 def test_battery_external_power() -> None:

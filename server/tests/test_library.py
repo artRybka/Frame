@@ -61,10 +61,6 @@ def test_query_filters_and_facets(tmp_path) -> None:
     assert [i.id for i in lib.query(PlaylistRules(favorites_only=True))[1]] == ["test:3"]
     assert [i.id for i in lib.query(sort="year")[1]] == ["test:2", "test:3", "test:1"]
 
-    facets = lib.facets()
-    assert facets.artists[0].value == "Claude Monet" and facets.artists[0].count == 2
-    assert all(f.value != "Someone" for f in facets.artists)
-
 
 def test_lists_survive_works_added_while_they_are_read(tmp_path, monkeypatch) -> None:
     """Playlists and Odkrywaj went 500 ("dictionary changed size during
@@ -479,7 +475,7 @@ def test_colour_and_accent_must_both_fit() -> None:
 
 
 def test_only_colours_ask_for_pictures_painted_in_them_alone() -> None:
-    from frame_server.library.colors import painted_in, shown_tags
+    from frame_server.library.colors import painted_in
 
     # The fewest families that make 80 % of the coloured pixels.
     assert painted_in({"blue": 0.5, "teal": 0.3, "red": 0.04, "gray": 0.16}) == ["blue", "teal"]
@@ -497,8 +493,6 @@ def test_only_colours_ask_for_pictures_painted_in_them_alone() -> None:
     assert not has_colours(sea, ["only:blue"])  # teal too
     # With the other groups: warm and only red or orange.
     assert not has_colours(nocturne, ["warm", "only:blue"])
-    # Never shown or counted.
-    assert shown_tags(sea) == ["blue", "teal", "accent:orange"]
 
     # From a picture: blue sea and sky over grey rocks.
     pixels = np.empty((200, 200, 3), np.uint8)
@@ -1625,7 +1619,7 @@ def test_tint_spread_tells_monochrome_from_colour() -> None:
 
 def test_tint_strength_tells_sepia_from_black_and_white() -> None:
     from frame_server.library.colors import tint_strength
-    from frame_server.library.style import NEUTRAL_TINT, preset_for_photo
+    from frame_server.library.style import NEUTRAL_TINT
 
     grey = _gradient((0, 0, 0), (255, 255, 255))
     faintly_warm = _gradient((20, 20, 20), (250, 247, 240))
@@ -1633,8 +1627,6 @@ def test_tint_strength_tells_sepia_from_black_and_white() -> None:
     albumen = _gradient((60, 40, 25), (230, 210, 175))
     assert tint_strength(grey) < NEUTRAL_TINT and tint_strength(faintly_warm) < NEUTRAL_TINT
     assert tint_strength(sepia) > 2 * NEUTRAL_TINT and tint_strength(albumen) > 2 * NEUTRAL_TINT
-    assert preset_for_photo(grey) == "bw"
-    assert preset_for_photo(sepia) == "photo"
 
 
 def test_auto_preset_by_kind_metadata_and_colour() -> None:

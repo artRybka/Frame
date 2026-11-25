@@ -711,12 +711,12 @@ def test_wifi_report_shows_in_the_status_until_the_panel_leaves_the_app(tmp_path
         client.get("/panel/next", params={"reason": "start", "charging": "true"})
         report = {"event": "wifi", "via": "webapis", "level": 2, "ssid": "IoT", "ip": "127.0.0.1"}
         client.post("/panel/report", content=json.dumps(report))
-        wifi = client.get("/api/device/status").json()["wifi"]
-        assert wifi["ssid"] == "IoT" and wifi["level"] == 2 and not wifi["wrong_network"]
+        wifi = app.state.service.status.status.wifi
+        assert wifi.ssid == "IoT" and wifi.level == 2 and not wifi.wrong_network
         client.post("/panel/report", content='{"event": "wifi", "ip": "10.1.1.1", "signal": 0.4}')
-        assert client.get("/api/device/status").json()["wifi"]["wrong_network"]
+        assert app.state.service.status.status.wifi.wrong_network
         assert client.get("/panel/content.json").status_code == 200
-        assert client.get("/api/device/status").json()["wifi"] is None
+        assert app.state.service.status.status.wifi is None
 
 
 def test_the_package_is_built_here_and_the_certificates_watched(

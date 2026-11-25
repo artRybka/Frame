@@ -585,25 +585,6 @@ def test_private_use_brings_wikiart_and_its_works_stay(service) -> None:
         assert client.put("/api/settings", json=settings).status_code == 200
 
 
-def test_works_of_the_test_switches_move_under_private_use(service) -> None:
-    from frame_server.service import relabel_test_licences
-
-    library = service.library
-    tests = "Tylko do testów, w UE wolne od 2058 (twórca zm. 1987)"
-    library.upsert(Item(id="europeana:1~w", source="europeana", source_id="1~w", license=tests))
-    free = "Domena publiczna w UE (twórca zm. 1954)"
-    library.upsert(Item(id="europeana:1~m", source="europeana", source_id="1~m", license=free))
-    old = "Tylko do testów ramki (WikiArt)"
-    library.upsert(Item(id="wikiart:wa1", source="wikiart", source_id="wa1", license=old))
-    assert relabel_test_licences(library) == 2
-    assert library.get("europeana:1~w").license == (
-        "Prawa autorskie w mocy (użytek prywatny), w UE wolne od 2058 (twórca zm. 1987)"
-    )
-    assert library.get("europeana:1~m").license == free
-    assert library.get("wikiart:wa1").license == "WikiArt (użytek prywatny)"
-    assert relabel_test_licences(library) == 0
-
-
 def test_colours_look_deeper_and_the_stream_answers_museum_by_museum(service, monkeypatch) -> None:
     import json
 

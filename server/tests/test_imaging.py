@@ -11,7 +11,6 @@ from frame_server.imaging import (
     SPECTRA6,
     Palette,
     RenderSettings,
-    Strategy,
     render,
     render_original,
 )
@@ -25,8 +24,7 @@ from frame_server.imaging.color import (
 from frame_server.imaging.dither import Kernel, error_diffusion
 from frame_server.imaging.gamut import hull_planes, inside
 from frame_server.imaging.layout import Fit, Orientation, plan_layout
-from frame_server.imaging.testchart import CHARTS
-from frame_server.imaging.tone import ToneSettings, grade_for_panel, map_to_panel, precompensate
+from frame_server.imaging.tone import ToneSettings, grade_for_panel, map_to_panel
 
 
 def _gradient(w: int = 400, h: int = 300) -> Image.Image:
@@ -74,43 +72,28 @@ def test_dither_preserves_average_colour(rgb: tuple[int, int, int]) -> None:
     assert delta < 0.01
 
 
-def test_precompensate_inverts_affine_fit() -> None:
-    target = map_to_panel(u8_to_linear(np.asarray(_gradient())), SPECTRA6, ToneSettings())
-    nominal = precompensate(target, SPECTRA6)
-    assert nominal.shape == target.shape
-    assert nominal.min() >= 0 and nominal.max() <= 1
-
-
 @pytest.mark.parametrize("orientation", list(Orientation))
-def test_render_dither_outputs_only_inks(orientation: Orientation) -> None:
+def test_render_is_panel_sized(orientation: Orientation) -> None:
     settings = PRESETS["photo"].model_copy(deep=True)
-    settings.strategy = Strategy.DITHER
     settings.layout.orientation = orientation
     result = render(_gradient(), settings)
     assert result.panel.shape == (1440, 2560, 3)
-    expected_preview = (1440, 2560) if orientation is Orientation.LANDSCAPE else (2560, 1440)
-    assert result.preview.shape[:2] == expected_preview
-    inks = {tuple(c) for c in SPECTRA6.device_u8()}
-    used = {tuple(c) for c in np.unique(result.panel.reshape(-1, 3), axis=0)}
-    assert used <= inks
     data, ext = result.encode()
-    assert ext == "png"
+    assert ext == "jpg"
     assert Image.open(io.BytesIO(data)).size == (2560, 1440)
 
 
-@pytest.mark.parametrize("strategy", list(Strategy))
-def test_original_keeps_the_pictures_colours(strategy: Strategy) -> None:
+def test_original_keeps_the_pictures_colours() -> None:
     """The app shows the framed picture untouched; only the panel is corrected."""
     colour = (200, 120, 40)
     settings = PRESETS["painting"].model_copy(deep=True)
-    settings.strategy = strategy
     settings.layout.orientation = Orientation.LANDSCAPE
     result = render(Image.new("RGB", (400, 300), colour), settings)
     original = result.original_image()
     assert original.size == (2560, 1440)
     assert original.getpixel((1280, 720)) == colour  # no tone map, no dither
     assert original.getpixel((5, 5)) == (255, 255, 255)  # the white mat, as paper
-    assert result.preview_image().getpixel((1280, 720)) != colour
+    assert result.panel_image().getpixel((1280, 720)) != colour  # graded for the panel
 
 
 @pytest.mark.parametrize("preset", ["painting", "photo", "bw"])
@@ -132,24 +115,12 @@ def test_fast_original_matches_the_render(preset: str, fit: Fit, mat: str) -> No
     assert np.percentile(np.abs(full - fast), 99.9) <= 2
 
 
-def test_inks_restrict_the_dither() -> None:
-    settings = RenderSettings(inks=["black", "white"])
-    result = render(_gradient(), settings)
-    used = {tuple(c) for c in np.unique(result.panel.reshape(-1, 3), axis=0)}
-    assert used <= {(0, 0, 0), (255, 255, 255)}
-
-
 def test_bw_preset_sends_near_greys() -> None:
     settings = PRESETS["bw"].model_copy(deep=True)
     settings.layout.fit = Fit.FILL
     result = render(_gradient(), settings)
     lab = linear_to_oklab(u8_to_linear(result.panel))
     assert np.hypot(lab[..., 1], lab[..., 2]).max() < 0.03  # nudged off green, still grey
-
-
-def test_presets_are_passthrough() -> None:
-    # E5 and E14: the panel's own colour mapping, corrected, looked best.
-    assert all(p.strategy == Strategy.PASSTHROUGH for p in PRESETS.values())
 
 
 def test_grade_for_panel() -> None:
@@ -197,26 +168,14 @@ def test_cream_mat_is_white_and_yellow() -> None:
 
 
 def test_passthrough_is_jpeg() -> None:
-    result = render(_gradient(), RenderSettings(strategy=Strategy.PASSTHROUGH))
+    result = render(_gradient(), RenderSettings())
     data, ext = result.encode()
     assert ext == "jpg" and data[:2] == b"\xff\xd8"
-
-
-@pytest.mark.parametrize("name", list(CHARTS))
-def test_charts_are_native_size(name: str) -> None:
-    img = CHARTS[name]()
-    assert img.size == (2560, 1440) and img.mode == "RGB"
 
 
 def test_paper_white_is_the_white_ink() -> None:
     # Spectra 6 yellow is lighter than its white; white must still map to white.
     assert SPECTRA6.names[SPECTRA6.white_index()] == "white"
-    settings = PRESETS["photo"].model_copy(deep=True)
-    settings.strategy = Strategy.DITHER
-    settings.layout.fit = Fit.FILL
-    result = render(Image.new("RGB", (320, 180), (255, 255, 255)), settings)
-    white = np.all(result.panel == 255, axis=-1).mean()
-    assert white > 0.99
 
 
 def test_dither_only_some_pixels() -> None:
