@@ -31,6 +31,12 @@ def _at(text: str) -> datetime:
     return datetime.fromisoformat(text).replace(tzinfo=WARSAW)
 
 
+@pytest.fixture(autouse=True)
+def _short_wake_after_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A panel nobody answers for is given up on in a second, not 45."""
+    monkeypatch.setattr(power, "WAKE_AFTER_DOWN", timedelta(seconds=1))
+
+
 @pytest.fixture(scope="module")
 def server_ssl() -> ssl.SSLContext:
     ca = trustme.CA()

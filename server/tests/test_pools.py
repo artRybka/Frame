@@ -89,7 +89,8 @@ def museums(service, monkeypatch):
 
 
 def _wait(job) -> None:
-    deadline = time.monotonic() + 30
+    # Some 300 works analysed for real: ~30 s alone, longer beside other tests.
+    deadline = time.monotonic() + 120
     while not job.finished and time.monotonic() < deadline:
         time.sleep(0.05)
     assert job.finished and not job.error, job.error

@@ -179,7 +179,10 @@ an empty list was a narrow beige strip on white (`Design/Page.swift`).
 
 Workflows run on branch pushes only (no `pull_request` trigger; a PR shows
 the push checks). On `main` only `testflight` and `publish` (plus `server`)
-run. `publish` on a non-main branch tags only `sha-<commit>`, never `latest`.
+run. `server` runs its tests in parallel (`pytest -n auto`, so a test must not
+lean on another's files or timing) and skips a merge into `main` whose
+`server/` is the merged branch's, already passed there.
+`publish` on a non-main branch tags only `sha-<commit>`, never `latest`.
 
 ## Deployment
 
