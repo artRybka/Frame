@@ -216,23 +216,6 @@ def build(path: Path, http: httpx.Client) -> int:
     return sum(1 for w in works.values() if w)
 
 
-def forget_white(folders: list[Path]) -> int:
-    """Remove the gallery's pictures kept white (before :func:`repair`), so
-    they are downloaded again; how many went."""
-    gone = 0
-    for folder in folders:
-        for path in folder.glob("courtauld_*.jpg"):
-            try:
-                with Image.open(path) as img:
-                    white = blank(img)
-            except OSError:
-                continue
-            if white:
-                path.unlink(missing_ok=True)
-                gone += 1
-    return gone
-
-
 class _Index:
     """The list, written in the background when missing or a month old, and
     kept in memory."""

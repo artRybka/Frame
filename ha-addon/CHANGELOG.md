@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.380
+
+- Bez zmian w działaniu: porządki w serwerze i aplikacji. Usunięte
+  nieużywane funkcje serwera (kalibracja kolorów z planszą, pełny dither
+  obrazu z podglądem symulacji, stare komendy wiersza poleceń, jednorazowe
+  migracje, które już przeszły, i endpointy, których aplikacja nie woła).
+  Ramka nadal ditheruje sama obraz, a serwer tylko passe-partout.
+
 ## 1.145.379
 
 - Bez zmian w działaniu: testy serwera w CI idą równolegle i nie powtarzają

@@ -251,13 +251,7 @@ def test_api_library_playlists_player(service) -> None:
         assert client.patch(f"/api/library/items/{item_id}", json={"favorite": True}).json()[
             "favorite"
         ]
-        assert client.get("/api/library/facets").json()["artists"][0] == {
-            "value": "Ala",
-            "count": 2,
-        }
 
-        preview = client.post("/api/playlists/preview", json={"colors": ["blue"]}).json()
-        assert preview["count"] >= 1
         created = client.post(
             "/api/playlists", json={"name": "Niebieskie", "rules": {"colors": ["blue"]}}
         )
@@ -321,8 +315,6 @@ def test_api_removes_single_works_from_playlists(service) -> None:
         assert detail["playlist"]["item_count"] == 2
         assert b.id not in svc.player.state.queue  # not shown next either
         assert {i.id for i in svc.player.candidates()} == {a.id, c.id}
-        preview = client.post("/api/playlists/preview", json=detail["playlist"]["rules"]).json()
-        assert preview["count"] == 2
 
         # Saving the playlist back without exceptions restores the work.
         rules = {**detail["playlist"]["rules"], "exclude_ids": []}

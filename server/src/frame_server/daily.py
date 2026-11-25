@@ -180,13 +180,6 @@ def score(item: Item, day: date, taste: list[str], rng: random.Random) -> float:
     return value + rng.uniform(0, 0.35)
 
 
-def copy_side(item: Item) -> int | None:
-    """The long side of the picture the work is shown from (a sharper copy
-    found elsewhere, else its museum's), None when not known: a museum that
-    says no size is not held to its thumbnail's (``images.said_side``)."""
-    return said_side(item)
-
-
 class Daily:
     def __init__(self, library: Library, player: Player, ai: AiWorker, job: DailyJob) -> None:
         self.library = library

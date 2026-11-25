@@ -170,18 +170,25 @@ def test_a_photo_sent_once_is_counted_each_time(service: FrameService) -> None:
 # -- a kept thumbnail ---------------------------------------------------------
 
 
+def _bytes(kept):  # type: ignore[no-untyped-def]
+    return kept.data if kept is not None else None
+
+
 def test_a_kept_thumbnail_is_read_whole_and_a_missing_one_is_none(service: FrameService) -> None:
     images = service.images
     work = _work("met:1")
-    assert images.thumb_bytes(work.id) is None and images.thumb_bytes(work.id, tile=True) is None
+    assert (
+        _bytes(images.sent_thumb(work.id)) is None
+        and _bytes(images.sent_thumb(work.id, tile=True)) is None
+    )
     path = images.thumb_path(work)
     path.parent.mkdir(parents=True, exist_ok=True)
     kept = jpeg_bytes((90, 120, 200), (640, 480))
     path.write_bytes(kept)
-    assert images.thumb_bytes(work.id) == kept
-    tile = images.thumb_bytes(work.id, tile=True)
+    assert _bytes(images.sent_thumb(work.id)) == kept
+    tile = _bytes(images.sent_thumb(work.id, tile=True))
     assert tile is not None and tile == images.tile(path).read_bytes()
-    assert images.thumb_bytes("owned:nothing.jpg") is None
+    assert _bytes(images.sent_thumb("owned:nothing.jpg")) is None
 
 
 def test_the_app_gets_a_kept_thumbnail_and_its_tile(tmp_path: Path) -> None:

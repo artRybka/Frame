@@ -1801,10 +1801,6 @@ def searched_kinds(keys: list[str] | tuple[str, ...]) -> frozenset[str]:
     return frozenset(kinds)
 
 
-def wants_manuscripts(keys: list[str] | tuple[str, ...]) -> bool:
-    return MANUSCRIPTS in keys
-
-
 def years(keys: list[str]) -> tuple[int | None, int | None]:
     """The span the period terms cover, to ask museums for."""
     periods = grouped(keys).get("period", [])

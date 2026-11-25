@@ -5,9 +5,6 @@ from __future__ import annotations
 
 import re
 
-from PIL import Image
-
-from .colors import tint_spread, tint_strength
 from .models import Item, ItemKind
 from .vocabulary import GREY_PAINTING_SPREAD, is_painting
 
@@ -63,10 +60,3 @@ def auto_preset(item: Item, tint: float | None = None) -> str:
     if _GRAPHIC.search(text):
         return "graphic"
     return "painting"
-
-
-def preset_for_photo(img: Image.Image) -> str:
-    """A one-off photo sent from the phone: B&W ones in black and white,
-    sepia ones as photos."""
-    grey = tint_spread(img) < MONOCHROME_SPREAD and tint_strength(img) < NEUTRAL_TINT
-    return "bw" if grey else "photo"

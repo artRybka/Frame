@@ -13,7 +13,6 @@ from ..library import (
     ItemSummary,
     Playlist,
     PlaylistKind,
-    PlaylistRules,
     PlaylistSort,
     PlaylistSummary,
 )
@@ -31,11 +30,6 @@ Svc = Annotated[FrameService, Depends(service)]
 class PlaylistDetail(BaseModel):
     playlist: PlaylistSummary
     item_ids: list[str]
-    items: list[ItemSummary]
-
-
-class RulesPreview(BaseModel):
-    count: int
     items: list[ItemSummary]
 
 
@@ -179,12 +173,6 @@ def check_album(link: AlbumLink, svc: Svc) -> AlbumCheck:
     except httpx.HTTPError as err:
         raise HTTPException(502, f"iCloud: {err}") from err
     return AlbumCheck(name=name, count=count)
-
-
-@router.post("/playlists/preview", response_model=RulesPreview)
-def preview_rules(rules: PlaylistRules, svc: Svc) -> RulesPreview:
-    total, items = svc.library.query(rules, sort="suitability", limit=24)
-    return RulesPreview(count=total, items=[ItemSummary.of(i) for i in items])
 
 
 @router.get("/playlists/{playlist_id}", response_model=PlaylistDetail)

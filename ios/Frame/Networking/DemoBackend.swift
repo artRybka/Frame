@@ -85,7 +85,7 @@ actor DemoBackend: FrameBackend {
         keySet: false, keyTail: nil, keyFromApp: false, plText: true, keywordsArtworks: true,
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, journey: true, webFacts: true, stages: true, varnishBlue: true,
         reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
-        keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0, preparing: false),
+        keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0),
         plTextProgress: nil, error: nil,
         geminiKeySet: true, geminiKeyTail: "wxyz", falKeySet: false, drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
         drawnWaiting: 12, drawnInBatch: 20, geminiError: nil,
@@ -928,10 +928,6 @@ actor DemoBackend: FrameBackend {
         return try await cropReview()
     }
 
-    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
-        PhoneCropsWaiting(model: MuseumCrop.model, side: MuseumCrop.photoSide, works: [], left: 1240)
-    }
-
     /// "Ucz kadrowania" in the demo: the works not told of yet.
     func cropTeach(kind: Int, limit: Int) async throws -> CropTeach {
         let works = items.filter { $0.kind == .artwork && !$0.excluded && demoTold[$0.id] == nil }
@@ -1136,11 +1132,6 @@ actor DemoBackend: FrameBackend {
             .filter { $0.kind == .manual && $0.itemIds.contains(itemID) }
             .compactMap { $0.id.map { PlaylistHolding(playlistId: $0, itemId: itemID) } }
             .sorted { $0.playlistId < $1.playlistId }
-    }
-
-    func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview {
-        let list = Self.sorted(items.filter { Self.matches($0, rules) }, by: "suitability")
-        return RulesPreview(count: list.count, items: list.prefix(24).map(\.summary))
     }
 
     func play(playlistID: Int) async throws {
@@ -1802,12 +1793,6 @@ actor DemoBackend: FrameBackend {
 
     func placePicture(key: String) async throws -> PlacePicture { PlacePicture() }
 
-    func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
-        let rules = PlaylistRules(query: query)
-        let found = items.filter { (source == "all" || $0.source == source) && Self.matches($0, rules) }
-        return RemotePage(total: found.count, items: found.map { RemoteItem(item: $0, inLibrary: true) })
-    }
-
     func importArtwork(source: String, sourceID: String) async throws -> Item {
         guard let item = items.first(where: { $0.source == source && $0.sourceId == sourceID }) else {
             throw BackendError.notFound
@@ -1816,31 +1801,7 @@ actor DemoBackend: FrameBackend {
     }
 
     /// The demo library already holds every work it knows: imports finish at once.
-    func importSearch(source: String, query: String, limit: Int) async throws -> String {
-        let found = try await searchMuseum(source: source, query: query, page: 1).items.prefix(limit)
-        demoJobs["demo"] = JobStatus(
-            id: "demo", total: found.count, done: found.count, failed: 0, skipped: 0, finished: true, error: "",
-            itemIds: found.map(\.id)
-        )
-        return "demo"
-    }
-
-    func packs() async throws -> [LibraryPack] {
-        [
-            LibraryPack(
-                key: "ukiyo-e", name: "Japońskie drzeworyty",
-                description: "Hokusai, Hiroshige, Utamaro, Kuniyoshi, Harunobu i inni mistrzowie ukiyo-e.",
-                size: 310, importing: false
-            ),
-            LibraryPack(
-                key: "dutch", name: "Malarstwo holenderskie",
-                description: "Rijksmuseum: Vermeer, Rembrandt, Hals, Steen, Ruisdael, aż po Breitnera i Marisa.",
-                size: 155, importing: false
-            ),
-        ]
-    }
-
-    func importPack(key: String) async throws -> String {
+    private func finishedJob() -> String {
         demoJobs["demo"] = JobStatus(
             id: "demo", total: 0, done: 0, failed: 0, skipped: 0, finished: true, error: "", itemIds: []
         )
@@ -1848,7 +1809,7 @@ actor DemoBackend: FrameBackend {
     }
 
     func fillLibrary(rules: PlaylistRules, count: Int) async throws -> String {
-        try await importPack(key: "fill")
+        finishedJob()
     }
 
     func job(id: String) async throws -> JobStatus {
@@ -1865,7 +1826,7 @@ actor DemoBackend: FrameBackend {
     }
 
     func syncAlbum(playlistID: Int) async throws -> String {
-        try await importPack(key: "album")
+        finishedJob()
     }
 
     func uploadPhoto(_ upload: PhotoUpload) async throws -> Item {
@@ -2615,7 +2576,7 @@ actor DemoBackend: FrameBackend {
         aiValue.keySet = true
         aiValue.keyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
         aiValue.keyFromApp = true
-        aiValue.keywordsProgress = .init(done: 12, waiting: 34, refused: 0, batchItems: 0, batchDone: 0, preparing: false)
+        aiValue.keywordsProgress = .init(done: 12, waiting: 34, refused: 0, batchItems: 0, batchDone: 0)
         return aiValue
     }
 

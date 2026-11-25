@@ -1558,9 +1558,6 @@ PUBLIC_MARKS = {
 }
 
 
-#: Start of the licence of works once let in by the test switch "Bez limitu
-#: 70 lat" (until 1.111.0); they now carry ``PRIVATE_LICENCE``.
-TEST_LICENCE = "Tylko do testów"
 #: Works still in copyright whose pictures their museum publishes itself, let
 #: in with ``private_use``: the frame is seen at home only, and Polish law
 #: lets one copy such pictures for personal use (art. 23).

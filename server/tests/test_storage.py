@@ -133,25 +133,6 @@ def test_a_lower_limit_trims_now(tmp_path: Path, monkeypatch) -> None:
         assert _trims(trims, 3) == [1, 1, 1]
 
 
-def test_the_one_limit_of_old_becomes_two(service: FrameService) -> None:
-    """Up to add-on 0.28 the app set one limit, split 2:1 with the old 500 MB
-    default for originals; the catalogue keeps its part, the originals get
-    the larger of theirs and the new default."""
-    from frame_server.storage import OLD_KEY
-
-    service.library.set_state(OLD_KEY, 3000)
-    store = StorageStore(service.settings, service.library, service.images, service.store)
-    assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (2000, 3000)
-    assert store.view().catalogue_from_app and not store.view().originals_from_app
-    assert service.library.get_state(OLD_KEY) is None
-
-    settings = _settings(service.settings.data_dir)  # frame.env without either limit
-    service.library.delete_state("catalogue_limit")
-    service.library.set_state(OLD_KEY, 20000)
-    StorageStore(settings, service.library, service.images, service.store)
-    assert (settings.catalogue_mb, settings.image_cache_mb) == (13333, 6667)
-
-
 def test_saving_one_limit_leaves_the_other(service: FrameService) -> None:
     service.storage.save(StorageUpdate(catalogue_mb=900))
     assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (900, 3000)

@@ -21,10 +21,7 @@ i sędzia"). This is the question each of them is asked.
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -32,7 +29,7 @@ from ..library.picture_hash import NONE as NO_HASH
 from ..library.picture_hash import distance as hash_distance
 from ..library.twins import HASH_NEAR
 from ..library.verdict import Place, against
-from .client import FABLE, HAIKU, OPUS, SONNET, image_block, request
+from .client import HAIKU, SONNET, image_block, request
 from .daily import _object, _str
 from .night_order import CheckedNight
 
@@ -45,8 +42,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 KIND = "twins.judge"
-#: The models tried, by the names the app and the test script use.
-MODELS = {"haiku": HAIKU, "sonnet": SONNET, "opus": OPUS, "fable": FABLE}
 #: The pictures go out as the server keeps its thumbnails (640 px).
 SIDE = 640
 #: How the second picture relates to the first, as the test script counts.
@@ -158,18 +153,6 @@ def relation(kind: str, whole: str) -> str:
     return kind if kind in RELATIONS else ""
 
 
-@dataclass
-class Verdict:
-    model: str
-    relation: str  # one of RELATIONS; "" when refused or no answer
-    confidence: float
-    why: str
-    cost_usd: float
-    seconds: float
-    refused: bool = False
-    error: str = ""
-
-
 def _label(name: str, item: Item) -> str:
     parts = [
         f"{name}: {item.title or '(no title)'}",
@@ -224,43 +207,6 @@ def read(data: dict[str, Any] | None, claim: str = "") -> tuple[str, float, str]
     else:
         found = relation(str(data.get("kind") or ""), str(data.get("whole") or ""))
     return found, float(data.get("confidence") or 0.0), str(data.get("why") or "")
-
-
-def judge(
-    claude: Claude,
-    images: ImageCache,
-    a: Item,
-    b: Item,
-    models: list[str],
-    effort: str = "low",
-    claim: str = "",
-) -> list[Verdict]:
-    """Each of ``models`` (keys of :data:`MODELS`) asked about ``a`` and ``b``
-    at once; a model that fails says why, the others still answer. With
-    ``claim``, as the critic: ``relation`` is then "confirm" or "reject"."""
-    claude.check_budget()
-    claude.client()  # no key: nothing asked
-
-    def one(name: str) -> Verdict:
-        model = MODELS[name]
-        started = time.monotonic()
-        try:
-            answer = claude.ask(KIND, params(images, a, b, model, effort, claim))
-        except Exception as err:  # one model down: the others still answer
-            return Verdict(name, "", 0.0, "", 0.0, time.monotonic() - started, error=str(err))
-        found, confidence, why = read(answer.data, claim)
-        return Verdict(
-            name,
-            found,
-            confidence,
-            why,
-            answer.cost_usd,
-            time.monotonic() - started,
-            refused=answer.refused,
-        )
-
-    with ThreadPoolExecutor(max_workers=len(models) or 1) as pool:
-        return list(pool.map(one, models))
 
 
 # -- at night ------------------------------------------------------------------

@@ -14,16 +14,13 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from .library import AlbumOrder, AlbumSource, AlbumSync, Job, Playlist, PlaylistKind
+from .library import AlbumSync, Job, Playlist, PlaylistKind
 from .library.icloud import check_album, fetch_original, sync_album
 
 if TYPE_CHECKING:
     from .service import FrameService
 
 log = logging.getLogger(__name__)
-
-#: Older settings: the one album and the last sync of it.
-LEGACY_SYNC_KEY = "album_sync"
 
 
 def _now() -> str:
@@ -113,44 +110,3 @@ class Albums:
         """An album playlist went: so do its sync record and its photos."""
         self.library.set_album_sync(playlist_id, None)
         self.forget_orphans()
-
-    def migrate(self) -> Playlist | None:
-        """Older settings had one album as a mode of the frame: it becomes an
-        album playlist with the photos already synced, played if the album
-        was. Runs once; returns the new playlist."""
-        from .player import SETTINGS_KEY
-        from .schedule import FrameSettings
-
-        raw = self.library.get_state(SETTINGS_KEY, {})
-        if not isinstance(raw, dict) or not ({"album_url", "mode"} & raw.keys()):
-            return None
-        url = str(raw.get("album_url") or "").strip()
-        mirrored = [p for p in self.playlists() if p.album and p.album.url == url]
-        playlist = mirrored[0] if url and mirrored else None
-        if url and playlist is None:
-            legacy = self.library.get_state(LEGACY_SYNC_KEY) or {}
-            photos = [
-                i.id for i in self.library.query(include_excluded=True)[1] if i.source == "icloud"
-            ]
-            order = AlbumOrder.RANDOM if raw.get("shuffle", True) else AlbumOrder.NEWEST
-            playlist = self.library.save_playlist(
-                Playlist(
-                    name=legacy.get("name") or "Album iCloud",
-                    kind=PlaylistKind.ALBUM,
-                    album=AlbumSource(url=url, order=order),
-                    item_ids=photos,
-                )
-            )
-            if legacy.get("at"):
-                assert playlist.id is not None
-                self.library.set_album_sync(
-                    playlist.id,
-                    AlbumSync(at=legacy["at"], name=legacy.get("name", ""), count=len(photos)),
-                )
-            log.info("album %s is now a playlist (%d photos)", playlist.name, len(photos))
-        settings = FrameSettings.model_validate(raw)
-        if raw.get("mode") == "album":
-            settings.playlist_id = playlist.id if playlist else None
-        # Saved without the old keys, so this runs once.
-        self.library.set_state(SETTINGS_KEY, settings.model_dump(mode="json"))
-        return playlist

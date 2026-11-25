@@ -786,9 +786,6 @@ class Notifier:
         self._save_activities([*kept, activity])
         return activity
 
-    def unfollow_study(self, token: str) -> None:
-        self._forget_activities({token.lower()})
-
     def study_step(
         self,
         item_id: str,

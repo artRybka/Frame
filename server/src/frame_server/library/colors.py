@@ -30,7 +30,6 @@ COLOR_FAMILIES = (
     "gray",
     "white",
 )
-MOODS = ("warm", "cool", "vivid", "muted", "colorful", "monochrome", "dark", "light")
 #: OKLab chroma of the strongest tint that still reads as aged paper or a
 #: sepia print rather than as colour.
 PAPER_TINT = 0.07
@@ -1201,12 +1200,6 @@ def _only(have: set[str], only: set[str]) -> bool:
     return bool(painted) and painted <= only and bool(have & families)
 
 
-def shown_tags(tags: list[str]) -> list[str]:
-    """``tags`` as the app shows and counts them: without "only:" and the
-    Tonacja sides ("tone:")."""
-    return [t for t in tags if not t.startswith((ONLY_TAG, TONE_TAG))]
-
-
 def _swatch(lab: np.ndarray, weight: float, accent: bool = False) -> ColorSwatch:
     rgb = linear_to_u8(np.clip(oklab_to_linear(lab), 0, 1))
     return ColorSwatch(
@@ -1670,8 +1663,3 @@ def ink_share(img: Image.Image) -> float:
     if paper[0] < PAPER_LIGHT:
         return 1.0
     return round(float((np.linalg.norm(lab - paper, axis=1) > INK_DISTANCE).mean()), 4)
-
-
-def pale_sheet(img: Image.Image) -> bool:
-    """A light sheet with almost nothing on it."""
-    return ink_share(img) < PALE_INK

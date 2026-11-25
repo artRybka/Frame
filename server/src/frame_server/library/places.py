@@ -84,8 +84,6 @@ for _place_ in OWN.values():
     SOURCE_PLACES.setdefault(_place_.source, ())
     SOURCE_PLACES[_place_.source] += (_place_.key,)
 
-#: Sources with no museum of their own: pictures gathered from many.
-GATHERING = ("wmc", "europeana", "openverse", "wikiart")
 
 #: Other names of the museums above: the sources', Wikidata's Polish and
 #: English labels, what Commons and Europeana write.

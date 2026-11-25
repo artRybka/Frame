@@ -154,7 +154,6 @@ protocol FrameBackend: Sendable {
     func removeFromPlaylist(id: Int, itemID: String) async throws -> PlaylistDetail
     /// The person's manual playlists holding this work or another copy of it.
     func playlistsHolding(itemID: String) async throws -> [PlaylistHolding]
-    func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview
     func play(playlistID: Int) async throws
     /// Propozycje on the frame: the rotation without a playlist.
     func playSuggestions() async throws
@@ -252,13 +251,7 @@ protocol FrameBackend: Sendable {
     func places(query: String) async throws -> [PlaceHit]
     /// A picture of a work in a museum with none in the catalogue.
     func placePicture(key: String) async throws -> PlacePicture
-    func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage
     func importArtwork(source: String, sourceID: String) async throws -> Item
-    /// Imports up to `limit` search results in the background; returns the job id.
-    func importSearch(source: String, query: String, limit: Int) async throws -> String
-    func packs() async throws -> [LibraryPack]
-    /// Starts (or joins) a pack's import; returns the job id.
-    func importPack(key: String) async throws -> String
     /// Adds museum works a smart playlist with `rules` would pick; returns the job id.
     func fillLibrary(rules: PlaylistRules, count: Int) async throws -> String
     func job(id: String) async throws -> JobStatus
@@ -356,8 +349,6 @@ protocol FrameBackend: Sendable {
     /// Museum photographs cut by the phone's model (`MuseumCrop`, the
     /// owner's): whether to look at a work's photograph now.
     func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk
-    /// "Kadruj partię": the works waiting to be looked at, cared about first.
-    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting
     /// What the model found about a work's photograph; the work cut when it was sure.
     func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult
     /// The museum's photograph of a work, whole, `side` px long at most.
@@ -519,10 +510,6 @@ extension FrameBackend {
     /// Only the server's museum works are cut by the phone: elsewhere none waits.
     func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk {
         PhoneCropAsk(look: false, kind: 4, model: MuseumCrop.model, picture: "", side: MuseumCrop.photoSide)
-    }
-
-    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
-        PhoneCropsWaiting(model: MuseumCrop.model, side: MuseumCrop.photoSide, works: [], left: 0)
     }
 
     func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult {

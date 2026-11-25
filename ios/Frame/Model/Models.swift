@@ -1177,11 +1177,6 @@ struct PlaylistHolding: Codable, Hashable, Sendable {
     let itemId: String
 }
 
-struct RulesPreview: Codable, Sendable {
-    let count: Int
-    let items: [ItemSummary]
-}
-
 struct Hold: Codable, Hashable, Sendable {
     var until: String?
     var forever: Bool
@@ -1259,7 +1254,6 @@ struct Delivery: Codable, Hashable, Sendable {
     var state: String  // shown, sending, waiting, failed, unknown
     /// What the panel shows instead of `current`.
     var onFrame: NowShowing?
-    var shownAt: String?
     var failedAt: String?
     var failure: String?  // "timeout" or "error"
     var message: String?
@@ -1420,7 +1414,6 @@ struct DeviceStatus: Codable, Hashable, Sendable {
     var error: String?
     var lastPushAt: String?
     var lastFetchAt: String?
-    var pendingPush: Bool?
     var wakesAt: String?
     /// The same alarm as a moment, for "Teraz" (missing before 0.26).
     var wakeAt: String?
@@ -1688,8 +1681,6 @@ struct PanelAppState: Codable, Hashable, Sendable {
     var asleep: Bool?
     var wakeAt: String?
     var standby: Bool?
-    var missedWake: String?
-    var installedAt: String?
 }
 
 /// "Obudź ramkę": whether the magic packets went out and the panel answered.
@@ -1955,7 +1946,6 @@ struct SourceRequests: Codable, Hashable, Sendable {
 struct ServerUpdate: Codable, Hashable, Sendable {
     struct LastUpdate: Codable, Hashable, Sendable {
         var at: String
-        var fromVersion: String?
         var toVersion: String?
         var ok: Bool
         var error: String?
@@ -2007,10 +1997,9 @@ struct AiSettings: Codable, Hashable, Sendable {
         var waiting: Int
         /// Refused or unreadable answers, not asked again.
         var refused: Int
-        /// Questions in batches ("Opisz bibliotekę") not yet answered.
+        /// Questions in batches (the night's orders) not yet answered.
         var batchItems: Int
         var batchDone: Int
-        var preparing: Bool
     }
 
     var keySet: Bool
@@ -3805,17 +3794,6 @@ struct MuseumAnswer: Codable, Sendable {
     var next: Int?
 }
 
-/// A themed batch of museum works, `GET /api/library/packs`.
-struct LibraryPack: Codable, Hashable, Sendable, Identifiable {
-    let key: String
-    let name: String
-    let description: String
-    /// Most works the pack can add.
-    let size: Int
-    var importing: Bool
-    var id: String { key }
-}
-
 /// A background import on the server, `GET /api/jobs/{id}`.
 struct JobStatus: Codable, Hashable, Sendable {
     let id: String
@@ -3885,11 +3863,6 @@ struct LibraryQuery: Hashable, Sendable {
     var sort = "artist"
     var offset = 0
     var limit = 200
-
-    var activeFilterCount: Int {
-        artists.count + styles.count + subjects.count + colors.count + kinds.count + terms.count
-            + (favoritesOnly ? 1 : 0) + (keptOnly ? 1 : 0)
-    }
 
     /// Works of the catalogue and library that fit `rules`.
     init(rules: PlaylistRules, sort: String = "suitability", limit: Int = 60) {

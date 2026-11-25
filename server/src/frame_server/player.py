@@ -115,8 +115,6 @@ SUGGESTIONS_USER_KEY = "suggestions_user"
 #: ``daily.HISTORY_KEY``): the catalogue never deletes them.
 STUDY_KEY = "study_items"
 DAILY_KEY = "daily_history"
-#: Set once the museum works imported before the catalogue are gone.
-RESET_KEY = "library_reset"
 #: Set once the catalogue's manuscripts are gone.
 #: Set once the catalogue has been cleared of what it leaves out now.
 SET_ASIDE_KEY = "set_aside_dropped"
@@ -152,28 +150,6 @@ RESCORE_PORTION = 5000
 RESCORE_REST = 1.0
 #: Version of the contours the library's pictures carry (``Player.contours``).
 CONTOUR_KEY = "contour_version"
-#: Set once the pictures kept from before lost their blank margins
-#: (``ImageCache.trim_kept``).
-MARGINS_KEY = "margins_trimmed"
-#: Set once the elongated works' kept originals were had again in the size
-#: they are kept in now (``ImageCache.wide_again``, 2026-11-09).
-WIDE_KEY = "wide_originals"
-#: Set once the elongated works' thumbnails thinner than they are made now
-#: were made again or let go (``ImageCache.thin_thumbs_again``, 2026-11-11).
-THIN_THUMBS_KEY = "thin_thumbs"
-#: Set once the thumbnails showing another photograph than the original
-#: kept were made again from it (``ImageCache.thumbs_follow``, 2026-11-17).
-THUMBS_FOLLOW_KEY = "thumbs_follow"
-#: Set once the kept pictures their museums keep cut off (the rest the
-#: decoder's grey) were let go and their works left out of lists
-#: (``ImageCache.cut_off_again``, 2026-11-16).
-CUT_OFF_KEY = "cut_off_pictures"
-#: Set once the fragments' pictures kept trimmed of margins were let go
-#: (``ImageCache.drop_fragments``, 2026-11-09).
-FRAGMENTS_KEY = "untrimmed_fragments"
-#: Set once the fragments' originals kept at 2560 px were let go, to be had
-#: again at ``images.TILE_MAX`` (2026-11-10).
-TILES_KEY = "fragments_3840"
 #: The Commons files with a tile set as works ("Pod lupą" in Odkrywaj), and
 #: how long they are kept before they are read again.
 TILE_WORKS_KEY = "tile_set_works"
@@ -236,8 +212,6 @@ THIN_DRAWS = 60
 OTHER_ART_ROOM_FOR = 600.0
 #: At night a catalogue still filling up takes in at most this many batches.
 NIGHT_BATCHES = 6
-# How long a due change may keep the panel from its night sleep.
-CHANGE_GRACE = timedelta(minutes=3)
 # A picture that waited for the panel and was shown this close before a
 # change takes that change's place (``postpone``): as long as the economy
 # mode's early change (``panel_app.CHANGE_EARLY_DEEP``).
@@ -1050,43 +1024,6 @@ class Player:
             await self._guarded(item.id, state, work)
         await self.render_ahead()  # new settings may draw the next one differently too
 
-    async def show_still(
-        self, png: bytes, *, preview_png: bytes, title: str, description: str, hold: Hold
-    ) -> None:
-        """Put a ready-made panel image (e.g. the calibration chart) on the frame
-        and hold it. The current item stays current, so ``resume`` returns to it.
-        """
-        async with self._lock:
-            state = self.state
-
-            async def work() -> None:
-                self.service.progress.begin(title, render=False, origin="app")
-                await run_in_threadpool(
-                    self.service.store.publish,
-                    png,
-                    "png",
-                    preview_png=preview_png,
-                    title=title,
-                    description=description,
-                    source="frame",
-                    render={"raw": True},
-                )
-                state.hold = hold
-                state.last_error = None
-                self._save_state(state)
-                await self._push(state)
-
-            await self._guarded(title, state, work)
-
-    async def resume(self) -> None:
-        """Back to the rotation after ``show_still``: the current picture again
-        (redrawn, e.g. with a new palette), or the next one if there is none."""
-        self.set_hold(None)
-        if self.state.current_item_id and self.library.get(self.state.current_item_id):
-            await self.restyle()
-        else:
-            await self.next("resume")
-
     def _original(self, shown: Item, urgent: bool) -> Path:
         """The original kept, or the one of the person who sent the work
         and sees its cleaning otherwise (``PlayerState.cleaned_as``)."""
@@ -1766,50 +1703,15 @@ class Player:
         return len(self.tile_set_files())
 
     def _fix_up(self) -> None:
-        """Once after an update: the kept pictures without their blank
-        margins, those cut off by their museums let go, the pictures
-        analysed again, the thumbnails of works shown
-        from another source's copy made from it, then the elongated works'
-        originals had again larger and their thin thumbnails made again,
-        and the thumbnails of another photograph than their original made
-        from it."""
-        if not self.library.get_state(MARGINS_KEY, False):
-            trimmed = self.service.images.trim_kept()
-            self.library.set_state(MARGINS_KEY, True)
-            log.info("margins: %d kept pictures trimmed", trimmed)
-        if not self.library.get_state(CUT_OFF_KEY, False):
-            items = self.library.query(include_excluded=True)[1]
-            cut = self.service.images.cut_off_again(items)
-            self.library.set_state(CUT_OFF_KEY, True)
-            log.info("cut-off pictures: %d works left out: %s", len(cut), ", ".join(cut[:20]))
+        """After a start: the pictures analysed again and their contours
+        (each once per its version), the thumbnails of works shown from
+        another source's copy made from it, then the art archives' slides
+        and Commons' tile sets looked at (once per their versions too)."""
         self.rescore()
         self.contours()
         self.service.sharper.thumbs_again()
-        if not self.library.get_state(THUMBS_FOLLOW_KEY, False):
-            items = self.library.query(include_excluded=True)[1]
-            remade = self.service.images.thumbs_follow(items)
-            self.library.set_state(THUMBS_FOLLOW_KEY, True)
-            log.info("thumbnails: %d made again from an original of another photograph", remade)
         # Network work, a work at a time: in its own thread.
         threading.Thread(target=self._copies_once, name="archive slides", daemon=True).start()
-        if not self.library.get_state(WIDE_KEY, False):
-            items = self.library.query(include_excluded=True)[1]
-            grown = self.service.images.wide_again(items)
-            self.library.set_state(WIDE_KEY, True)
-            log.info("elongated works: %d kept originals larger", grown)
-        if not self.library.get_state(THIN_THUMBS_KEY, False):
-            thickened = self.service.images.thin_thumbs_again()
-            self.library.set_state(THIN_THUMBS_KEY, True)
-            log.info("elongated works: %d thin thumbnails made again or let go", thickened)
-        if not self.library.get_state(FRAGMENTS_KEY, False):
-            dropped = self.service.images.drop_fragments()
-            self.library.set_state(FRAGMENTS_KEY, True)
-            self.library.set_state(TILES_KEY, True)  # had again at TILE_MAX
-            log.info("fragments: %d trimmed pictures let go", dropped)
-        if not self.library.get_state(TILES_KEY, False):
-            dropped = self.service.images.drop_fragments(thumbs=False)
-            self.library.set_state(TILES_KEY, True)
-            log.info("fragments: %d originals let go to be had at 3840 px", dropped)
 
     def rescore(self) -> int:
         """Once per ``SCORE_VERSION``: analyse the library's pictures again
@@ -1919,39 +1821,6 @@ class Player:
         drawn = sum(line is not None for line in found.values())
         log.info("contours: %d pictures with a drawn contour", drawn)
         return drawn
-
-    def reset_library(self) -> int:
-        """Once, on the owner's wish for a clean start: delete the museum works
-        imported before the catalogue, with their pictures, and forget them in
-        playlists and the rotation. Own works and photos stay. Returns how
-        many works went."""
-        if self.library.get_state(RESET_KEY, False):
-            return 0
-        self.library.set_state(RESET_KEY, True)
-        old = self.library.query(PlaylistRules(kinds=[ItemKind.ARTWORK]), include_excluded=True)[1]
-        gone = {i.id for i in old if not i.pooled}
-        with self.library.batch():
-            for item in old:
-                if item.id in gone:
-                    self.library.delete(item.id)
-            for playlist in self.library.playlists():
-                if set(playlist.item_ids) & gone:
-                    ids = [i for i in playlist.item_ids if i not in gone]
-                    self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
-        for item in old:
-            if item.id in gone:
-                self.service.images.remove(item)
-        state = self.state
-        state.queue = [i for i in state.queue if i not in gone]
-        state.requested = [i for i in state.requested if i not in gone]
-        state.history = [i for i in state.history if i not in gone]
-        if state.current_item_id in gone:
-            state.current_item_id = None
-            state.current_group = []
-        self._save_state(state)
-        self.library.set_state(SUGGESTIONS_KEY, [])
-        log.info("clean start: %d museum works deleted", len(gone))
-        return len(gone)
 
     def drop_set_aside(self) -> int:
         """Once per :data:`SET_ASIDE_VERSION`: delete the photographs, copies
@@ -2075,19 +1944,6 @@ class Player:
         self._save_state(state)
         return state
 
-    def note_external(self, hold: Hold | None) -> None:
-        """An upload from the app replaced the picture outside the playlist."""
-        state = self.state
-        if state.current_item_id:
-            state.history = [*state.history, state.current_item_id][-HISTORY_MAX:]
-        state.current_item_id = None
-        state.hold = hold
-        now = utcnow()
-        state.last_change_at = now.isoformat(timespec="seconds")
-        state.last_change_origin = "app"
-        state.next_change_at = next_change(now, self.settings).isoformat(timespec="seconds")
-        self._save_state(state)
-
     def postpone(self, now: datetime | None = None) -> None:
         """A picture that waited for the panel to wake stays until the next
         change. It takes the place of a change due within ``POSTPONE_PAST``:
@@ -2135,14 +1991,6 @@ class Player:
             return await self.next("schedule")
         finally:
             self._due_at = None
-
-    def change_starting(self, now: datetime) -> bool:
-        """A picture is being shown, or a change was due just now: the panel
-        should stay awake for it."""
-        if self.busy:
-            return True
-        due = self.state.next_change_at
-        return due is not None and timedelta(0) <= now - datetime.fromisoformat(due) < CHANGE_GRACE
 
     async def run(self, period: float = 30.0) -> None:
         grown: datetime | None = None

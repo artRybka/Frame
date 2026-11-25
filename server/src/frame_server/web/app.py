@@ -23,13 +23,10 @@ import httpx
 from fastapi import (
     Depends,
     FastAPI,
-    File,
-    Form,
     HTTPException,
     Query,
     Request,
     Response,
-    UploadFile,
 )
 from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
@@ -38,27 +35,20 @@ from .. import build_version, golden, logbuffer, memory, night, notifications
 from ..artist_people import START_DELAY
 from ..config import Settings
 from ..device import MdcError
-from ..imaging import PRESETS, RenderSettings, Strategy
-from ..imaging.layout import load_image
 from ..library import dumps, rijks_index
 from ..library.hosts import guard as host_guard
 from ..library.images import Gone
 from ..library.seed import seed_playlists
-from ..library.style import AUTO, preset_for_photo
-from ..library.themes import painterly_colour_playlists
 from ..loopwatch import LoopWatch, request_done, request_started
 from ..night import NightQueue
 from ..night import tasks as night_tasks
 from ..panel_app import CODE_VERSION, WIDGET, AppHello, NextAnswer, app_code
-from ..player import PANEL_NOT_SET, hold_from
 from ..power import WakeResult
-from ..progress import DisplayProgress, Stage
+from ..progress import DisplayProgress
 from ..service import FrameService, outcome_json
-from ..status import DeviceStatus
-from ..store import PanelRequest, preview_url
+from ..store import PanelRequest
 from . import (
     ai_api,
-    calibration_api,
     crops_api,
     daily_api,
     device_api,
@@ -118,13 +108,6 @@ APP_IN_USE = 120.0
 #: the works searches showed before it are taken in.
 LOOKS_DELAY = 180.0
 SEARCHED_DELAY = 90.0
-
-
-def _photo_preset(data: bytes) -> str:
-    try:
-        return preset_for_photo(load_image(data))
-    except OSError:
-        return "photo"  # not an image: prepare() says so
 
 
 async def poll_status(service: FrameService) -> None:
@@ -249,9 +232,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             memory.MemoryLog(lambda: memory_parts(service)).start()
         service.app.ensure_package()  # built and signed here (panel_package.py)
         seed_playlists(service.importer)
-        painterly_colour_playlists(service.library)  # once: colour playlists keep to paintings only
-        service.albums.migrate()  # once: the album of older settings becomes a playlist
-        service.player.reset_library()  # once: a clean start for the catalogue
         service.player.drop_set_aside()  # once: the catalogue leaves them out now
         if settings.scheduler:
             # The works read before the first question (one on the event
@@ -291,7 +271,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # are answered (they read and send thousands of thumbnails; the
             # server answered in 30-70 s for minutes after 1.145.99 began).
             for later in (
-                threading.Timer(LOOKS_DELAY, service.looks.forget_google),
                 threading.Timer(LOOKS_DELAY, service.seen.start),
                 # The catalogue's palettes for "Barwy", before anyone asks.
                 threading.Timer(LOOKS_DELAY, service.looks.palettes.warm),
@@ -351,7 +330,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         study_api.router,
         playlists_api.router,
         player_api.router,
-        calibration_api.router,
         device_api.router,
         storage_api.router,
         ai_api.router,
@@ -560,13 +538,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, object]:
         return {"ok": True, "version": build_version(), "palette": service.palette.name}
 
-    @app.get("/api/now", dependencies=auth)
-    def now() -> dict[str, object]:
-        content = service.store.current()
-        if content is None:
-            raise HTTPException(404)
-        return asdict(content) | {"preview_url": preview_url(content.file_id)}
-
     @app.get("/api/previews/{file_id}.png", dependencies=auth)
     def preview(file_id: str) -> FileResponse:
         path = service.store.preview_path(file_id)
@@ -581,63 +552,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404)
         return FileResponse(path, media_type="image/jpeg")
 
-    @app.get("/api/presets", dependencies=auth)
-    def presets() -> dict[str, object]:
-        return {name: p.model_dump(mode="json") for name, p in PRESETS.items()}
-
-    @app.post("/api/display", dependencies=frame)
-    async def display(
-        file: Annotated[UploadFile, File()],
-        preset: Annotated[str, Form()] = "photo",
-        strategy: Annotated[Strategy | None, Form()] = None,
-        settings_json: Annotated[str | None, Form()] = None,
-        raw: Annotated[bool, Form()] = False,
-        title: Annotated[str, Form()] = "",
-        description: Annotated[str, Form()] = "",
-        push: Annotated[bool, Form()] = True,
-        wait: Annotated[float, Form()] = 90.0,
-        hold: Annotated[str | None, Form()] = None,
-    ) -> dict[str, object]:
-        data = await file.read()
-        if preset == AUTO and not settings_json:
-            preset = await run_in_threadpool(_photo_preset, data)
-        if settings_json:
-            render_settings = RenderSettings.model_validate_json(settings_json)
-        elif preset in PRESETS:
-            render_settings = PRESETS[preset].model_copy(deep=True)
-        else:
-            raise HTTPException(400, f"unknown preset {preset!r}")
-        if strategy is not None:
-            render_settings.strategy = strategy
-        title = title or (file.filename or "")
-        if push:
-            service.progress.begin(title, origin="app")
-        try:
-            content = await run_in_threadpool(
-                service.prepare,
-                data,
-                render_settings,
-                raw=raw,
-                title=title,
-                description=description,
-                source="upload",
-            )
-        except Exception as err:
-            if push:
-                service.progress.finish(Stage.FAILED, str(err))
-            raise
-        service.player.note_external(hold_from(hold))
-        if not push or not service.device_configured:
-            message = "" if not push else PANEL_NOT_SET
-            if push:
-                service.progress.finish(Stage.FAILED, message)
-            return {"content": asdict(content), "pushed": False, "message": message}
-        try:
-            outcome = await service.push_current(wait=wait)
-        except MdcError as err:
-            raise HTTPException(502, f"panel: {err}") from err
-        return outcome_json(outcome)
-
     @app.post("/api/device/push", dependencies=frame)
     async def push_again(wait: float = 90.0) -> dict[str, object]:
         if not service.device_configured:
@@ -651,12 +565,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def progress() -> DisplayProgress:
         """The picture on its way to the frame (the app polls this every second)."""
         return service.progress.view()
-
-    @app.get("/api/device/status", dependencies=auth)
-    async def device_status() -> DeviceStatus:
-        await service.status.refresh()
-        service.power.publish_status()
-        return service.status.status
 
     @app.post("/api/device/wake", dependencies=frame)
     async def device_wake(sleep_after: bool = False) -> WakeResult:

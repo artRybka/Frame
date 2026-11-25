@@ -322,20 +322,6 @@ def _list(items: dict[str, Any]) -> dict[str, Any]:
 
 
 _POINT = _object(x={"type": "number"}, y={"type": "number"})
-#: One take on the composition as the model gives it (``ai.composition``, ``ai.check``).
-VIEW = _object(
-    title=_str(),
-    grid={"type": "string", "enum": list(GRIDS)},
-    text=_str(),
-    marks=_list(
-        _object(
-            shape={"type": "string", "enum": list(SHAPES)},
-            points=_list(_POINT),
-            title=_str(),
-            text=_str(),
-        )
-    ),
-)
 
 #: The artist's line of life and the work's paints: in the page's answer,
 #: and asked alone for pages written before them (``ai.extras``).

@@ -134,27 +134,3 @@ def grade_for_panel(linear: FloatArray, s: ToneSettings) -> FloatArray:
         a, b = a + s.tint * weight, b + s.temperature * weight
     out = oklab_to_linear(np.stack([light, a, b], axis=-1))
     return np.clip(out, 0.0, 1.0).astype(np.float32)
-
-
-def compensation_matrix(palette: Palette) -> FloatArray:
-    """Affine map (4x3) from nominal ink RGB to perceived ink RGB, linear light.
-
-    Least-squares fit over the palette colours. Used for the "compensate"
-    strategy, where we leave dithering to the panel but pre-distort the image
-    so a ditherer that believes the nominal colours lands on our target.
-    """
-    # Device values are 0/255 per channel, so they are the same in any encoding.
-    nominal = palette.device_u8().astype(np.float32) / 255.0
-    perceived = palette.perceived_linear()
-    design = np.hstack([nominal, np.ones((len(palette), 1), dtype=np.float32)])
-    solution, *_ = np.linalg.lstsq(design, perceived, rcond=None)
-    return solution.astype(np.float32)
-
-
-def precompensate(target: FloatArray, palette: Palette) -> FloatArray:
-    """Invert compensation_matrix: the nominal-space image that maps to ``target``."""
-    m = compensation_matrix(palette)
-    linear_part, offset = m[:3], m[3]
-    inv = np.linalg.inv(linear_part)
-    nominal = (target - offset) @ inv
-    return np.clip(nominal, 0.0, 1.0).astype(np.float32)

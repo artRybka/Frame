@@ -23,8 +23,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
-from .artists import IDS_STATE, PEOPLE_STATE, is_artist, known_names, learn, made_by
-from .colors import has_colours, shown_tags
+from .artists import IDS_STATE, PEOPLE_STATE, known_names, learn, made_by
+from .colors import has_colours
 from .duplicates import Works, better, dedupe, regroups
 from .good import good_first, worth
 from .images import said_side
@@ -34,8 +34,6 @@ from .models import (
     MINE_PLAYLISTS,
     AlbumSync,
     ColorSwatch,
-    Facets,
-    FacetValue,
     Item,
     ItemKind,
     Note,
@@ -180,8 +178,6 @@ ORDER_KEY = "playlist_order"
 #: In that order, the card "Kolekcja prywatna" (the owner's own works), which
 #: is not a playlist but is moved among them (Mateusz 2026-11-22).
 OWN_WORKS_CARD = -1
-#: Hearts were moved from ``Item.favorite`` to the owner's in ``favorites``.
-FAVORITES_MOVED_KEY = "favorites_moved"
 #: Works hidden before each person had their own moved to the owner's.
 HIDDEN_MOVED_KEY = "hidden_moved"
 #: What was learnt of the museums (:class:`.places.Places`).
@@ -895,8 +891,6 @@ class Library:
         self._term_index_built_at = 0.0
         with self._db() as db:
             db.executescript(SCHEMA)
-        self._move_favorites()
-        self._move_hidden()
         self._kv_rows()  # read once here, never on the event loop
         # Museums learnt from Wikidata, for every work's place (models).
         learn_places(Places.from_state(self.get_state(PLACES_STATE)))
@@ -1159,25 +1153,6 @@ class Library:
     # (the owner or a member, never a guest, as with hearts): what the frame,
     # the proposals and the night's work go by.
 
-    def _move_hidden(self) -> None:
-        """Once: the works hidden before each person had their own become
-        the owner's."""
-        if self.get_state(HIDDEN_MOVED_KEY):
-            return
-        with self._lock, self._db() as db:
-            stamp = now_iso()
-            db.executemany(
-                "INSERT OR IGNORE INTO hidden_works (user_id, item_id, hidden_at) VALUES (?, ?, ?)",
-                [
-                    (OWNER_ID, i.id, i.excluded_at or stamp)
-                    for i in self._all().values()
-                    if i.excluded
-                ],
-            )
-            self.set_state(HIDDEN_MOVED_KEY, True)
-        self._hides = None
-        self._hides_version += 1
-
     def _all_hides(self) -> dict[str, dict[str, str]]:
         hides = self._hides
         if hides is not None:
@@ -1237,21 +1212,6 @@ class Library:
             )
 
     # -- hearts, one set for each person -------------------------------------
-
-    def _move_favorites(self) -> None:
-        """Once: the hearts from before there were people become the
-        owner's."""
-        if self.get_state(FAVORITES_MOVED_KEY):
-            return
-        with self._lock, self._db() as db:
-            stamp = now_iso()
-            db.executemany(
-                "INSERT OR IGNORE INTO favorites (user_id, item_id, added_at) VALUES (?, ?, ?)",
-                [(OWNER_ID, i.id, stamp) for i in self._all().values() if i.favorite],
-            )
-            self.set_state(FAVORITES_MOVED_KEY, True)
-        self._favorites = None
-        self._hearts_version += 1
 
     def _hearts(self) -> dict[str, frozenset[str]]:
         """Everyone's hearts. Read without the lock once loaded: each
@@ -2243,22 +2203,6 @@ class Library:
             fits = (lambda item: _fits_first(rank(item))) if rank is not None else None
             return good_first(items, seed, rules.model_dump_json(), fits)
         return sort_items(items, sort, seed)
-
-    def facets(self) -> Facets:
-        items = [i for i in self._snapshot() if not i.excluded]
-        names = known_names()
-
-        def top(counter: Counter[str], limit: int = 60) -> list[FacetValue]:
-            return [FacetValue(value=v, count=c) for v, c in counter.most_common(limit) if v]
-
-        return Facets(
-            artists=top(Counter(names.shown(i.artist) for i in items if is_artist(i.artist))),
-            styles=top(Counter(s for i in items for s in i.styles)),
-            subjects=top(Counter(s for i in items for s in i.subjects)),
-            colors=top(Counter(c for i in items for c in shown_tags(i.color_tags))),
-            sources=top(Counter(i.source for i in items)),
-            kinds=top(Counter(i.kind.value for i in items)),
-        )
 
     def save_places(self) -> None:
         """Keep what was learnt of the museums (:mod:`.places`)."""

@@ -376,10 +376,6 @@ struct LiveBackend: FrameBackend {
         try await get("/api/items/\(escape(itemID))/playlists")
     }
 
-    func previewRules(_ rules: PlaylistRules) async throws -> RulesPreview {
-        try await send("/api/playlists/preview", method: "POST", body: rules)
-    }
-
     func play(playlistID: Int) async throws { try await send("/api/playlists/\(playlistID)/play", method: "POST") }
 
     func playSuggestions() async throws { try await send("/api/suggestions/play", method: "POST") }
@@ -731,38 +727,11 @@ struct LiveBackend: FrameBackend {
         return try await get("/api/places/\(path)/picture")
     }
 
-    func searchMuseum(source: String, query: String, page: Int) async throws -> RemotePage {
-        if page <= 1 { await teach(SearchPhrases.tokens(query)) }
-        return try await get(
-            "/api/museums/\(source)/search",
-            query: [URLQueryItem(name: "q", value: query), URLQueryItem(name: "page", value: String(page))]
-        )
-    }
-
     func importArtwork(source: String, sourceID: String) async throws -> Item {
         try await send("/api/museums/\(source)/import", method: "POST", body: ["source_id": sourceID])
     }
 
     private struct JobRef: Decodable { let jobId: String }
-
-    private struct ImportSearchBody: Encodable {
-        let query: String
-        let limit: Int
-    }
-
-    func importSearch(source: String, query: String, limit: Int) async throws -> String {
-        let ref: JobRef = try await send(
-            "/api/museums/\(source)/import-search", method: "POST", body: ImportSearchBody(query: query, limit: limit)
-        )
-        return ref.jobId
-    }
-
-    func packs() async throws -> [LibraryPack] { try await get("/api/library/packs") }
-
-    func importPack(key: String) async throws -> String {
-        let ref: JobRef = try await send("/api/library/packs/\(key)/import", method: "POST")
-        return ref.jobId
-    }
 
     private struct FillBody: Encodable {
         let rules: PlaylistRules
@@ -998,10 +967,6 @@ struct LiveBackend: FrameBackend {
 
     func phoneCropAsk(itemID: String) async throws -> PhoneCropAsk {
         try await get("/api/crops/phone/\(escape(itemID))")
-    }
-
-    func phoneCropsWaiting(limit: Int) async throws -> PhoneCropsWaiting {
-        try await get("/api/crops/phone/waiting", query: [URLQueryItem(name: "limit", value: String(limit))])
     }
 
     func phoneCropFound(itemID: String, _ found: PhoneCropFound) async throws -> PhoneCropResult {

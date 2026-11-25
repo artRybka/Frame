@@ -44,9 +44,7 @@ CMD_SW_VERSION = 0x0E
 CMD_MODEL_NAME = 0x10
 CMD_POWER = 0x11
 CMD_STATUS = 0x1B  # sub-command 0x73 = battery
-CMD_ON_TIMER = 0x25
 CMD_DEVICE_NAME = 0x67
-CMD_CLOCK = 0xA7
 CMD_NETWORK_STANDBY = 0xB5
 CMD_CONTENT_DOWNLOAD = 0xC7
 
@@ -57,10 +55,7 @@ SUB_CONTENT_SOURCE = 0x81
 SUB_CUSTOM_URL = 0x82
 CONTENT_SOURCE_CUSTOM = 0x01
 
-# MDC 0x25 repeat codes (taylorRichie/node-samsung-emdx, docs/MDC-COMMANDS.md).
-ON_TIMER_REPEAT = {"once": 0x01, "daily": 0x02, "mon-fri": 0x03, "mon-sat": 0x04, "sat-sun": 0x05}
-
-# The data length is a single byte and the URL is prefixed by 3 bytes.
+# The data length is a single byte.
 MAX_URL_LENGTH = 255 - 3
 
 
@@ -97,21 +92,6 @@ class BatteryStatus:
     def external_power(self) -> bool | None:
         """USB-C power connected: last byte 0x02 plugged, 0x00 unplugged (E1, fw 1130.7)."""
         return self.raw[6] == 0x02 if len(self.raw) > 6 else None
-
-
-@dataclass(frozen=True)
-class OnTimer:
-    """Auto power-on alarm (MDC 0x25), in the panel's own clock (0xA7).
-
-    The only known way for a panel on battery to wake itself: it sleeps with
-    the Wi-Fi off and comes back at hh:mm, when the server can push to it.
-    """
-
-    enabled: bool
-    repeat: int | None
-    hour: int | None
-    minute: int | None
-    raw: bytes
 
 
 def build_frame(command: int, data: bytes = b"", display_id: int = 0x00) -> bytes:
@@ -215,10 +195,6 @@ class MdcClient:
         tb: TracebackType | None,
     ) -> None:
         await self.close()
-
-    @property
-    def connected(self) -> bool:
-        return self._writer is not None
 
     async def connect(self, attempts: int = 1, retry_delay: float = 8.0) -> None:
         """Open and authenticate a session.
@@ -371,25 +347,6 @@ class MdcClient:
     async def set_network_standby(self, enabled: bool) -> None:
         await self.command(CMD_NETWORK_STANDBY, bytes([0x01 if enabled else 0x00]))
 
-    async def on_timer(self) -> OnTimer:
-        reply = await self.command(CMD_ON_TIMER)
-        p = reply.payload
-        if not p:
-            raise MdcError("empty on-timer reply")
-        # A disabled timer reads as a single 00 byte.
-        if len(p) < 4:
-            return OnTimer(enabled=p[0] == 0x01, repeat=None, hour=None, minute=None, raw=p)
-        return OnTimer(enabled=p[0] == 0x01, repeat=p[1], hour=p[2], minute=p[3], raw=p)
-
-    async def set_on_timer(
-        self, hour: int, minute: int, repeat: int = ON_TIMER_REPEAT["daily"], enabled: bool = True
-    ) -> None:
-        if not (0 <= hour <= 23 and 0 <= minute <= 59):
-            raise MdcError(f"invalid on-timer time {hour}:{minute}")
-        # Trailing 01 as sent by node-samsung-emdx; its meaning is unknown.
-        data = bytes([0x01 if enabled else 0x00, repeat, hour, minute, 0x01])
-        await self.command(CMD_ON_TIMER, data)
-
     async def content_source(self) -> int:
         """The launcher's content source (``CONTENT_SOURCE_CUSTOM``: our app)."""
         reply = await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CONTENT_SOURCE]))
@@ -402,21 +359,10 @@ class MdcClient:
         """Switching to Custom downloads and installs the app at once (E16)."""
         await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CONTENT_SOURCE, source]))
 
-    async def custom_app_url(self) -> str:
-        reply = await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CUSTOM_URL]))
-        return reply.payload[1:].decode("ascii", "replace")
-
     async def set_custom_app_url(self, url: str) -> None:
         """Where the Custom launcher finds ``sssp_config.xml`` and the package
-        (no length byte, unlike ``content_download``)."""
+        (no length byte)."""
         encoded = url.encode("ascii")
         if len(encoded) > MAX_URL_LENGTH:
             raise MdcError(f"app URL longer than {MAX_URL_LENGTH} characters")
         await self.command(CMD_CONTENT_DOWNLOAD, bytes([SUB_CUSTOM_URL]) + encoded)
-
-    async def content_download(self, url: str) -> None:
-        """Point the panel at a content manifest (content.json) to fetch."""
-        encoded = url.encode("ascii")
-        if len(encoded) > MAX_URL_LENGTH:
-            raise MdcError(f"content URL longer than {MAX_URL_LENGTH} characters")
-        await self.command(CMD_CONTENT_DOWNLOAD, bytes([0x53, 0x80, len(encoded)]) + encoded)

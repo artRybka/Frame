@@ -103,9 +103,6 @@ class Palette:
             ),
         )
 
-    def save(self, path: Path) -> None:
-        path.write_text(json.dumps(self.to_json(), indent=2) + "\n")
-
     @classmethod
     def load(cls, path: Path) -> Palette:
         return cls.from_json(json.loads(path.read_text()))
@@ -130,16 +127,6 @@ class Palette:
             name=f"{self.name}-nominal",
             source="nominal RGB values",
             colors=tuple(PaletteColor(c.name, c.device, c.device) for c in self.colors),
-        )
-
-    def with_perceived(self, perceived: dict[str, RGB], *, name: str, source: str) -> Palette:
-        return Palette(
-            name=name,
-            source=source,
-            colors=tuple(
-                PaletteColor(c.name, c.device, perceived.get(c.name, c.perceived))
-                for c in self.colors
-            ),
         )
 
 

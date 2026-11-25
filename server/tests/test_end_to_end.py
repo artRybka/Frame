@@ -1,4 +1,4 @@
-"""Server + fake panel: upload an image; the server starts the frame's app
+"""Server + fake panel: a photo sent to the frame; the server starts the frame's app
 over MDC, and the app asks for the picture and fetches it."""
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ def server_ssl() -> ssl.SSLContext:
     return ctx
 
 
-async def test_display_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
+async def test_show_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
     fetched: list[str] = []
 
     started: list[asyncio.Task[None]] = []
@@ -93,7 +93,7 @@ async def test_display_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
     Image.new("RGB", (640, 480), (200, 120, 60)).save(buf, "JPEG")
     try:
         async with httpx.AsyncClient(base_url=settings.base_url(), timeout=60) as client:
-            unauth = await client.get("/api/now")
+            unauth = await client.get("/api/player")
             assert unauth.status_code == 401
             headers = {"Authorization": "Bearer secret"}
             # A fresh install already serves a placeholder.
@@ -108,27 +108,28 @@ async def test_display_flow(tmp_path: Path, server_ssl: ssl.SSLContext) -> None:
             )
             assert certs.status_code == 200, certs.text
 
-            resp = await client.post(
-                "/api/display",
+            sent = await client.post(
+                "/api/library/upload",
                 files={"file": ("test.jpg", buf.getvalue(), "image/jpeg")},
-                data={"preset": "photo", "wait": "20"},
+                data={"kind": "photo", "title": "test.jpg"},
                 headers=headers,
             )
-            assert resp.status_code == 200, resp.text
-            body = resp.json()
-            assert body["fetched"] is True
-            assert body["content"]["file_name"].endswith(".jpg")  # photo preset: passthrough
-
-            now = (await client.get("/api/now", headers=headers)).json()
-            assert now["file_id"] == body["content"]["file_id"]
-            preview = await client.get(now["preview_url"], headers=headers)
-            assert preview.headers["content-type"] == "image/jpeg"
+            assert sent.status_code == 200, sent.text
+            item_id = sent.json()["id"]
+            shown = await client.post(
+                f"/api/library/items/{item_id}/show", json={}, headers=headers
+            )
+            assert shown.status_code == 202, shown.text
+            for _ in range(1000):  # until the panel has the picture
+                if len(fetched) == 2:
+                    break
+                await asyncio.sleep(0.02)
+            assert len(fetched) == 2
 
             log = (await client.get("/api/debug/panel-requests", headers=headers)).json()
-            assert [r["path"] for r in log][-2:] == [
-                "/panel/next",
-                f"/panel/app-images/{body['content']['file_id']}.jpg",
-            ]
+            paths = [r["path"] for r in log][-2:]
+            assert paths[0] == "/panel/next"
+            assert paths[1].startswith("/panel/images/") and paths[1].endswith(".jpg")
             status = (await client.get("/api/device/app", headers=headers)).json()
             assert status["active"] and status["state"]["build"] == "2.0.0"
     finally:

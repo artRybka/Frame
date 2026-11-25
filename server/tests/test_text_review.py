@@ -6,22 +6,18 @@ answer did not come stays as it was."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
-from fastapi.testclient import TestClient
-from test_ai import GOOD_KEY, FakeAnthropic, _message
+from test_ai import FakeAnthropic, _message
 from test_polish import DESCRIPTION, NOTE_ANSWER, PL_ANSWER, _add, _answers, fake  # noqa: F401
 from test_study_refresh import _answers as _batch_answers
 
 from frame_server.ai.client import HAIKU, SONNET
 from frame_server.ai.pl_text import KIND, PROMPT_VERSION, PolishText
 from frame_server.ai.text_review import TextReview
-from frame_server.config import Settings
 from frame_server.library import Item
 from frame_server.library.models import Note
 from frame_server.service import FrameService
-from frame_server.web import create_app
 
 
 def _kept(service: FrameService, item: Item, **text: Any) -> None:
@@ -131,21 +127,3 @@ def test_the_old_notes_are_written_anew_and_a_failed_one_stays(
     assert old is not None and old.full == "Stary pełny tekst." and old.style == ""
     view = review.view()
     assert (view["written"], view["unstyled"], view["unchecked"]) == (1, 1, 1)
-
-
-def test_the_app_starts_it(tmp_path: Path) -> None:
-    app = create_app(
-        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
-    )
-    svc: FrameService = app.state.service
-    client = TestClient(app)
-    _kept(svc, _add(svc, "met:1", description=DESCRIPTION))
-    assert client.post("/api/ai/text-review", json={}).status_code == 409  # no key
-    svc.claude.factory = FakeAnthropic
-    svc.ai_config.set_key(GOOD_KEY)
-    view = client.get("/api/ai").json()["text_review"]
-    assert view["unchecked"] == 1 and view["check_usd"] > 0
-    body = {"check": False, "restyle": True}
-    assert client.post("/api/ai/text-review", json=body).status_code == 409  # no notes
-    view = client.post("/api/ai/text-review", json={"check": True}).json()["text_review"]
-    assert view["running"] and view["checking"] == 1

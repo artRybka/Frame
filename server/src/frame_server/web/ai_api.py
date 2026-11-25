@@ -12,9 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiConfigUpdate, AiUnavailable, KeyRejected, Progress, costs
 from ..ai.audit import FIELDS as AUDIT_FIELDS
-from ..ai.composition import PAGES
 from ..ai.config import TaskUpdate
-from ..ai.daily import CHECK_ROUND, ROUND
 from ..ai.drawn import TYPICAL_USD as SHEET_USD
 from ..ai.fal import FalRejected
 from ..ai.gatekeeper import SEEN_AS
@@ -22,8 +20,6 @@ from ..ai.gemini import GeminiRejected
 from ..ai.keywords import KIND as KEYWORDS
 from ..ai.pl_text import KIND as PL_TEXT
 from ..ai.review_fix import ReviewError
-from ..ai.twins_judge import CLAIMS, Verdict, judge
-from ..ai.twins_judge import MODELS as JUDGES
 from ..leftover import NIGHT_USD_CHOICES, PERIOD_USD_CHOICES, set_task
 from ..library.models import ItemSummary
 from ..on_demand import USES as ON_DEMAND
@@ -285,23 +281,8 @@ class TextReviewView(BaseModel):
     restyle_usd: float = 0.0
 
 
-class TextReviewStart(BaseModel):
-    #: "Sprawdź tłumaczenia" and "Przepisz notki w nowych stylach".
-    check: bool = True
-    restyle: bool = False
-
-
 class KeyUpdate(BaseModel):
     key: str
-
-
-class Estimate(BaseModel):
-    items: int
-    usd: float
-
-
-class Started(BaseModel):
-    items: int
 
 
 def _view(svc: FrameService) -> AiView:
@@ -381,22 +362,6 @@ async def put_ai(update: AiConfigUpdate, svc: Svc) -> AiView:
     return await run_in_threadpool(_view, svc)
 
 
-@router.post("/study-refresh", response_model=AiView)
-async def start_study_refresh(svc: Svc) -> AiView:
-    """The studies written before the facts from the web asked about now,
-    through the Batch API (the owner's tap in Konfiguracja)."""
-    if not svc.ai_config.api_key:
-        raise HTTPException(409, "Brak klucza API Anthropic.")
-    try:
-        svc.claude.check_budget()
-    except AiUnavailable as err:
-        raise HTTPException(409, "Osiągnięty miesięczny limit Claude.") from err
-    asked = await run_in_threadpool(svc.study_refresh.start)
-    if not asked and not svc.study_refresh.view()["running"]:
-        raise HTTPException(409, "Nie udało się zamówić (szczegóły w dzienniku serwera).")
-    return await run_in_threadpool(_view, svc)
-
-
 @router.post("/on-demand", response_model=AiView)
 async def start_on_demand(start: OnDemandStart, svc: Svc) -> AiView:
     """One of the month's rest's uses run now, for the owner's amount, at
@@ -424,22 +389,6 @@ async def stop_on_demand(key: str, svc: Svc) -> AiView:
     """The run stops after the works it is asking about."""
     if not svc.on_demand.stop(key):
         raise HTTPException(404, "To zadanie teraz nie działa.")
-    return await run_in_threadpool(_view, svc)
-
-
-@router.post("/text-review", response_model=AiView)
-async def start_text_review(start: TextReviewStart, svc: Svc) -> AiView:
-    """The Polish texts kept looked over through the Batch API (the owner's
-    tap in Konfiguracja): the translations checked, notes written anew."""
-    if not svc.ai_config.api_key:
-        raise HTTPException(409, "Brak klucza API Anthropic.")
-    try:
-        svc.claude.check_budget()
-    except AiUnavailable as err:
-        raise HTTPException(409, "Osiągnięty miesięczny limit Claude.") from err
-    asked = await run_in_threadpool(svc.text_review.start, start.check, start.restyle)
-    if not asked and not svc.text_review.view()["running"]:
-        raise HTTPException(409, "Nie ma czego przejrzeć.")
     return await run_in_threadpool(_view, svc)
 
 
@@ -525,124 +474,6 @@ async def delete_fal_key(svc: Svc) -> AiView:
     """Forget fal.ai's key: the restorer draws with Google's model again."""
     svc.ai_config.set_fal_key(None)
     return await run_in_threadpool(_view, svc)
-
-
-@router.get("/keywords/estimate", response_model=Estimate)
-async def keywords_estimate(svc: Svc) -> Estimate:
-    """What "Opisz bibliotekę" would ask about, and about what it costs."""
-    items, usd = await run_in_threadpool(svc.ai.estimate, KEYWORDS)
-    return Estimate(items=items, usd=round(usd, 2))
-
-
-@router.post("/keywords/describe-library", response_model=Started)
-async def describe_library(svc: Svc) -> Started:
-    """Keywords for the whole library through the Batch API (within 24 hours)."""
-    try:
-        items = await run_in_threadpool(svc.ai.describe_library, KEYWORDS)
-    except AiUnavailable as err:
-        raise HTTPException(409, str(err)) from err
-    return Started(items=items)
-
-
-@router.get("/pl-text/estimate", response_model=Estimate)
-async def pl_text_estimate(svc: Svc) -> Estimate:
-    """What Polish texts for the whole library would cost (Batch API)."""
-    items, usd = await run_in_threadpool(svc.ai.estimate, PL_TEXT)
-    return Estimate(items=items, usd=round(usd, 2))
-
-
-@router.post("/pl-text/describe-library", response_model=Started)
-async def pl_text_library(svc: Svc) -> Started:
-    """Polish texts for the whole library through the Batch API (within 24 hours)."""
-    try:
-        items = await run_in_threadpool(svc.ai.describe_library, PL_TEXT)
-    except AiUnavailable as err:
-        raise HTTPException(409, str(err)) from err
-    return Started(items=items)
-
-
-class Compose(BaseModel):
-    """The works whose pages written before get their composition written
-    again (``True``: all), which still wait for it and which have it."""
-
-    rework: bool | list[str]
-    waiting: list[str] = []
-    #: Asked, but the answer gave no take; let them again to ask once more.
-    failed: list[str] = []
-    done: list[str] = []
-
-
-class ComposeUpdate(BaseModel):
-    rework: bool | list[str]
-
-
-def _compose(svc: FrameService) -> Compose:
-    job = svc.compose
-    job.forget()
-    done = {
-        item_id
-        for kind in PAGES
-        for item_id, note in svc.library.notes(kind).items()
-        if "teaser" in note.data and note.data.get(CHECK_ROUND, 1) >= ROUND
-    }
-    return Compose(
-        rework=job.rework(),
-        waiting=sorted(job.waiting()),
-        done=sorted(done),
-        failed=sorted(job.failed()),
-    )
-
-
-@router.get("/composition", response_model=Compose)
-async def get_compose(svc: Svc) -> Compose:
-    return await run_in_threadpool(_compose, svc)
-
-
-@router.put("/composition", response_model=Compose)
-async def put_compose(update: ComposeUpdate, svc: Svc) -> Compose:
-    """Lets the analysis of the composition be written again for the pages
-    of these works (or all): first a few to look at, then the rest."""
-    svc.compose.let(update.rework if update.rework is True else list(update.rework or []))
-    svc.ai.wake()
-    return await run_in_threadpool(_compose, svc)
-
-
-class JudgeAsk(BaseModel):
-    """Two works of the library and the models to ask about them."""
-
-    a: str
-    b: str
-    models: list[str] = list(JUDGES)
-    effort: str = "low"
-    #: Ask as the critic about this claim (one of ``CLAIMS``); verdicts are
-    #: then "confirm" or "reject".
-    claim: str = ""
-
-
-class JudgeView(BaseModel):
-    verdicts: list[Verdict]
-
-
-@router.post("/twins-judge", response_model=JudgeView)
-async def twins_judge(body: JudgeAsk, svc: Svc) -> JudgeView:
-    """How each model sees a pair of pictures (``ai.twins_judge``): the
-    test of the judge of copies, one pair at a time, from a script on the
-    owner's Mac (Mateusz 2026-11-10). Costs go to this month's spending."""
-    a, b = svc.library.get(body.a), svc.library.get(body.b)
-    if a is None or b is None:
-        raise HTTPException(404, "no such work")
-    unknown = [m for m in body.models if m not in JUDGES]
-    if unknown or body.effort not in ("low", "medium", "high", "xhigh", "max"):
-        raise HTTPException(422, f"unknown model or effort: {unknown or body.effort}")
-    if body.claim and body.claim not in CLAIMS:
-        raise HTTPException(422, f"unknown claim: {body.claim}")
-    try:
-        verdicts = await run_in_threadpool(
-            judge, svc.claude, svc.images, a, b, body.models, body.effort, body.claim
-        )
-    except AiUnavailable as err:
-        raise HTTPException(409, str(err)) from err
-    return JudgeView(verdicts=verdicts)
 
 
 class ReviewProblem(BaseModel):

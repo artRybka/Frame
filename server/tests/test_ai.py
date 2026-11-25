@@ -18,7 +18,7 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 
 from frame_server.ai import AiConfigUpdate, AiUnavailable
-from frame_server.ai.client import BATCH_DISCOUNT, HAIKU, cost
+from frame_server.ai.client import HAIKU, cost
 from frame_server.ai.keywords import KIND, words_and_terms
 from frame_server.config import Settings
 from frame_server.library import Item, ItemKind, Look, PhotoInfo, PlaylistRules
@@ -252,7 +252,6 @@ def test_a_photo_sent_once_gets_keywords_once_shown_or_queued(
 
     service.player.remember_sent(sent)  # shown or queued: in "Historia przesłanych"
     assert service.library.sent_photo_ids() == {sent.id}
-    assert service.ai.estimate(KIND)[0] == 1
     assert service.ai.sweep() == 0  # the night's batch asks
     assert service.ai.order_night() == 1
     fake.ended = True
@@ -289,25 +288,6 @@ def test_queueing_a_photo_sent_once_asks_for_its_keywords_now(tmp_path: Path) ->
         assert tagged()
         view = client.post(f"/api/library/items/{sent.id}/describe").json()
         assert view["status"] == "ready" and "żaglowiec" in view["words"]
-
-
-def test_the_whole_library_through_a_batch(service: FrameService, fake: FakeAnthropic) -> None:
-    _add(service, "met:1")
-    _add(service, "met:2", pooled=True)  # in the library, but not in the background
-    items, usd = service.ai.estimate(KIND)
-    assert items == 2 and 0 < usd < 0.01
-    assert service.ai.describe_library(KIND) == 2
-    service.ai.tick()
-    (requests,) = fake.batches.values()
-    assert len(requests) == 2 and service.ai.progress(KIND).batch_items == 2
-    assert service.ai.sweep() == 0  # already in a batch
-
-    fake.ended = True
-    assert service.ai.poll_batches() == 2
-    assert service.library.get("met:2").terms  # type: ignore[union-attr]
-    assert service.ai.progress(KIND).batch_items == 0
-    one = (600 * 0.10 + 2000 * 0.01 + 400 * 0.50) / 1_000_000
-    assert service.claude.spending.total() == pytest.approx(2 * one * BATCH_DISCOUNT, rel=1e-3)
 
 
 def test_a_reimported_item_keeps_its_keywords(service: FrameService) -> None:
@@ -348,9 +328,7 @@ def test_the_app_sets_the_key_and_never_gets_it_back(tmp_path: Path) -> None:
         assert resp.json()["keywords_artworks"] is True
         assert resp.json()["monthly_limit_usd"] == 2
 
-        assert client.get("/api/ai/keywords/estimate").json() == {"items": 0, "usd": 0.0}
         assert client.delete("/api/ai/key").json()["key_set"] is False
-        assert client.post("/api/ai/keywords/describe-library").status_code == 409
 
 
 def test_frame_env_key_is_the_fallback(tmp_path: Path) -> None:
@@ -490,56 +468,3 @@ def test_photos_tagged_before_titles_are_asked_again_works_not(
         item = service.library.get(item_id)
         assert item is not None
         assert job.fresh(item, old) is (item.kind != ItemKind.PHOTO)
-
-
-def test_each_model_judges_a_pair_of_pictures(tmp_path: Path) -> None:
-    """The judge of copies on trial (ai.twins_judge, Mateusz 2026-11-10):
-    one pair, every model asked, each answer with its cost."""
-    from frame_server.ai.client import FABLE, OPUS, SONNET
-    from frame_server.ai.twins_judge import SCHEMA, relation
-
-    app = create_app(
-        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
-    )
-    svc: FrameService = app.state.service
-    clients: dict[str, FakeAnthropic] = {}
-    svc.claude.factory = lambda key: clients.setdefault(key, FakeAnthropic(key))
-    pair = {"a": "met:1", "b": "wmc:2"}
-    with TestClient(app) as client:
-        svc = app.state.service
-        svc.claude.factory = lambda key: clients.setdefault(key, FakeAnthropic(key))
-        _add(svc, "met:1", title="Young Woman with a Water Pitcher", artist="Johannes Vermeer")
-        _add(svc, "wmc:2", title="Kobieta z dzbanem", artist="Jan Vermeer")
-        first = client.post("/api/ai/twins-judge", json=pair)
-        assert first.status_code == 409, first.text  # no key
-        svc.ai_config.set_key(GOOD_KEY)
-        fake = clients.setdefault(GOOD_KEY, FakeAnthropic(GOOD_KEY))
-        fake.answer = {"why": "One painting.", "kind": "same", "whole": "none", "confidence": 0.9}
-        resp = client.post("/api/ai/twins-judge", json=pair)
-        assert resp.status_code == 200
-        verdicts = resp.json()["verdicts"]
-        assert [v["model"] for v in verdicts] == ["haiku", "sonnet", "opus", "fable"]
-        assert all(v["relation"] == "same" and v["cost_usd"] > 0 for v in verdicts)
-        assert {p["model"] for p in fake.asked} == {HAIKU, SONNET, OPUS, FABLE}
-        asked = fake.asked[0]
-        assert asked["output_config"]["format"]["schema"] == SCHEMA
-        assert [b["type"] for b in asked["messages"][0]["content"]].count("image") == 2
-        # Fable at its own price: 600 in, 400 out, 2000 read from the cache.
-        fable = next(v for v in verdicts if v["model"] == "fable")
-        assert fable["cost_usd"] == pytest.approx((600 * 8 + 400 * 40 + 2000 * 0.2) / 1e6)
-        bad = client.post("/api/ai/twins-judge", json={**pair, "models": ["gpt"]})
-        assert bad.status_code == 422
-        assert client.post("/api/ai/twins-judge", json={**pair, "b": "x:9"}).status_code == 404
-        # As the critic of a claim.
-        fake.answer = {"why": "Figure for figure.", "verdict": "confirm", "confidence": 0.8}
-        critic = {**pair, "models": ["haiku"], "claim": "b_detail_of_a"}
-        resp = client.post("/api/ai/twins-judge", json=critic)
-        assert [v["relation"] for v in resp.json()["verdicts"]] == ["confirm"]
-        assert "B lies within A" in str(fake.asked[-1]["messages"])
-        bad = client.post("/api/ai/twins-judge", json={**critic, "claim": "copy_by_other_hand"})
-        assert bad.status_code == 422
-    # Which one is whole, asked apart from what kind of pair it is.
-    assert relation("part", "A") == "b_detail_of_a"
-    assert relation("photo", "B") == "a_photo_of_b"
-    assert relation("part", "none") == ""
-    assert relation("different", "none") == "different"

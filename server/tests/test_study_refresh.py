@@ -6,21 +6,17 @@ the composition and everything else on the page stays."""
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from fastapi.testclient import TestClient
 from test_ai import GOOD_KEY, FakeAnthropic, fake  # noqa: F401  (fixture)
 
 from frame_server.ai import web_facts
 from frame_server.ai.client import OPUS, SONNET
 from frame_server.ai.refresh import REFRESHED, VERSION, WORTH, StudyRefresh
-from frame_server.config import Settings
 from frame_server.library import Item, ItemKind
 from frame_server.library.models import Note
 from frame_server.service import FrameService
-from frame_server.web import create_app
 
 COMPOSITION = {"views": [{"name": "Trójkąt", "marks": []}]}
 
@@ -222,19 +218,3 @@ def test_a_failed_answer_is_tried_again_once(
         _answers(fake, {"f0": None})
         assert refresh.collect() is True
     assert refresh.waiting() == [] and refresh.start() == 0
-
-
-def test_the_app_starts_it(tmp_path: Path) -> None:
-    app = create_app(
-        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
-    )
-    svc: FrameService = app.state.service
-    client = TestClient(app)
-    _study(svc, "aic:1")
-    assert client.post("/api/ai/study-refresh").status_code == 409  # no key
-    svc.claude.factory = FakeAnthropic
-    svc.ai_config.set_key(GOOD_KEY)
-    view = client.get("/api/ai").json()["study_refresh"]
-    assert view["waiting"] == 1 and view["facts_usd"] > 0
-    view = client.post("/api/ai/study-refresh").json()["study_refresh"]
-    assert view["running"] and view["asked"] == 1

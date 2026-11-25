@@ -1,15 +1,11 @@
 # Algorytm obrazu
 
-Kod: `server/src/frame_server/imaging/`. Eksperymenty z poziomu CLI:
-
-```bash
-uv run frame render obraz.jpg out.png -p painting --preview podglad.png
-uv run frame render obraz.jpg out.png -p photo --set tone.gamma=1.25 --set dither.method='"atkinson"'
-```
-
-`out.png` to plik dla ekranu (przy strategii `dither` tylko czyste kolory farb,
-przy `passthrough` obraz ciągłotonalny, który ditheruje ekran), a `podglad.png` to
-symulacja wyglądu na ekranie z uwzględnieniem adaptacji oka do „bieli” papieru.
+Kod: `server/src/frame_server/imaging/`. Ekran sam ditheruje obraz: wysyłamy
+mu obraz ciągłotonalny (JPEG) z korektą pod jego mapowanie, a w czyste farby
+ditherujemy tylko passe-partout i jego fazy. Pełny dither całego obrazu,
+podgląd symulacji, kalibracja kolorów i komendy CLI `frame render` /
+`testchart` / `push` / `device` zostały usunięte 2026-11-25 (PLAN 3.3zzz557);
+opis niżej zostaje jako historia eksperymentów E5 i E14.
 
 ![Porównanie](img/pipeline-compare.jpg)
 
@@ -61,11 +57,9 @@ Na 2 rdzeniach (zwykły PC): obraz z passe-partout ~10 s → ~2 s, duży orygina
 
 ## Strategie (wybór po eksperymencie E5)
 
-| strategia | co wysyłamy | kiedy |
-|---|---|---|
-| `passthrough` | przeskalowany obraz z korektą pod mapowanie ekranu; dithering robi ekran | **domyślna od E14** (wygrała z `dither` na oko we wszystkich stylach) |
-| `compensate` | obraz po naszym mapowaniu tonów i gamutu, wstępnie skorygowany macierzą afiniczną (farby nominalne → zmierzone), tak żeby dithering ekranu trafił w nasz cel | gdy ekran przetwarza każdy obraz po swojemu |
-| `dither` | gotowy obraz z samych czystych farb | gdy ekran pokazuje czyste farby 1:1 (najlepsza kontrola) |
+Były trzy: `passthrough`, `compensate` i `dither`. Od E14 wszystkie presety
+używały `passthrough` (wygrała na oko we wszystkich stylach); 2026-11-25
+pozostałe dwie usunięto razem z polem `strategy`.
 
 ## Presety
 
@@ -94,7 +88,7 @@ w `tone.py`, pola `ToneSettings`):
 Passe-partout, faza i podpisy nadal są w czystych farbach (nasz dither tylko na
 kartonie), a ekran ditheruje sam obraz. Plik jest wtedy JPEG.
 
-Pełna lista parametrów: `GET /api/presets` albo modele `RenderSettings`,
+Pełna lista parametrów: modele `RenderSettings`,
 `ToneSettings`, `DitherSettings` i `LayoutSettings` w kodzie.
 
 ## Kadrowanie i passe-partout
@@ -123,17 +117,10 @@ okienek z fragmentem obrazu, a reszta to passe-partout.
 
 Paletę EM32DX zmierzyliśmy raz (E5, 2026-10-25) i jest wbudowana jako
 domyślna paleta `em32dx` (`imaging/palette.py`). Kreator kalibracji w
-aplikacji iOS usunęliśmy: farby nie zmieniają się w czasie, więc ponowny
-pomiar przyda się tylko dla innego egzemplarza ekranu. Służy do tego API
-serwera `/api/calibration` (bez aplikacji, np. `curl`):
-
-1. `POST /api/calibration/chart`: ramka wyświetla planszę `palette` (sześć pól farb, czarne znaczniki w rogach) i trzyma ją przez 30 minut.
-2. Zdjęcie iPhonem: na wprost, w świetle dziennym, bez lampy błyskowej i odblasków. `POST /api/calibration/measure` ze zdjęciem i narożnikami planszy (`[[x, y] × 4]`, TL, TR, BR, BL, 0–1); `GET …/candidates/<id>/chart.jpg` pokazuje fioletowe ramki w miejscach pomiaru.
-3. Serwer (`imaging/calibrate.py`) prostuje zdjęcie transformacją perspektywiczną, bierze medianę środkowej części każdego pola w świetle liniowym i normalizuje wynik tak, by biała farba była neutralną szarością o poziomie palety referencyjnej. Ekspozycja i balans bieli zdjęcia nie mają więc znaczenia: dithering potrzebuje tylko wzajemnych relacji farb, a odległości w OKLab skalują się z jasnością jednakowo. Odrzuca zdjęcia, na których narożniki nie trafiły w planszę, i ostrzega przed nierówno oświetlonymi polami.
-4. `POST /api/calibration/apply` zapisuje paletę do `/data/palette.json` (ma pierwszeństwo przed opcją `palette` add-onu), a ramka przerysowuje obraz. `DELETE /api/calibration` usuwa plik.
-
-Paletę można też poprawiać ręcznie: `uv run frame palette --export p.json`,
-edycja pól `perceived`, a potem `--palette p.json` w `frame render`.
+aplikacji usunęliśmy wcześniej, a 2026-11-25 także API `/api/calibration`
+i plansze (`calibrate.py`, `testchart.py`): farby się nie zmieniają, a od
+E14 ekran sam ditheruje obraz. Plik `/data/palette.json`, jeśli został z
+dawnej kalibracji, nadal ma pierwszeństwo przed opcją `palette` add-onu.
 
 ## Ocena dla e-papieru
 

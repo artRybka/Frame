@@ -8,7 +8,7 @@ final class AiCostsTests: XCTestCase {
         let json = #"""
         {"key_set": true, "key_tail": "abcd", "key_from_app": true, "pl_text": true,
          "keywords_artworks": true, "keywords_photos": false, "monthly_limit_usd": 20, "spent_usd": 1.2,
-         "keywords_progress": {"done": 0, "waiting": 0, "refused": 0, "batch_items": 0, "batch_done": 0, "preparing": false},
+         "keywords_progress": {"done": 0, "waiting": 0, "refused": 0, "batch_items": 0, "batch_done": 0},
          "error": null, "cost_days": 7,
          "claude_costs": [{"key": "crops", "label": "Kadrowanie zdjęć dzieł", "days_usd": 0.12, "period_usd": 0.4}],
          "gemini_costs": [{"key": "drawn", "label": "Arkusze kompozycji", "days_usd": 0.9, "period_usd": 1.2}]}
@@ -45,7 +45,7 @@ final class AiCostsTests: XCTestCase {
         XCTAssertEqual(AiSection.usd(0), "0 USD")
         XCTAssertEqual(AiSection.usd(0.003), "poniżej 1 centa")
         XCTAssertEqual(
-            AiSection.progressNote(.init(done: 3691, waiting: 9, refused: 0, batchItems: 0, batchDone: 0, preparing: false)),
+            AiSection.progressNote(.init(done: 3691, waiting: 9, refused: 0, batchItems: 0, batchDone: 0)),
             "gotowe \(AiSection.count(3691)) · czeka 9"
         )
     }
