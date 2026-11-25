@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.376
+
+- Galeria: powrót po puszczeniu całego dzieła jest spokojniejszy. Zamiast
+  ok. 0,2 s ze sprężynką trwa ok. 0,55 s bez odbicia: całe dzieło gaśnie
+  w swoją łunę, a kadr na pełnym ekranie w tym czasie wyostrza się
+  z rozmycia i dorasta do brzegów.
+- Ikona siatki w lewym górnym rogu to teraz dziewięć kwadracików w szklanym
+  kółku (40 pt).
+
 ## 1.145.375
 
 - Galeria: im szybciej przewijasz, tym wcześniej wchodzi siatka. Wystarczą
