@@ -361,27 +361,6 @@ def test_a_fragment_id_is_made_from_its_work(tmp_path: Path) -> None:
     assert len(found) == 2 and places == []
 
 
-def test_fragments_keep_their_margins(tmp_path: Path) -> None:
-    from frame_server.library.images import _trimmed
-
-    assert _trimmed("wmc:22605738")
-    assert not _trimmed("wmc:22605738~p18")  # a tile keeps its edges
-    assert not _trimmed("upload:1")
-    cache = ImageCache(tmp_path, lambda: httpx.Client())
-    # A dark band at a tile's edge is part of the work, not a margin.
-    banded = Image.new("RGB", (400, 300), (0, 0, 0))
-    banded.paste((200, 180, 150), (0, 0, 300, 300))
-    for item_id in ("wmc:5~p2", "wmc:5"):
-        banded.save(tmp_path / "images" / f"{Item.stem_of(item_id)}.jpg", quality=95)
-    cache.trim_kept()
-    with Image.open(tmp_path / "images" / "wmc_5~p2.jpg") as tile:
-        assert tile.size == (400, 300)
-    # Those kept trimmed before are let go once, had again when asked for.
-    assert cache.drop_fragments() == 1
-    assert not (tmp_path / "images" / "wmc_5~p2.jpg").exists()
-    assert (tmp_path / "images" / "wmc_5.jpg").exists()
-
-
 def test_tile_sets_are_listed_once(tmp_path: Path) -> None:
     asked: list[str] = []
 
@@ -444,21 +423,3 @@ def test_a_works_commons_copy_brings_its_tiles(tmp_path) -> None:  # type: ignor
     )
     assert fragments.may_have(shown)
     assert Fragments._key(shown) == "rijks:1@wmc:123"
-
-
-def test_tiles_are_kept_as_large_as_commons_gives_them(tmp_path: Path) -> None:
-    from frame_server.library.images import TILE_MAX, kept_side
-
-    assert TILE_MAX == 3840
-    assert kept_side(_item("wmc", "", 29952, 29952)) == IMAGE_MAX
-    tile = _item("wmc", "https://upload.wikimedia.org/x.jpg", 29952, 29952)
-    tile = tile.model_copy(update={"id": "wmc:1~p3"})
-    assert kept_side(tile) == TILE_MAX
-    cache = ImageCache(tmp_path, lambda: httpx.Client())
-    cache._original = lambda item, urgent: Image.new("RGB", (3840, 3840))  # type: ignore[method-assign]
-    with Image.open(cache.picture(tile, True)[0]) as kept:
-        assert kept.size == (3840, 3840)
-    # Kept at 2560 before: let go once (the thumbnails stay).
-    (tmp_path / "thumbs" / "wmc_1~p3.jpg").write_bytes(b"x")
-    assert cache.drop_fragments(thumbs=False) == 1
-    assert (tmp_path / "thumbs" / "wmc_1~p3.jpg").exists()

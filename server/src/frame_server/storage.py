@@ -44,8 +44,6 @@ log = logging.getLogger(__name__)
 OLD_KEY = "storage_limit"
 CATALOGUE_KEY = "catalogue_limit"
 ORIGINALS_KEY = "originals_limit"
-#: The originals' default before add-on 0.29, for the old limit's split.
-OLD_CACHE_MB = 500
 MB = 1024 * 1024
 #: The last measurement, kept over a restart.
 USAGE_KEY = "storage_usage"
@@ -134,31 +132,12 @@ class StorageStore:
         self._starting = threading.Lock()
         self._counts: CatalogueCounts | None = None
         self._counting = threading.Lock()
-        self._migrate()
         catalogue = library.get_state(CATALOGUE_KEY)
         if catalogue:
             settings.catalogue_mb = int(catalogue)
         originals = library.get_state(ORIGINALS_KEY)
         if originals:
             settings.image_cache_mb = int(originals)
-
-    def _migrate(self) -> None:
-        """The one limit of add-on 0.28 and before: the catalogue keeps its
-        share, the originals keep theirs if it was larger than the new
-        default."""
-        old = self.library.get_state(OLD_KEY)
-        if not old:
-            return
-        catalogue, cache = self.defaults
-        then = cache if "image_cache_mb" in self.settings.model_fields_set else OLD_CACHE_MB
-        share = catalogue / (catalogue + then) if catalogue + then else 2 / 3
-        old_catalogue = round(int(old) * share)
-        with self.library.batch():
-            if old_catalogue != catalogue:
-                self.library.set_state(CATALOGUE_KEY, old_catalogue)
-            if int(old) - old_catalogue > cache:
-                self.library.set_state(ORIGINALS_KEY, int(old) - old_catalogue)
-            self.library.delete_state(OLD_KEY)
 
     def view(self) -> StorageView:
         usage = self.shown()

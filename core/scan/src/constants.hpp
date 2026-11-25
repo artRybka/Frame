@@ -124,8 +124,6 @@ inline constexpr double VEIL_MOST = 0.3;
 
 namespace frame::crop {
 
-inline constexpr double BACKDROP_DEPTH = 0.03;
-inline constexpr int BACKDROP_SIDES = 2;
 inline constexpr double BAND = 0.012;
 inline constexpr double FRAME_APART = 15.7;
 inline constexpr double FRAME_CHROMA = 16.0;
@@ -138,8 +136,6 @@ inline constexpr double MASK = 0.5;
 inline constexpr double MOST_KEPT = 0.985;
 inline constexpr double ON_LINE = 2.5;
 inline constexpr double OUTER_SHARE = 0.5;
-inline constexpr double OUT_AT_MOST = 0.03;
-inline constexpr double OUT_BY = 0.01;
 inline constexpr double PAINTING_SURE = 0.81;
 inline constexpr int PHOTO_SIDE = 1024;
 inline constexpr int PLATE = 2;
@@ -172,14 +168,11 @@ inline constexpr double PLATE_TURN = 5.0;
 inline constexpr double PLATE_TURN_GAIN = 0.98;
 inline constexpr double PLATE_TURN_LEAST = 0.3;
 inline constexpr double PLATE_WHOLE = 0.8;
-inline constexpr double SAME_SIDE = 0.006;
 inline constexpr int SAMPLES = 160;
 inline constexpr int SIDE = 384;
 inline constexpr int SNAP_SIDE = 1500;
 inline constexpr double SQUARE = 16.0;
 inline constexpr double STRENGTH = 25.0;
-inline constexpr double STRIP_DEEPEST = 0.08;
-inline constexpr double STRIP_LINE = 0.15;
 inline constexpr double SURE = 0.795;
 inline constexpr double UPRIGHT = 3.0;
 inline constexpr double WHOLE = 0.1;

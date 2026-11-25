@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
-from ..imaging.crop_model import MODEL, PHOTO_SIDE
+from ..imaging.crop_model import PHOTO_SIDE
 from ..library.images import Gone
 from ..library.models import Item, ItemSummary
 from ..service import FrameService
@@ -32,16 +32,6 @@ class PhoneLook(BaseModel):
     model: str
     picture: str
     side: int = PHOTO_SIDE
-
-
-class Waiting(BaseModel):
-    """ "Kadruj partię": works to look at (``id``, ``kind``, ``picture``),
-    how many wait in all."""
-
-    model: str
-    side: int = PHOTO_SIDE
-    works: list[dict[str, Any]]
-    left: int
 
 
 class PhoneFound(BaseModel):
@@ -86,16 +76,6 @@ class Review(BaseModel):
     unsure: list[ItemSummary]
     #: How sure the model was a cut is wanted, of each work.
     sure: list[Sure] = []
-
-
-@router.get("/phone/waiting", response_model=Waiting)
-async def phone_waiting(svc: Svc, limit: Annotated[int, Query(ge=1, le=500)] = 50) -> Waiting:
-    works, left = await run_in_threadpool(svc.phone_crops.waiting, limit)
-    return Waiting(
-        model=MODEL,
-        works=[{"id": i.id, **svc.phone_crops.ask(i)} for i in works],
-        left=left,
-    )
 
 
 @router.get("/phone/{item_id:item}", response_model=PhoneLook)

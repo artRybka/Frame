@@ -116,20 +116,3 @@ def test_configured_from_the_app_alone(tmp_path: Path) -> None:
         # Removing the PIN leaves the panel unconfigured again.
         client.put("/api/device/config", json={"host": "203.0.113.152", "pin": ""})
         assert not client.get("/api/status").json()["device"]["configured"]
-
-
-def test_cli_uses_the_apps_panel_config(tmp_path: Path) -> None:
-    from frame_server.cli import _app_panel_config
-    from frame_server.library import Library
-    from frame_server.panel_config import PanelConfigStore, PanelConfigUpdate
-
-    settings = Settings(data_dir=tmp_path, device_host="203.0.113.152", device_mac=None)
-    library = Library(tmp_path / "library.db")
-    store = PanelConfigStore(settings, library)
-    store.save(PanelConfigUpdate(host="192.0.2.20", pin="1234"))
-    store.learn_mac("AA:BB:CC:DD:EE:FF")
-    library.close()
-
-    fresh = _app_panel_config(Settings(data_dir=tmp_path, device_host="203.0.113.152"))
-    assert fresh.device_host == "192.0.2.20"
-    assert fresh.device_mac == "AA:BB:CC:DD:EE:FF"

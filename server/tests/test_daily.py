@@ -1647,7 +1647,7 @@ def test_the_copy_counts_in_the_pick(offline: FrameService) -> None:
         url="https://x/1.jpg", item_id="wmc:1", source="wmc", width=5000, height=4000
     )
     sharper = small.model_copy(update={"sharper": copy})
-    assert daily_module.copy_side(sharper) == 5000
+    assert daily_module.said_side(sharper) == 5000
     assert daily_module.copy_quality(sharper) == daily_module.copy_quality(large)
     unknown = small.model_copy(update={"width": None, "height": None})
     assert daily_module.copy_quality(unknown) == 0.0
@@ -1664,8 +1664,8 @@ def test_a_museum_that_says_no_size_is_not_held_to_its_thumbnail(
     _add(offline, "aic:2", title="A Small Scan", artist="B Painter", width=843, height=600)
     met, aic = offline.library.get("met:1"), offline.library.get("aic:2")
     assert met and aic
-    assert daily_module.copy_side(met) is None and daily_module.copy_quality(met) == 0.0
-    assert daily_module.copy_side(aic) == 843
+    assert daily_module.said_side(met) is None and daily_module.copy_quality(met) == 0.0
+    assert daily_module.said_side(aic) == 843
     assert [i.id for i in offline.daily.pool(DAY, [])] == ["met:1"]
     assert study_pick._photograph(met) == ""
     assert study_pick._photograph(aic) == "Photograph: 843 × 600 px"

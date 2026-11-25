@@ -252,16 +252,6 @@ def urgent_call[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
     return call
 
 
-def for_purpose[**P, T](why: str, fn: Callable[P, T]) -> Callable[P, T]:
-    """``fn`` with its requests counted as ``why``, wherever it runs."""
-
-    def call(*args: P.args, **kwargs: P.kwargs) -> T:
-        with asking_for(why):
-            return fn(*args, **kwargs)
-
-    return call
-
-
 def as_asked[**P, T](fn: Callable[P, T]) -> Callable[P, T]:
     """``fn``, to run in another thread as this one asks: as urgently, for
     the same purpose, for the app or not."""

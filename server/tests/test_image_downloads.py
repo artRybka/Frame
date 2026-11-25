@@ -748,13 +748,3 @@ def test_a_picture_the_museum_keeps_cut_off_is_no_picture(tmp_path: Path) -> Non
     with pytest.raises(Gone):
         cache.picture(item)
     assert seen
-
-
-def test_kept_cut_off_pictures_are_let_go_once(tmp_path: Path) -> None:
-    cache = ImageCache(tmp_path, lambda: httpx.Client(transport=httpx.MockTransport(_refuse)))
-    cut, whole = _aic(8), _aic(9)
-    cache.thumb_path(cut).write_bytes(_cut_off_jpeg())
-    cache.thumb_path(whole).write_bytes(_jpeg())
-    assert cache.cut_off_again([cut, whole]) == [cut.id]
-    assert not cache.thumb_path(cut).exists() and cache.gone(cut.id)
-    assert cache.thumb_path(whole).is_file() and not cache.gone(whole.id)

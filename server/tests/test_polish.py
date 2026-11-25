@@ -16,13 +16,11 @@ from fastapi.testclient import TestClient
 from test_ai import GOOD_KEY, FakeAnthropic, _message
 
 from frame_server.ai import AiConfigUpdate
-from frame_server.ai.client import HAIKU, SONNET, cost
+from frame_server.ai.client import HAIKU, SONNET
 from frame_server.ai.pl_text import (
     KIND,
     MAX_BODY,
-    NOTE_USAGE,
     STYLES,
-    TRANSLATION_USAGE,
     Context,
     PolishText,
     clean,
@@ -407,17 +405,6 @@ def test_photos_get_no_polish_texts(service: FrameService, fake: FakeAnthropic) 
     photo = _add(service, "icloud:1", kind=ItemKind.PHOTO)
     assert not service.pl_text.wanted(photo)
     assert service.ai.need_now("icloud:1", KIND).result(timeout=1) is None
-
-
-def test_the_estimate_counts_translations_and_notes(
-    service: FrameService, fake: FakeAnthropic
-) -> None:
-    _add(service, "met:1", description=DESCRIPTION)
-    _add(service, "met:2")
-    items, usd = service.ai.estimate(KIND)
-    assert items == 2
-    expected = cost(HAIKU, TRANSLATION_USAGE, True) + cost(SONNET, NOTE_USAGE, True)
-    assert abs(usd - expected) < 1e-9
 
 
 def test_the_frame_prints_the_polish_texts() -> None:

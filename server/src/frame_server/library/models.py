@@ -398,11 +398,6 @@ class Cut(BaseModel):
         a print or drawing on its whole sheet, never its plate alone."""
         return self.work
 
-    @property
-    def has_paper(self) -> bool:
-        """A print or drawing on its sheet ("Pełny kadr" says so)."""
-        return self.plate is not None or bool({"paper_margin", "page_text"} & set(self.around))
-
 
 class OwnWork(BaseModel):
     """What the owner wrote about a work of his own (``ItemKind.OWN``,
@@ -1165,20 +1160,6 @@ class PlaylistSummary(BaseModel):
     grows: bool = False
     #: :attr:`Playlist.own_works`: the app shows it as "Kolekcja prywatna".
     own_works: bool = False
-
-
-class FacetValue(BaseModel):
-    value: str
-    count: int
-
-
-class Facets(BaseModel):
-    artists: list[FacetValue]
-    styles: list[FacetValue]
-    subjects: list[FacetValue]
-    colors: list[FacetValue]
-    sources: list[FacetValue]
-    kinds: list[FacetValue]
 
 
 class Note(BaseModel):

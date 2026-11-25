@@ -365,9 +365,7 @@ def test_colour_cards_change_every_week_and_keep_to_paintings(service) -> None:
         COLOUR_CARDS,
         COLOUR_MIN,
         COLOUR_POOL,
-        PAINTINGS_KEY,
         colour_themes,
-        painterly_colour_playlists,
     )
 
     library = service.library
@@ -418,34 +416,3 @@ def test_colour_cards_change_every_week_and_keep_to_paintings(service) -> None:
     assert shown <= {t.key for t in fit}
     # A pool too small for new ones: the longest unshown come back.
     assert len(colour_themes(library, day + timedelta(weeks=20))) == COLOUR_CARDS
-
-    # Playlists made from colour cards keep to paintings too, once.
-    from frame_server.library.models import Playlist
-
-    blues = library.save_playlist(
-        Playlist(name="W odcieniach błękitu", rules=PlaylistRules(colors=["blue", "teal"]))
-    )
-    mine = library.save_playlist(
-        Playlist(name="Moje niebieskie", rules=PlaylistRules(colors=["blue"]))
-    )
-    # Those the cards gave drawings too (1.97.0) lose them; one with other
-    # techniques was made so by hand.
-    warm = library.save_playlist(
-        Playlist(
-            name="Ciepłe barwy",
-            rules=PlaylistRules(colors=["warm"], terms=["technique:painting", "technique:drawing"]),
-        )
-    )
-    dark = library.save_playlist(
-        Playlist(
-            name="Mroczne i nastrojowe",
-            theme="dark",
-            rules=PlaylistRules(colors=["dark"], terms=["technique:print"]),
-        )
-    )
-    painterly_colour_playlists(library)
-    assert library.playlist(blues.id).rules.terms == ["technique:painting"]
-    assert library.playlist(warm.id).rules.terms == ["technique:painting"]
-    assert library.playlist(dark.id).rules.terms == ["technique:print"]
-    assert library.playlist(mine.id).rules.terms == []
-    assert library.get_state(PAINTINGS_KEY)

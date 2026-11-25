@@ -844,23 +844,6 @@ def test_what_wikipedia_says_of_the_composition_comes_first() -> None:
     assert found.startswith("Intro.")
 
 
-def test_the_owner_lets_pages_be_written_again(tmp_path: Any, monkeypatch: Any) -> None:
-    from fastapi.testclient import TestClient
-    from test_daily import _app
-
-    monkeypatch.setattr("frame_server.ai.composition.LET_ALL", 0)
-    app = _app(tmp_path)
-    svc: FrameService = app.state.service
-    with TestClient(app) as client:
-        _catalogue(svc)
-        _old_page(svc)
-        shown = client.get("/api/ai/composition").json()
-        assert shown == {"rework": [], "waiting": [], "failed": [], "done": []}
-        shown = client.put("/api/ai/composition", json={"rework": ["met:1"]}).json()
-        assert shown["rework"] == ["met:1"] and shown["waiting"] == ["met:1"]
-        assert client.put("/api/ai/composition", json={"rework": True}).json()["rework"] is True
-
-
 def _made_again(service: FrameService, item_id: str = "met:1") -> None:
     """The analysis asked for anew, as the worker makes it (the check refused)."""
     job = service.ai.jobs[KIND]

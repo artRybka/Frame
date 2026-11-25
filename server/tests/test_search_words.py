@@ -231,10 +231,6 @@ def test_museums_are_asked_in_their_languages(
         assert client.get("/api/terms/museums", params={"q": "gitara"}).status_code == 200
         assert asked == {}
         assert at_home == {"met": "guitar", "mnw": "gitara", "paris": "guitare", "aic": "guitar"}
-
-        asked.clear()
-        client.get("/api/museums/mnw/search", params={"q": "gitara"})
-        assert asked == {"mnw": "gitara"}
     assert len(fake.asked) == 1
 
 

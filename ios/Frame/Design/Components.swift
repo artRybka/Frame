@@ -760,35 +760,6 @@ struct TagLabel: View {
     }
 }
 
-/// Round translucent control button.
-struct GlassButton: View {
-    let systemImage: String
-    var size: CGFloat = 54
-    var prominent = false
-    var label: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: size * 0.36, weight: .semibold))
-                .foregroundStyle(prominent ? Theme.paper : Theme.ink)
-                .frame(width: size, height: size)
-                .background {
-                    if prominent {
-                        Circle().fill(Theme.ink)
-                    } else {
-                        Circle().fill(.ultraThinMaterial)
-                    }
-                }
-                .overlay(Circle().strokeBorder(Color.white.opacity(prominent ? 0 : 0.35)))
-                .shadow(color: .black.opacity(0.12), radius: 10, y: 6)
-        }
-        .buttonStyle(PressableStyle())
-        .accessibilityLabel(label)
-    }
-}
-
 struct PressableStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

@@ -1,24 +1,17 @@
-"""Source image -> panel framebuffer, plus the composed picture for the app
-(and a simulation of how the panel will show it).
+"""Source image -> panel framebuffer, plus the composed picture for the app.
 
-Three strategies, to be compared on the real panel (experiment E5):
-
-* passthrough – only layout/resize; the panel's own firmware does all colour
-                work. This is roughly what the Samsung E-Paper app sends.
-* compensate  – our tone/gamut mapping, then pre-distortion so the panel's
-                own ditherer (assumed to believe the nominal ink colours)
-                lands on our target. Panel still dithers.
-* dither      – full pipeline; we dither to the six inks ourselves and send
-                an image that contains only pure ink colours.
+The panel dithers the picture itself (E5, E14: its own mapping beat ours on
+every kind of picture); the server lays it out, grades it for the panel and
+puts the mat, its bevels and the lettering in pure inks, which the panel
+keeps 1:1. Our own dither of whole pictures and its compensated variant
+were taken out on 2026-11-25 (Mateusz: "Wszystko, z usunięciem ditheringu").
 """
 
 from __future__ import annotations
 
 import io
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
-from enum import StrEnum
-from functools import cached_property
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -58,13 +51,7 @@ from .mat import (
 )
 from .palette import EM32DX, Palette
 from .text import TextBlock, text_block_mask
-from .tone import ToneSettings, grade_for_panel, map_to_panel, precompensate
-
-
-class Strategy(StrEnum):
-    PASSTHROUGH = "passthrough"
-    COMPENSATE = "compensate"
-    DITHER = "dither"
+from .tone import ToneSettings, grade_for_panel, map_to_panel
 
 
 class LayoutSettings(BaseModel):
@@ -87,6 +74,8 @@ class LayoutSettings(BaseModel):
 
 
 class DitherSettings(BaseModel):
+    """How the mat and its bevels are dithered to pure inks."""
+
     model_config = ConfigDict(validate_assignment=True)
 
     method: Kernel | Literal["none"] = Kernel.FLOYD_STEINBERG
@@ -98,7 +87,6 @@ class DitherSettings(BaseModel):
 class RenderSettings(BaseModel):
     model_config = ConfigDict(validate_assignment=True)
 
-    strategy: Strategy = Strategy.DITHER
     layout: LayoutSettings = Field(default_factory=LayoutSettings)
     tone: ToneSettings = Field(default_factory=ToneSettings)
     dither: DitherSettings = Field(default_factory=DitherSettings)
@@ -108,7 +96,7 @@ class RenderSettings(BaseModel):
     text: TextBlock | None = Field(None, description="DESCRIPTION: printed on the mat")
 
 
-# The presets let the panel dither (passthrough): in E5 and in the tuning by
+# The presets let the panel dither: in E5 and in the tuning by
 # eye of E14 its own mapping beat our dither on every kind of picture, once
 # light parts are pulled to paper white and muted and greys are kept off green.
 _LIGHT = {"white_point": 0.93, "highlight_chroma": 0.55}
@@ -117,20 +105,17 @@ _NEUTRAL = {"tint": 0.006, "temperature": -0.003, "tint_region": "neutral"}
 
 PRESETS: dict[str, RenderSettings] = {
     "photo": RenderSettings(
-        strategy=Strategy.PASSTHROUGH,
         tone=ToneSettings(**_LIGHT, **_NEUTRAL, contrast=1.05, saturation=1.05),
         sharpen=0.6,
     ),
     # Paintings: lighter midtones and light parts, a passe-partout.
     "painting": RenderSettings(
-        strategy=Strategy.PASSTHROUGH,
         layout=LayoutSettings(fit=Fit.FIT, margin=0.05),
         tone=ToneSettings(**_LIGHT, **_NEUTRAL, gamma=1.1, highlights=-0.15),
         sharpen=0.4,
     ),
     # Posters, prints, illustrations: as paintings, with more punch and crisper edges.
     "graphic": RenderSettings(
-        strategy=Strategy.PASSTHROUGH,
         layout=LayoutSettings(fit=Fit.FIT, margin=0.04),
         tone=ToneSettings(
             **_LIGHT, **_NEUTRAL, gamma=1.1, highlights=-0.15, contrast=1.1, saturation=1.1
@@ -140,7 +125,6 @@ PRESETS: dict[str, RenderSettings] = {
     # Drawings, etchings, B&W photography: greys the panel dithers with all its
     # inks (smoother and deeper than black and white ink alone), kept off green.
     "bw": RenderSettings(
-        strategy=Strategy.PASSTHROUGH,
         layout=LayoutSettings(fit=Fit.FIT, margin=0.05),
         tone=ToneSettings(
             white_point=0.93, saturation=0.0, contrast=1.1, tint=0.012, temperature=-0.006
@@ -156,18 +140,6 @@ class RenderResult:
     original: np.ndarray  # canvas orientation, uint8, framed picture in its own colours
     settings: RenderSettings
     palette: Palette
-    simulate: Callable[[], np.ndarray] = field(repr=False)
-
-    @cached_property
-    def preview(self) -> np.ndarray:
-        """Canvas orientation, uint8, simulated look on the panel. Made when
-        first asked for: publishing does not need it, and when the panel
-        dithers, simulating that is a whole dither of its own."""
-        return self.simulate()
-
-    @property
-    def pure_inks(self) -> bool:
-        return self.settings.strategy == Strategy.DITHER
 
     def panel_image(self) -> Image.Image:
         return Image.fromarray(self.panel)
@@ -177,22 +149,9 @@ class RenderResult:
         tone mapping or dither, which only the panel gets. What the app shows."""
         return Image.fromarray(self.original)
 
-    def preview_image(self, adapted: bool = True) -> Image.Image:
-        """Simulated look of the panel.
-
-        ``adapted`` rescales so the panel's paper white shows as screen white,
-        as the eye adapts to it in a room; otherwise the raw measured colours
-        (a grey-looking "white") are shown.
-        """
-        if not adapted:
-            return Image.fromarray(self.preview)
-        white = self.palette.perceived_linear()[self.palette.white_index()]
-        lin = u8_to_linear(self.preview) / np.maximum(white, 1e-3)
-        return Image.fromarray(linear_to_u8(lin))
-
     def encode(self, fmt: Literal["png", "jpeg"] | None = None) -> tuple[bytes, str]:
         """Encode the panel image; returns (bytes, extension)."""
-        fmt = fmt or ("png" if self.pure_inks else "jpeg")
+        fmt = fmt or "jpeg"
         return encode_image(self.panel_image(), fmt), ("png" if fmt == "png" else "jpg")
 
 
@@ -263,15 +222,6 @@ def plan_for(img: Image.Image, layout: LayoutSettings, caption: bool) -> Plan:
         fit_crop=layout.fit_crop,
         auto=_interest_picker(img),
     )
-
-
-def simulate_naive(linear: np.ndarray, palette: Palette) -> np.ndarray:
-    """Our model of a stock pipeline: Floyd–Steinberg against nominal inks.
-
-    Only a hypothesis until it is compared with photos of the panel (E5).
-    """
-    nominal = (palette.device_u8().astype(np.float32) / 255.0).astype(np.float32)
-    return error_diffusion(linear, nominal, Kernel.FLOYD_STEINBERG, match_oklab=False)
 
 
 Source = str | Path | bytes | Image.Image
@@ -404,49 +354,31 @@ def _finish(
     s: RenderSettings,
     palette: Palette,
 ) -> RenderResult:
-    """Tone, mat, dither and lettering for a composed canvas."""
+    """Tone, mat and lettering for a composed canvas."""
     pal = palette.subset(s.inks)
     # The app's view: the composition in nominal colours, before any correction.
     original = linear.copy()
     paint_mat(original, plan, palette.nominal(), s.layout.mat)
     linear = sharpen(linear, s.sharpen)
 
-    # The panel's look: our own dither, or (when the panel dithers) a
-    # simulation of its dither of ``naive``, made only when asked for.
-    naive: FloatArray | None = None
-    dithered = np.zeros(0, dtype=np.uint8)
-    on_mat: np.ndarray | None = None  # passthrough: the mat, dithered by us
-    if s.strategy == Strategy.PASSTHROUGH:
-        picture = by_rows(lambda part: grade_for_panel(part, s.tone), linear)
-        mask = plan.mat_mask()
-        dark_board = False
-        if mask.any():
-            # The mat and its bevels in pure inks, as in DITHER: the panel
-            # keeps them 1:1 and dithers only the picture (E5). Our dither
-            # runs on the mat alone.
-            if s.layout.mat in (*PICTURE_MATS, "edge"):  # coloured by the picture
-                target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
-            else:  # only the mat matters here
-                target = np.empty_like(linear)
-            board = paint_mat(target, plan, pal, s.layout.mat, shade=False)
-            dark_board = board is not None and is_dark(board, pal)
-            shade_pictures(picture, plan)
-            on_mat = _dither(target, pal, s.dither, only=mask)
-        sent = by_rows(linear_to_u8, picture)
-        naive = picture
-        if on_mat is not None:
-            sent[mask] = pal.device_u8()[on_mat[mask]]
-    else:
-        target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
-        board = paint_mat(target, plan, pal, s.layout.mat)
+    picture = by_rows(lambda part: grade_for_panel(part, s.tone), linear)
+    mask = plan.mat_mask()
+    dark_board = False
+    on_mat: np.ndarray | None = None  # the mat, dithered by us
+    if mask.any():
+        # The mat and its bevels in pure inks: the panel keeps them 1:1 and
+        # dithers only the picture (E5). Our dither runs on the mat alone.
+        if s.layout.mat in (*PICTURE_MATS, "edge"):  # coloured by the picture
+            target = by_rows(lambda part: map_to_panel(part, pal, s.tone), linear)
+        else:  # only the mat matters here
+            target = np.empty_like(linear)
+        board = paint_mat(target, plan, pal, s.layout.mat, shade=False)
         dark_board = board is not None and is_dark(board, pal)
-        if s.strategy == Strategy.COMPENSATE:
-            nominal = precompensate(target, pal)
-            sent = by_rows(linear_to_u8, nominal)
-            naive = nominal
-        else:
-            dithered = _dither(target, pal, s.dither)
-            sent = pal.device_u8()[dithered]
+        shade_pictures(picture, plan)
+        on_mat = _dither(target, pal, s.dither, only=mask)
+    sent = by_rows(linear_to_u8, picture)
+    if on_mat is not None:
+        sent[mask] = pal.device_u8()[on_mat[mask]]
 
     # The crease and the lettering in pure ink on the mat.
     marks = _marks(plan, s, pal, dark_board)
@@ -457,20 +389,8 @@ def _finish(
             sent[where] = pal.device_u8()[index]
             original_u8[where] = pal.device_u8()[index]
 
-    def preview() -> np.ndarray:
-        preview_idx = dithered if naive is None else simulate_naive(naive, pal)
-        if on_mat is not None or marks:
-            preview_idx = preview_idx.copy()
-        if on_mat is not None:
-            preview_idx[mask] = on_mat[mask]
-        for index, where in marks:
-            preview_idx[where] = index
-        return pal.perceived_u8()[preview_idx]
-
     panel = to_panel(sent, s.layout.orientation, s.layout.rotation)
-    return RenderResult(
-        panel=panel, original=original_u8, settings=s, palette=pal, simulate=preview
-    )
+    return RenderResult(panel=panel, original=original_u8, settings=s, palette=pal)
 
 
 def _dither(

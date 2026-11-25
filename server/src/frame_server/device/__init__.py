@@ -8,7 +8,6 @@ from .mdc import (
     MdcConnectionError,
     MdcError,
     MdcReply,
-    OnTimer,
 )
 
 __all__ = [
@@ -20,6 +19,5 @@ __all__ = [
     "MdcConnectionError",
     "MdcError",
     "MdcReply",
-    "OnTimer",
     "ScheduleEntry",
 ]

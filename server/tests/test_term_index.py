@@ -196,9 +196,6 @@ def test_one_artist_under_many_spellings_is_one_suggestion(tmp_path) -> None:
     for name in ["Rembrandt van Rijn", "Rembrandt (Rembrandt van Rijn)"]:
         assert lib.query(PlaylistRules(artists=[name]))[0] == 9, name
     assert lib.query(PlaylistRules(artists=["Jan Van Eyck"]))[0] == 3
-    facets = {f.value: f.count for f in lib.facets().artists}
-    assert facets["Rembrandt van Rijn"] == 9
-    assert "Rembrandt" not in facets
 
 
 def test_van_gogh_is_suggested_as_himself(tmp_path) -> None:

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import math
 import random
-import re
 import secrets
 import sqlite3
 import threading
@@ -173,18 +172,6 @@ class Asked:
 
     texts: dict[str, str]
     said: list[list[str]]
-
-
-def small_thumb(item: Item) -> str:
-    """A small version of ``item``'s thumbnail, enough to judge its colour:
-    Commons' 120 px step, Europeana's 200 px preview. (Works are looked at on
-    their kept thumbnails since 2026-11-07, :meth:`Importer._thumbnail`.)"""
-    url = item.thumb_url
-    if item.source == "wmc" and "/thumb/" in url:
-        return re.sub(r"/\d+px-([^/]+)$", r"/120px-\1", url)
-    if item.source == "europeana":
-        return url.replace("size=w400", "size=w200")
-    return url
 
 
 def span(rules: PlaylistRules) -> tuple[int | None, int | None]:
@@ -995,14 +982,6 @@ class Importer:
         except Exception:
             log.exception("translating %r failed", text)
             return Wording(text)
-
-    def typed(
-        self, text: str, keys: Iterable[str] | None = None, wait: float = TRANSLATE_SECONDS
-    ) -> dict[str, str]:
-        """What each museum of ``keys`` (all on offer) is asked for words
-        someone typed: in its own language ("gitara" in Warsaw, "guitar" at
-        the Met)."""
-        return self.asked(text, keys, wait).texts
 
     def asked(
         self, query: str, keys: Iterable[str] | None = None, wait: float = TRANSLATE_SECONDS

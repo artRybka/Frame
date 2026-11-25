@@ -22,8 +22,10 @@ uv run mypy src
 - `device/` MDC client (one session at a time, ~0.3 s between commands),
   manifest builder, WoL. Tests use a fake TLS panel (`tests/fake_panel.py`).
 - `imaging/` pipeline: linear light + OKLab, tone map, hull-based gamut
-  mapping, numba error diffusion. Dither against *perceived* ink colours,
-  write *device* (nominal) colours. Spectra 6 yellow is lighter than white:
+  mapping, numba error diffusion. The panel dithers the picture itself
+  (passthrough, JPEG); only the mat and its bevels are dithered here, to
+  pure inks. Dither against *perceived* ink colours, write *device*
+  (nominal) colours. Spectra 6 yellow is lighter than white:
   use `Palette.white_index()` / `neutral_range()`, never "lightest ink".
   When what the scan's merging (`imaging/reflections.py`, `imaging/glare.py`)
   makes of the same photographs changes, raise `MERGING` in `own_works.py`:
@@ -179,7 +181,10 @@ an empty list was a narrow beige strip on white (`Design/Page.swift`).
 
 Workflows run on branch pushes only (no `pull_request` trigger; a PR shows
 the push checks). On `main` only `testflight` and `publish` (plus `server`)
-run. `publish` on a non-main branch tags only `sha-<commit>`, never `latest`.
+run. `server` runs its tests in parallel (`pytest -n auto`, so a test must not
+lean on another's files or timing) and skips a merge into `main` whose
+`server/` is the merged branch's, already passed there.
+`publish` on a non-main branch tags only `sha-<commit>`, never `latest`.
 
 ## Deployment
 

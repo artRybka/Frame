@@ -8,8 +8,7 @@ Background work has no viewer and sees the stored flag."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass
 
@@ -32,15 +31,6 @@ VIEWER: ContextVar[Viewer | None] = ContextVar("viewer", default=None)
 #: Serialisation context for writing items to the database: the stored flag,
 #: whoever's request it is.
 STORE = {"store": True}
-
-
-@contextmanager
-def viewing(viewer: Viewer | None) -> Iterator[None]:
-    token = VIEWER.set(viewer)
-    try:
-        yield
-    finally:
-        VIEWER.reset(token)
 
 
 def viewer_id() -> str:

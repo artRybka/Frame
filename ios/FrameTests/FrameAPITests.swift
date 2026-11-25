@@ -836,7 +836,7 @@ final class FrameAPITests: XCTestCase {
          "keywords_artworks": true, "keywords_photos": false, "monthly_limit_usd": 5.0,
          "spent_usd": 0.42, "spent_by_kind": {"keywords": 0.42},
          "keywords_progress": {"done": 120, "waiting": 34, "refused": 1, "batch_items": 0,
-                               "batch_done": 0, "preparing": false},
+                               "batch_done": 0},
          "pl_text_progress": null, "error": null}
         """#
         let settings = try LiveBackend.decoder().decode(AiSettings.self, from: Data(json.utf8))
@@ -1421,8 +1421,6 @@ final class FrameAPITests: XCTestCase {
 
         let playlists = try await demo.playlists()
         XCTAssertFalse(playlists.isEmpty)
-        let woodblock = try await demo.previewRules(PlaylistRules(query: "woodblock"))
-        XCTAssertGreaterThan(woodblock.count, 0)
 
         let before = try await demo.player()
         try await demo.next()

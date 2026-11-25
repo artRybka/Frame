@@ -1632,11 +1632,6 @@ ARTIST_PREFIX = "week-artist-"
 MIX_PREFIX = "week-mix-"
 
 
-def artist_of_the_week(library: Library, day: date) -> Theme | None:
-    """The artist of ``day``'s week; None when the catalogue has none."""
-    return next((t for t in weekly_themes(library, day) if t.key.startswith(ARTIST_PREFIX)), None)
-
-
 def new_artist_of_the_week(library: Library, day: date) -> Theme | None:
     """Another artist of the week for ``day``'s week, drawn now (the owner's
     "Wylosuj innego" in Konfiguracja); the week's other themes stay. None
@@ -1671,6 +1666,11 @@ def new_artist_of_the_week(library: Library, day: date) -> Theme | None:
             old.name if old else "none",
         )
         return found
+
+
+def artist_of_the_week(library: Library, day: date) -> Theme | None:
+    """The artist of ``day``'s week; None when the catalogue has none."""
+    return next((t for t in weekly_themes(library, day) if t.key.startswith(ARTIST_PREFIX)), None)
 
 
 # -- the curator's cards -----------------------------------------------------------
@@ -1898,36 +1898,6 @@ def colour_themes(library: Library, day: date) -> list[Theme]:
         library.set_state(COLOURS_KEY, {"week": week, "keys": keys, "history": history})
         log.info("colours of %s: %s", week, ", ".join(t.name for t in found) or "none")
         return found
-
-
-#: Set once playlists of colour cards keep to paintings only.
-PAINTINGS_KEY = "colour_playlists_paintings"
-
-
-def painterly_colour_playlists(library: Library) -> None:
-    """Once: playlists made from a colour card (the starters "W odcieniach
-    błękitu" and "Ciepłe barwy" too) keep to paintings, as the cards do
-    (Mateusz 2026-11-17). Those without a technique get Malarstwo; those
-    the cards gave paintings and drawings (1.97.0) lose the drawings. A
-    playlist with other techniques was made so by hand and stays."""
-    if library.get_state(PAINTINGS_KEY, False):
-        return
-    by_name = {fold(t.name): t for t in COLOUR_POOL}
-    for playlist in library.playlists():
-        found = BY_KEY.get(playlist.theme or "") or by_name.get(fold(playlist.name))
-        rules = playlist.rules
-        if found is None or found.group != COLOUR or not rules.colors:
-            continue
-        techniques = {t for t in rules.terms if t.startswith("technique:")}
-        if not techniques:
-            terms = [*rules.terms, *PAINTERLY]
-        elif techniques == {*PAINTERLY, DRAWN}:
-            terms = [t for t in rules.terms if t != DRAWN]
-        else:
-            continue
-        rules = rules.model_copy(update={"terms": terms})
-        library.save_playlist(playlist.model_copy(update={"rules": rules}))
-    library.set_state(PAINTINGS_KEY, True)
 
 
 # -- "Bo lubisz" -----------------------------------------------------------------

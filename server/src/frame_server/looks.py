@@ -23,7 +23,6 @@ import hashlib
 import io
 import logging
 import os
-import shutil
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
@@ -51,8 +50,6 @@ log = logging.getLogger(__name__)
 
 #: SigLIP's numbers of a picture (``seen.SIZE``).
 SIZE = 768
-#: Google's numbers of before, under ``data/looks`` (deleted at start).
-GOOGLES = ("three", "vectors.i8", "ids.txt", "telling.json")
 BATCHES = "batches.json"
 #: Words remembered with their numbers: the same words cost nothing again.
 REMEMBERED = 500
@@ -286,23 +283,6 @@ class LookIndex:
 
         return self.ranked(cosine, count)
 
-    def means(self) -> np.ndarray:
-        """The mean direction of each part over the works (``parts`` rows),
-        worked out again once their number has changed by a fiftieth."""
-        with self._lock:
-            rows, norms, count = self._rows, self._norms, len(self._ids)
-        kept = self._means
-        if kept is not None and abs(kept[0] - count) <= max(8, count // 50):
-            return kept[1]
-        total = np.zeros((self.parts, self.part), dtype=np.float64)
-        for start in range(0, len(rows), CHUNK):
-            part = rows[start : start + CHUNK].astype(np.float32)
-            split = part.reshape(len(part), self.parts, self.part)
-            total += (split / np.maximum(norms[start : start + len(part), :, None], 1e-9)).sum(0)
-        mean = (total / max(count, 1)).astype(np.float32)
-        self._means = (count, mean)
-        return mean
-
     def ranked(
         self, score: Callable[[np.ndarray, np.ndarray], np.ndarray], count: int
     ) -> list[tuple[str, float]]:
@@ -372,30 +352,6 @@ class Looks:
         self.english: Callable[[str], str] = lambda text: text
         #: The catalogue's palettes, for "Barwy" (:mod:`.library.palettes`).
         self.palettes = palettes_.Palettes(library.all_items, library.stamp)
-
-    def forget_google(self) -> int:
-        """Google's numbers of before taken off the disk (Mateusz
-        2026-11-23: „Zgadzam się z Twoimi rekomendacjami”, their files
-        deleted): the whole thumbnail's, the three, the sentences, the
-        batches, and those of the photographs searched. How many files."""
-        gone = 0
-        for name in (*GOOGLES, BATCHES):
-            path = self.root / name
-            if path.is_dir():
-                gone += sum(1 for p in path.rglob("*") if p.is_file())
-                shutil.rmtree(path, ignore_errors=True)
-            elif path.exists():
-                path.unlink(missing_ok=True)
-                gone += 1
-        photos = self.root / "photos"
-        if photos.is_dir():
-            for path in photos.glob("*.f32"):
-                if not path.name.endswith((".seen.f32", ".palette.f32")):
-                    path.unlink(missing_ok=True)
-                    gone += 1
-        if gone:
-            log.info("looks: Google's numbers of before deleted (%d files)", gone)
-        return gone
 
     # -- what may be asked -----------------------------------------------------------
 

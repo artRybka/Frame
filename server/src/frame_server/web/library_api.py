@@ -62,18 +62,16 @@ from ..imaging.pipeline import (
     plan_for,
     render_original,
 )
-from ..library import Facets, Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
+from ..library import Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, PlaylistRules
 from ..library.duplicates import work_key
 from ..library.hosts import OverBudget, Resting, urgent_call
 from ..library.images import Gone, kept_side
-from ..library.importer import ALL
 from ..library.low_res import low_side
 from ..library.models import POLISH_TITLE, Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
 from ..library.repo import Abandoned, Hidden, SortKey, asked_by
 from ..library.search import fill as fill_by_search
 from ..library.search import keep_shown
-from ..library.seed import PACKS, import_queries, pack
 from ..library.verdict import Place, against
 from ..library.viewer import viewer_id
 from ..library.zoom import zooms
@@ -243,11 +241,6 @@ class RemotePage(BaseModel):
 
 class ImportRequest(BaseModel):
     source_id: str
-
-
-class ImportSearchRequest(BaseModel):
-    query: str
-    limit: int = Field(24, ge=1, le=500)
 
 
 #: Threads for pictures, apart from the server's own pool that the app's
@@ -463,11 +456,6 @@ def hidden_items(svc: Svc) -> ItemPage:
     last hidden first."""
     items = svc.library.hidden_items(viewer_id())
     return ItemPage(total=len(items), items=[ItemSummary.of(i) for i in items])
-
-
-@router.get("/library/facets", response_model=Facets)
-def facets(svc: Svc) -> Facets:
-    return svc.library.facets()
 
 
 @router.get("/library/items/{item_id:item}", response_model=Item)
@@ -1996,35 +1984,6 @@ def museums(svc: Svc) -> list[dict[str, str]]:
     return [{"key": k, "name": MUSEUMS[k].name} for k in svc.importer.sources()]
 
 
-@router.get("/museums/{source}/search", response_model=RemotePage)
-async def museum_search(
-    source: str, svc: Svc, q: str, page: int = 1, limit: int | None = None
-) -> RemotePage:
-    """One museum, or ``all`` of them (``limit`` results from each)."""
-    failed: list[str] = []
-    pictured: dict[str, str] = {}
-    if source == ALL:
-        texts = await run_in_threadpool(svc.importer.typed, q)
-        total, items, failed = await run_in_threadpool(
-            urgent_call(svc.importer.search_all), texts, limit or 8, page
-        )
-    elif source in svc.importer.sources():
-        texts = await run_in_threadpool(svc.importer.typed, q, [source])
-        try:
-            total, items = await run_in_threadpool(
-                urgent_call(svc.importer.search), source, texts[source], limit or 24, page
-            )
-        except httpx.HTTPError as err:
-            raise HTTPException(502, museum_trouble(source, err)) from err
-    else:
-        raise HTTPException(404, f"unknown museum {source!r}")
-    return RemotePage(
-        total=total,
-        items=remote_items(svc, items, copies=source == ALL, pictured=pictured),
-        failed=failed,
-    )
-
-
 @router.post("/museums/{source}/import", response_model=Item)
 async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
     if source not in svc.importer.sources():
@@ -2036,57 +1995,6 @@ async def museum_import(source: str, request: ImportRequest, svc: Svc) -> Item:
     if item is None:
         raise HTTPException(404, "not found or not in the public domain")
     return item
-
-
-@router.post("/museums/{source}/import-search")
-def museum_import_search(source: str, request: ImportSearchRequest, svc: Svc) -> dict[str, Any]:
-    if source != ALL and source not in svc.importer.sources():
-        raise HTTPException(404, f"unknown museum {source!r}")
-
-    def work(job: Job) -> None:
-        svc.importer.import_search(source, request.query, request.limit, job)
-
-    job = svc.importer.start_job(f"{source}: {request.query}", work)
-    return {"job_id": job.id}
-
-
-@router.get("/library/packs")
-def packs(svc: Svc) -> list[dict[str, Any]]:
-    """Themed batches of museum works to add in one go."""
-    running = {j.description for j in svc.importer.jobs.values() if not j.finished}
-    return [
-        {
-            "key": p.key,
-            "name": p.name,
-            "description": p.description,
-            "size": p.size,
-            "importing": f"pack: {p.key}" in running,
-        }
-        for p in PACKS
-    ]
-
-
-@router.post("/library/packs/{key}/import")
-def pack_import(key: str, svc: Svc) -> dict[str, Any]:
-    try:
-        found = pack(key)
-    except KeyError as err:
-        raise HTTPException(404, str(err)) from err
-    running = next(
-        (
-            j
-            for j in svc.importer.jobs.values()
-            if j.description == f"pack: {key}" and not j.finished
-        ),
-        None,
-    )
-    if running is not None:
-        return {"job_id": running.id}
-
-    def work(job: Job) -> None:
-        import_queries(svc.importer, found.queries, job)
-
-    return {"job_id": svc.importer.start_job(f"pack: {key}", work).id}
 
 
 class FillRequest(BaseModel):
@@ -2123,11 +2031,6 @@ def fill(request: FillRequest, svc: Svc) -> dict[str, Any]:
         job.item_ids[:0] = [i for i in shown.item_ids if i not in job.item_ids]
 
     return {"job_id": svc.importer.start_job(f"fill: {request.count}", work).id}
-
-
-@router.get("/jobs")
-def jobs(svc: Svc) -> list[dict[str, Any]]:
-    return [vars(j) for j in svc.importer.jobs.values()]
 
 
 @router.get("/jobs/{job_id}")

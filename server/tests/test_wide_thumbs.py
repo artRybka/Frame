@@ -12,7 +12,6 @@ from PIL import Image
 
 from frame_server.library.images import (
     THUMB_LONG,
-    THUMB_MAX,
     ImageCache,
     thin_thumb,
     thumb_copy,
@@ -112,25 +111,3 @@ def test_a_thin_thumbnail_stays_when_nothing_larger_comes(tmp_path: Path) -> Non
     with Image.open(cache.ensure_thumb(item)) as kept:
         assert kept.size == (900, 37)
     assert asked == [thumb, image]
-
-
-def test_thin_thumbnails_kept_from_before_are_made_again_once(tmp_path: Path) -> None:
-    cache = _cache(tmp_path, {}, [])
-    item = Item(id="cma:1", source="cma", source_id="1", image_url="", thumb_url="")
-    other = Item(id="cma:2", source="cma", source_id="2", image_url="", thumb_url="")
-    own = Item(id="icloud:3", source="icloud", source_id="3", image_url="", thumb_url="")
-    square = Item(id="cma:4", source="cma", source_id="4", image_url="", thumb_url="")
-    # A scroll with its original here, one without, the owner's panorama
-    # without, and an ordinary work.
-    Image.new("RGB", (THUMB_MAX, 26)).save(cache.thumb_path(item))
-    Image.new("RGB", (13968, 469)).save(cache.image_path(item))
-    Image.new("RGB", (THUMB_MAX, 26)).save(cache.thumb_path(other))
-    Image.new("RGB", (THUMB_MAX, 100)).save(cache.thumb_path(own))
-    Image.new("RGB", (THUMB_MAX, THUMB_MAX)).save(cache.thumb_path(square))
-    assert cache.thin_thumbs_again() == 2
-    with Image.open(cache.thumb_path(item)) as thumb:
-        assert thumb.size == thumb_size(13968, 469)
-        assert min(thumb.size) > 250
-    assert not cache.thumb_path(other).exists()  # had again when asked for
-    assert cache.thumb_path(own).exists()
-    assert cache.thumb_path(square).exists()

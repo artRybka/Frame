@@ -32,10 +32,6 @@ COLOR_SECONDS = 15.0
 #: self-portrait for Van Gogh); this many of their pages are looked at for
 #: ``limit`` works by the artists, within ``COLOR_SECONDS``.
 ARTIST_PAGES = 3
-#: With a phrase typed, museums whose search doesn't keep to phrases bring
-#: works with its words anywhere; this many of their pages are looked at for
-#: ``limit`` works that have the phrase, within ``COLOR_SECONDS``.
-PHRASE_PAGES = 3
 #: Works of each museum page that a smart playlist's fetching asks for: the
 #: same works, in the same order, as Szukaj's smaller pages.
 FILL_PAGE = 24

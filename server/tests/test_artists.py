@@ -237,7 +237,6 @@ def test_taste_and_search_leave_nobody_out(service) -> None:
             library.upsert(item)
         library.upsert(_work(9, "Claude Monet").model_copy(update={"favorite": True}))
     assert service.player.taste() == ["Claude Monet"]
-    assert [f.value for f in library.facets().artists] == ["Claude Monet"]
 
 
 def test_girona_photo_archive_is_set_aside() -> None:

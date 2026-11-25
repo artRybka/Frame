@@ -63,7 +63,7 @@ from .library.fragments import Fragments
 from .library.hosts import guard as host_guard
 from .library.loc import loc_mirrors
 from .library.models import POLISH_TITLE
-from .library.museums import PRIVATE_LICENCE, TEST_LICENCE, Access, WikiArt, europeana_mirrors
+from .library.museums import Access, europeana_mirrors
 from .library.museums import client as museum_client
 from .library.records import records
 from .library.twins import Twins
@@ -106,11 +106,6 @@ PREVIEW_MAX = 1280
 # The Frame app's alarm rings this close to a push: it will ask by itself.
 WAKE_SOON = timedelta(minutes=3)
 PROGRESS_KEY = "progress_expected"
-#: Set once the Courtauld's white pictures kept before 1.100.7 are removed.
-COURTAULD_WHITE_KEY = "courtauld_white_removed"
-#: Set once the works of the test switches (WikiArt, "Bez limitu 70 lat")
-#: carry the licences of "Użytek prywatny" (1.111.0).
-TEST_LICENCES_KEY = "test_licences_relabelled"
 NO_CERTIFICATES = (
     "Ramka nie ma aplikacji Frame: wgraj certyfikaty Samsunga w Konfiguracji → Aplikacja ramki."
 )
@@ -123,24 +118,6 @@ class PushOutcome:
     fetched: bool
     content_url: str
     message: str = ""
-
-
-def relabel_test_licences(library: Library) -> int:
-    """Works let in by the test switches "WikiArt" and "Bez limitu 70 lat",
-    folded into "Użytek prywatny" in 1.111.0, carry its licences; returns
-    how many changed."""
-    _, items = library.query(include_excluded=True)
-    moved = 0
-    for item in items:
-        if item.source == "wikiart" and item.license == WikiArt.test_licence:
-            licence = WikiArt.licence
-        elif item.source == "europeana" and item.license.startswith(TEST_LICENCE):
-            licence = PRIVATE_LICENCE + item.license.removeprefix(TEST_LICENCE)
-        else:
-            continue
-        library.upsert(item.model_copy(update={"license": licence}))
-        moved += 1
-    return moved
 
 
 class Panel:
@@ -257,14 +234,6 @@ class FrameService:
         self.images.mirrors["loc"] = loc_mirrors
         # The Courtauld's CMYK scans come white as JPEG: asked again as PNG.
         self.images.repairs[courtauld.HOST] = courtauld.repair
-        if not self.library.get_state(COURTAULD_WHITE_KEY):
-            if white := courtauld.forget_white([self.images.thumbs, self.images.images]):
-                log.info("removed %d white Courtauld pictures", white)
-            self.library.set_state(COURTAULD_WHITE_KEY, True)
-        if not self.library.get_state(TEST_LICENCES_KEY):
-            if moved := relabel_test_licences(self.library):
-                log.info("%d works of the test switches now under private use", moved)
-            self.library.set_state(TEST_LICENCES_KEY, True)
         # The museums' pictures as Commons keeps them, when a museum's image
         # server turns us away (the AIC's IIIF behind a Cloudflare challenge)
         # or does not answer (the MNK's, 2026-11-07).
@@ -641,7 +610,8 @@ class FrameService:
         return self.settings.data_dir / "palette.json"
 
     def _initial_palette(self) -> Palette:
-        # A palette measured in the app wins over the configured default.
+        # A palette measured in the app (the calibration of 2026-10, since
+        # taken out) wins over the configured default.
         path = self.calibrated_palette_path
         if path.is_file():
             try:
@@ -649,18 +619,6 @@ class FrameService:
             except (OSError, ValueError, KeyError) as err:
                 log.warning("ignoring unreadable %s: %s", path, err)
         return get_palette(self.settings.palette)
-
-    def set_palette(self, palette: Palette | None) -> Palette:
-        """Use and keep a calibrated palette; None goes back to the default."""
-        if palette is None:
-            self.calibrated_palette_path.unlink(missing_ok=True)
-            palette = get_palette(self.settings.palette)
-        else:
-            self.settings.data_dir.mkdir(parents=True, exist_ok=True)
-            palette.save(self.calibrated_palette_path)
-        self.palette = palette
-        self.importer.palette = palette
-        return palette
 
     @property
     def device_configured(self) -> bool:
@@ -847,7 +805,7 @@ class FrameService:
         """Publish a placeholder so the panel's URL never 404s on a fresh install."""
         if self.store.current() is not None:
             return
-        from .imaging.testchart import welcome_card
+        from .imaging.welcome import welcome_card
 
         img = welcome_card()
         self.store.publish(

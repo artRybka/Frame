@@ -14,7 +14,7 @@ from conftest import jpeg_bytes
 from fastapi.testclient import TestClient
 
 from frame_server.daily import HISTORY_KEY
-from frame_server.library import Item, ItemKind, Playlist, PlaylistKind, PlaylistRules
+from frame_server.library import Item, ItemKind, Playlist, PlaylistRules
 from frame_server.library.importer import Job
 from frame_server.library.museums import MUSEUMS, Discovery, Museum
 from frame_server.player import GROW_SIZE, GROWN_KEY, POOL_SIZE
@@ -89,7 +89,8 @@ def museums(service, monkeypatch):
 
 
 def _wait(job) -> None:
-    deadline = time.monotonic() + 30
+    # Some 300 works analysed for real: ~30 s alone, longer beside other tests.
+    deadline = time.monotonic() + 120
     while not job.finished and time.monotonic() < deadline:
         time.sleep(0.05)
     assert job.finished and not job.error, job.error
@@ -294,27 +295,6 @@ def test_catalogue_keeps_the_works_looked_at_longest(museums, monkeypatch) -> No
     assert service.library.get(oldest.id) is not None  # looked at: goes last
     assert service.images.has_image(oldest)
     assert service.library.get(next_one.id) is None
-
-
-def test_clean_start_deletes_the_old_museum_works(service) -> None:
-    own = service.importer.add_upload(jpeg_bytes((200, 40, 40)), kind=ItemKind.OWN)
-    old = service.library.upsert(Item(id="aic:1", source="aic", source_id="1", favorite=True))
-    service.images.store(old, jpeg_bytes((40, 40, 200)))
-    picked = service.library.upsert(Item(id="aic:9", source="aic", source_id="9", pooled=True))
-    mine = service.library.save_playlist(
-        Playlist(name="Mix", kind=PlaylistKind.MANUAL, item_ids=[old.id, own.id])
-    )
-    state = service.player.state
-    state.current_item_id, state.queue = old.id, [old.id, own.id]
-    service.player._save_state(state)
-
-    assert service.player.reset_library() == 1
-    assert {i.id for i in service.library.query()[1]} == {own.id, picked.id}
-    assert not service.images.has_image(old)
-    assert service.library.playlist(mine.id).item_ids == [own.id]
-    state = service.player.state
-    assert state.current_item_id is None and state.queue == [own.id]
-    assert service.player.reset_library() == 0  # once
 
 
 def test_discover_endpoints(

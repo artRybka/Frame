@@ -149,19 +149,6 @@ def test_the_same_photograph_leaves_the_thumbnail_be(tmp_path: Path) -> None:
     assert told == [] and cache.thumb_path(item).read_bytes() == before
 
 
-def test_thumbnails_kept_before_follow_their_originals_once(tmp_path: Path) -> None:
-    canvas, item, other = _canvas(), _paris(1), _paris(2)
-    cache, _ = _cache(tmp_path, museum_up=False, canvas=canvas)
-    for work in (item, other):
-        cache.ensure_thumb(work)
-    # Kept before thumbnails followed: the canvas beside the framed thumbnail.
-    cache.image_path(item).write_bytes(_jpeg(canvas))
-    told: list[str] = []
-    cache.repictured = lambda work, stamp: told.append(work.id)
-    assert cache.thumbs_follow([item, other]) == 1  # the other has no original here
-    assert told == [item.id] and same_photograph(_thumb(cache, item), canvas)
-
-
 def test_the_app_is_told_of_the_new_photograph(service) -> None:
     """The work's stamp changes: lists and the card's look for a sharper
     copy carry it, so the app asks for the thumbnail again; its colours and

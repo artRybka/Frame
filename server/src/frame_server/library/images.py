@@ -31,7 +31,7 @@ from ..imaging.margins import trim_margins
 from ..imaging.mount import inside_mount
 from ..imaging.recovery import deyellow, unvarnished
 from .aic import aic_fallback
-from .fragments import PART, split_part
+from .fragments import split_part
 from .hosts import HostGuard, Resting, guard, is_urgent, urgently, walled
 from .markup import commons_rendition, extension
 from .models import Item
@@ -67,10 +67,6 @@ WIDE = 2.0
 IMAGE_AREA = IMAGE_MAX * IMAGE_MAX
 #: ... nor a long side past this (the app's viewer, a JPEG's own limit is 65535).
 LONG_MOST = 16384
-#: The long side pictures were kept at most before :data:`WIDE` (Cleveland's
-#: "print" files, the largest JPEGs it gives, are 3400 px long): kept ones
-#: that long or shorter are had again once (:meth:`ImageCache.wide_again`).
-OLD_KEPT = 3400
 #: Thumbnails of works that are not in the library (browsed, previewed).
 THUMB_SPARE = 5000
 #: Downloads at once from one host (library/policy.py): Commons answers more
@@ -681,11 +677,6 @@ class ImageCache:
         only to send a thumbnail already kept)."""
         path = self.thumbs / f"{Item.stem_of(item_id)}.jpg"
         return path if path.is_file() else None
-
-    def thumb_bytes(self, item_id: str, *, tile: bool = False) -> bytes | None:
-        """:meth:`sent_thumb`'s bytes alone."""
-        kept = self.sent_thumb(item_id, tile=tile)
-        return kept.data if kept is not None else None
 
     def sent_thumb(
         self, item_id: str, *, tile: bool = False, have: Collection[str] = ()
@@ -1521,17 +1512,6 @@ class ImageCache:
             self.repictured(item, stamp)
         return stamp
 
-    def thumbs_follow(self, items: Iterable[Item]) -> int:
-        """Once after the update that keeps thumbnails following their
-        originals (:meth:`thumb_follows`): every work with an original here;
-        how many thumbnails were made again."""
-        here = self.originals_here()
-        made = 0
-        for item in items:
-            if item.file_stem in here and self.thumb_follows(item) is not None:
-                made += 1
-        return made
-
     def keep_owned(self, item: Item, data: bytes) -> tuple[str, Image.Image]:
         """Keep the copy the owner brought for ``item`` (a picture's bytes)
         for good; its address (:data:`OWNED`) and the picture. Raises
@@ -1560,37 +1540,6 @@ class ImageCache:
             (self.tiles / self.thumb_path(item).name).unlink(missing_ok=True)
         self._forget_gone(item)
         return path
-
-    def wide_again(self, items: Iterable[Item]) -> int:
-        """Once after the update that keeps elongated pictures larger
-        (:data:`WIDE`): the kept originals of such works, cut to
-        :data:`OLD_KEPT` or less before, downloaded again; the one here
-        stays when the source gives no more or fails. How many grew."""
-        grown = 0
-        for item in items:
-            path = self._photo_path(item)
-            if item.source in OWN_SOURCES or not path.is_file():
-                continue
-            try:
-                with Image.open(path) as kept:
-                    size = kept.size
-            except OSError:
-                continue
-            if not wide(*size) or max(size) > OLD_KEPT:
-                continue
-            try:
-                with self._lock(f"i:{item.id}"):
-                    img = self._original(item, False)
-                    width, height = kept_size(*img.size)
-                    if width * height <= size[0] * size[1]:
-                        continue  # the source gives no more
-                    self._keep_original(item, img, IMAGE_MAX)
-                    self._remember_size(item, img)
-            except (httpx.HTTPError, OSError) as err:
-                log.info("elongated %s kept as it was: %s", item.id, err)
-                continue
-            grown += 1
-        return grown
 
     def originals_here(self) -> set[str]:
         """The file stems (``Item.file_stem``) of the originals kept here,
@@ -1639,98 +1588,6 @@ class ImageCache:
             os.utime(path, (used, used))  # as lately used as it was
             self._remember_size(item, img)
             return max(path.stat().st_size - before, 1)
-
-    def thin_thumbs_again(self) -> int:
-        """Once after the update that keeps elongated thumbnails thicker
-        (:func:`thumb_size`): such thumbnails thinner than they are made now
-        made again from the original kept here, else let go to be had again
-        from the work's addresses when next asked for (the owner's own are
-        made from the original only). How many."""
-        own = tuple(f"{source}_" for source in OWN_SOURCES)
-        changed = 0
-        for path in sorted(self.thumbs.glob("*.jpg")):
-            try:
-                with Image.open(path) as kept:
-                    size = kept.size
-            except OSError:
-                continue
-            if not thin_thumb(*size):
-                continue
-            local = self.images / path.name
-            larger = False
-            if local.is_file():
-                # No lock: the file is replaced whole (_save_jpeg).
-                try:
-                    original = load_image(local)
-                    if larger := min(original.size) > min(size):
-                        _save_jpeg(original, path, THUMB_MAX, 85)
-                except OSError as err:
-                    log.info("thumbnail %s not made again: %s", path.name, err)
-            if not larger:
-                if path.name.startswith(own):
-                    continue
-                path.unlink(missing_ok=True)
-            changed += 1
-        return changed
-
-    def cut_off_again(self, items: Iterable[Item]) -> list[str]:
-        """Once after the update that tells a cut-off picture (:func:`cut_off`):
-        the works whose kept thumbnail or original is one let go of both and
-        left out of lists as works with no picture (:meth:`gone`); their ids.
-        The owner's own are left alone."""
-        found: list[str] = []
-        for item in items:
-            if item.source in OWN_SOURCES:
-                continue
-            paths = [p for p in (self.thumb_path(item), self.image_path(item)) if p.is_file()]
-            if not any(_kept_cut_off(path) for path in paths):
-                continue
-            self.drop_picture(item)
-            self._mark_gone(item)
-            found.append(item.id)
-        return found
-
-    def trim_kept(self) -> int:
-        """Cut the blank margins off the pictures kept from before
-        (:func:`trim_margins`), originals and thumbnails, in place; how many
-        changed. The owner's own are left alone (:data:`OWN_SOURCES`)."""
-        own = tuple(f"{source}_" for source in OWN_SOURCES)
-        changed = 0
-        # No locks: a file is replaced whole (_save_jpeg), and a picture
-        # downloaded meanwhile comes trimmed already, with nothing to cut.
-        for folder, side, quality in (
-            (self.images, IMAGE_MAX, 92),
-            (self.thumbs, THUMB_MAX, 85),
-        ):
-            for path in sorted(folder.glob("*.jpg")):
-                if path.name.startswith(own) or PART in path.stem:
-                    continue
-                try:
-                    with Image.open(path) as kept:
-                        kept.load()
-                        img = trim_margins(kept)
-                        if img is kept:
-                            continue
-                        _save_jpeg(img, path, side, quality)
-                except OSError as err:
-                    log.warning("margins of %s left: %s", path.name, err)
-                    continue
-                changed += 1
-        return changed
-
-    def drop_fragments(self, thumbs: bool = True) -> int:
-        """Forget the kept pictures of works' fragments (had again when
-        asked for): those kept before 2026-11-09 lost their margins, and a
-        trimmed tile does not lie in its place on the whole; those before
-        2026-11-10 were kept at 2560 px (``TILE_MAX``)."""
-        dropped = 0
-        for folder in (self.images, self.thumbs) if thumbs else (self.images,):
-            for path in folder.glob(f"*{PART}*.jpg"):
-                if split_part(path.stem) is None:
-                    continue
-                path.unlink(missing_ok=True)
-                dropped += 1
-        return dropped
 
     def drop_picture(self, item: Item) -> None:
         """Forget the work's original and thumbnail (another picture takes

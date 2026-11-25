@@ -94,12 +94,6 @@ def framing_moved(
     }
 
 
-def framing_within(framing: dict[str, Framing], quad: Quad) -> dict[str, Framing]:
-    """The owner's framings, set on the whole photograph, as the same parts
-    of the picture cut to ``quad`` (:func:`framing_moved`)."""
-    return framing_moved(framing, None, quad)
-
-
 #: :func:`strips_fit`: a strip may end this far inside the sheet Opus saw
 #: (his corners are a hundredth or so off), and must end this far outside
 
