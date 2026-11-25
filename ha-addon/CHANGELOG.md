@@ -9,6 +9,20 @@
   w nocy, w dzień przeliczany z liczników biblioteki.
 - Ustawienia ramki bez nagłówka; „Sprawdź kadry” i „Ucz kadrowania” na
   górze Konfiguracji pod „Do sprawdzenia”, bez „Kadruj partię” w Diagnostyce.
+- Galeria: miniatura i pełne dzieło są zawsze z tego samego kadru. Dzieło
+  wykadrowane w tle dostaje nową miniaturę, zanim wejdzie na ekran, a to,
+  na co patrzysz, nie zmienia się w trakcie (był przeskok proporcji przy
+  wyostrzaniu).
+- Przeciągnięcie w dół z górnej części ekranu: po kawałku drogi przejście
+  do siatki kończy się samo, bez puszczania palca.
+- Przytrzymanie: telefon stuka coraz szybciej, a mocno, gdy pojawia się
+  całe dzieło. Pod dziełem belka, która co chwilę lekko podjeżdża: znak,
+  że pociągnięcie w górę otwiera kartę dzieła.
+- Powrót z karty dzieła: karta rozpływa się w dzieło na pełnym ekranie,
+  bez skoku.
+- Więcej gotowych miniatur zaraz po wejściu w Galerię.
+- Siatka na początku przeglądania nie ma pustych pól: Galeria zaczyna
+  z dwoma dziełami nad pierwszym, a pierwszy rząd siatki jest zawsze pełny.
 
 ## 1.145.368
 

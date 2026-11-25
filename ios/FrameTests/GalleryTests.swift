@@ -87,6 +87,25 @@ final class GalleryTests: XCTestCase {
         }
     }
 
+    /// The grid has no empty squares before its first work (Mateusz
+    /// 2026-11-25: "widać puste kwadraty"): the works shown above the one
+    /// it is entered from fill their rows, that one in the middle column.
+    func testTheGridsFirstRowIsFull() {
+        XCTAssertEqual(GalleryView.history(before: 0), 0)
+        for index in 1 ... 200 {
+            let above = GalleryView.history(before: index)
+            let most = min(index, GalleryView.seen)
+            XCTAssertEqual(above % GridMetrics.columns, 1, "the work at \(index) is not in the middle column")
+            XCTAssertLessThanOrEqual(above, most)
+            XCTAssertLessThanOrEqual(most - above, 2, "more than two works left out above \(index)")
+        }
+        // With two works above the one Galeria starts with, none looked
+        // at since is left out: only those two, as the rows need.
+        XCTAssertEqual(GalleryView.history(before: 2), 1)
+        XCTAssertEqual(GalleryView.history(before: 3), 1)
+        XCTAssertEqual(GalleryView.history(before: 4), 4)
+    }
+
     func testSwipeZoneIsLearntFromTheSwipesUp() {
         // Nothing learnt yet: near the middle of the screen.
         XCTAssertEqual(SwipeZone.line([]), SwipeZone.first)

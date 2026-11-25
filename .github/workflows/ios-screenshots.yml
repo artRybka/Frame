@@ -360,7 +360,7 @@ jobs:
           xcodebuild build-for-testing -project Frame.xcodeproj -scheme FramePull \
             -destination "id=$UDID" -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO | tail -5
-          for part in testTheWaysBetweenTheTwoViews testTheSweepByItself; do
+          for part in testTheWaysBetweenTheTwoViews testTheSweepByItself testAThumbnailOfAnotherShape; do
             xcrun simctl io "$UDID" recordVideo --codec=h264 --force "shots/gallery-probe-$part.mov" &
             film=$!
             sleep 2
