@@ -272,3 +272,14 @@ def test_the_phone_never_replaces_an_answer(service: FrameService, fake: FakeAnt
     assert (words.en, words.fr) == ("old woman", "")
     assert words.in_language("fr") == "stara kobieta"
     assert len(fake.asked) == 1
+
+
+def test_the_suggestions_never_ask_the_model(service: FrameService, fake: FakeAnthropic) -> None:
+    """Mateusz 2026-11-25: "najpierw pytamy to co mamy już na NAS (reakcja
+    natychmiastowa)", "po co Claude skoro tłumaczymy na iPhone?": what is
+    known now, the phone's translation, and no question to the model."""
+    assert not service.search_words.now("stara gitara").translated
+    assert fake.asked == []
+    assert service.search_words.taught("stara gitara", "old guitar", "vieille guitare")
+    assert service.search_words.now("stara gitara").en == "old guitar"
+    assert fake.asked == []
