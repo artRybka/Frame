@@ -77,6 +77,10 @@ WORDS_WAIT = 1.5
 #: 2026-11-22 "Wcześniej było niemal natychmiastowe"); those not numbered by
 #: then go on in the background and are judged at the next search.
 JUDGE_WAIT = 2.0
+#: ... of words' look: those not numbered by then are shown meanwhile, after
+#: the judged (Mateusz 2026-11-25), so the wait only puts in order what is
+#: quick to number.
+LOOK_JUDGE_WAIT = 1.0
 #: A photograph searched in Szukaj (``Looks.photo``) is a ``like`` of its
 #: own: this before the key its numbers are kept under (``photos/<key>``).
 PHOTO = "photo:"
@@ -522,10 +526,10 @@ class Looks:
         those that look as ``text`` says, as near as the catalogue's own
         answer asks (:data:`NEAR_BEST` below its best, over :data:`FLOOR`),
         nearest first (Mateusz 2026-11-13, card: "Hasła i ocena wyglądem").
-        Their thumbnails get their numbers now, Google asked at once (some
-        0.03 cent a work), and keep them: the catalogue's background asks
-        nothing again for them, and the next search finds them at home.
-        None when it cannot be asked now."""
+        Their thumbnails get their numbers now (:data:`LOOK_JUDGE_WAIT` at most)
+        and keep them: the catalogue's background asks nothing again for
+        them, and the next search finds them at home. Those not numbered
+        within the wait come after the judged, not judged yet."""
         try:
             vector = np.asarray(self._words_vector(" ".join(text.split())[:300]))
         except AiUnavailable as err:
@@ -534,20 +538,26 @@ class Looks:
         if not items:
             return []
         asked = self.seen.index
-        self._number_within([i for i in items if i.id not in asked])
+        self._number_within([i for i in items if i.id not in asked], LOOK_JUDGE_WAIT)
         best = self._words_near(vector, 1)
         floor = seen_floors().words
         bar = max(floor, (best[0][1] if best else floor) - seen_floors().near_best)
         scored: list[tuple[float, Item]] = []
+        waiting: list[Item] = []
         for item in items:
             row = asked.vector(item.id)
             if row is None:
+                waiting.append(item)
                 continue
             score = self._words_score(row[None, :], vector)[0]
             if score >= bar:
                 scored.append((float(score), item))
         scored.sort(key=lambda s: -s[0])
-        return [item for _, item in scored]
+        # Those whose numbers are still being made are shown all the same,
+        # after the judged (Mateusz 2026-11-25: museum works at once, how
+        # they look putting them in order): the museum found them for the
+        # look's search, and the next search judges them.
+        return [item for _, item in scored] + waiting
 
     def _number_within(self, items: Sequence[Item], wait: float | None = None) -> None:
         """:meth:`_number` for museum works, waited for :data:`JUDGE_WAIT`
