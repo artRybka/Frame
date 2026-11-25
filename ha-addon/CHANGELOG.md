@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.383
+
+- Szukaj: lista „Muzeum” szuka najpierw po nazwie i mieście na naszej
+  liście i pyta Wikidatę tylko wtedy, gdy nic nie pasuje (wieczorem
+  odpowiadała po 3–13 s przy każdej literze).
+- Podpowiedzi i tłumaczenie słów nie czekają, gdy serwer co 10 minut
+  zbiera słowa katalogu na nowo.
+- Podpowiedzi nie czekają już przy każdej literze na tłumaczenie przez
+  Claude i nie pytają go wcale: biorą tłumaczenie z telefonu i to, co
+  serwer już wie.
+
 ## 1.145.382
 
 - Galeria: przytrzymane dzieło nie przesuwa się już w bok, zanim zacznie się

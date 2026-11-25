@@ -179,6 +179,26 @@ class SearchWords:
         except Exception:
             return Wording(text)
 
+    def now(self, text: str) -> Wording:
+        """:meth:`wording` without the model: what is known of ``text`` now
+        (remembered, the phone's, the library's own words). Szukaj's
+        suggestions answer from the NAS at once, and the phone translates
+        what is typed (Mateusz 2026-11-25: "Tłumaczenie - po co Claude
+        skoro tłumaczymy na iPhone?"): the model only where the phone gave
+        nothing, when the search itself asks (:meth:`wording`)."""
+        text = " ".join(text.split())
+        key = _key(text)
+        if not key or len(text) > MAX_CHARS or any(c in text for c in '"=&:'):
+            return Wording(text)
+        with self._lock:
+            known = self._known.get(key)
+        if known is not None and _answered(known):
+            return _remembered(text, known)
+        local = self._from_library(key)
+        if local:
+            return Wording(text, en=local)
+        return Wording(text)
+
     def known(self, text: str) -> tuple[str, ...]:
         """The English and French of ``text`` known already (its Polish,
         when typed in another language): remembered answers and the
@@ -245,7 +265,16 @@ class SearchWords:
     def _from_library(self, key: str) -> str:
         """The English of ``key`` from the library's own words: the whole
         text, or every word of it; "" when something is not known."""
-        words = self._words()
+        with self._lock:
+            gathered = self._local_at >= 0
+            words = self._local
+        if gathered:
+            # Gathered again behind (some seconds on the NAS, under the
+            # lock): a translation or the phone's words never wait for it
+            # (POST /api/search/words 4-5 s, 2026-11-25).
+            self._words_later()
+        else:
+            words = self._words()
         if key in words:
             return words[key]
         parts = key.split()

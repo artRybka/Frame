@@ -11,6 +11,7 @@ import threading
 import time
 from collections import Counter, OrderedDict
 from collections.abc import AsyncIterator, Callable
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
 from typing import Annotated, cast
 from weakref import WeakKeyDictionary
@@ -1227,20 +1228,22 @@ TERM_THREADS = CapacityLimiter(2)
 #: was given up by the app when the next letter came.
 _TERMS_ASKED: dict[str, int] = {}
 _TERMS_LOCK = threading.Lock()
-#: How long the suggestions wait for the English and French of two words
-#: or more, for the titles ("gwiaździsta noc": "The Starry Night").
-TITLE_TRANSLATE_SECONDS = 0.6
-#: ... once its last word has this many letters: "taniec n", "taniec na s"
+#: Suggestions take the phone's translation of two words or more
+#: (:func:`_title_forms`) once the last word has this many letters: "taniec n", "taniec na s"
 #: are halfway through a word, and asking Haiku for each such (some ten
 #: while one phrase was typed, the NAS 2026-11-25) only kept it busy.
 TRANSLATED_FROM = 3
 
 
 def _title_forms(svc: FrameService, words: str) -> tuple[str, ...]:
-    """The words as the museums are asked them: known already, or for two
-    words or more a moment's wait for the translation."""
+    """The words as the museums are asked them, as far as known now: for two
+    words or more the translation ("gwiaździsta noc": "The Starry Night")
+    the phone sent while typing, never waited for and never asked of
+    Haiku here (Mateusz 2026-11-25: "najpierw pytamy to co mamy już na NAS
+    (reakcja natychmiastowa)"; it waited 0.6 s a letter, and Haiku
+    translated what the phone did too)."""
     if " " in words and len(words) >= 5 and len(words.split()[-1]) >= TRANSLATED_FROM:
-        said = svc.importer.wording(words, TITLE_TRANSLATE_SECONDS)
+        said = svc.search_words.now(words)
         return tuple(w for w in (said.en, said.fr) if w)
     return svc.library.wording(words) if svc.library.wording else ()
 
@@ -1395,6 +1398,54 @@ async def terms_in_museums(svc: Svc, q: str) -> MuseumHint:
 
 #: Letters typed before Wikidata is asked for museums no work is in yet.
 PLACE_SEARCH_LETTERS = 3
+#: How long "Muzeum" waits for Wikidata's museums: it answered in 3-13 s on
+#: an evening (2026-11-25), and every letter typed waited so; a later answer
+#: is kept for the next letter or the same words again.
+PLACE_SEARCH_WAIT = 1.5
+#: Wikidata's museums for words, kept this long.
+PLACE_SEARCH_KEPT = 24 * 3600.0
+_PLACES_KEPT: OrderedDict[tuple[int, str], tuple[float, list[PlaceHit]]] = OrderedDict()
+_PLACES_ASKING: dict[tuple[int, str], Future[list[PlaceHit]]] = {}
+_PLACES_LOCK = threading.Lock()
+_PLACES_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="places-wikidata")
+
+
+async def _wikidata_places(svc: FrameService, q: str) -> list[PlaceHit]:
+    """Museums Wikidata knows by ``q``: kept, or asked and waited for
+    :data:`PLACE_SEARCH_WAIT` at most (none meanwhile)."""
+    key = (id(svc.museum_places), fold(q))
+    now = time.monotonic()
+    with _PLACES_LOCK:
+        kept = _PLACES_KEPT.get(key)
+        if kept is not None and now - kept[0] < PLACE_SEARCH_KEPT:
+            return kept[1]
+        asking = _PLACES_ASKING.get(key)
+        if asking is None:
+
+            def ask() -> list[PlaceHit]:
+                try:
+                    found = urgent_call(svc.museum_places.hits)(q)
+                except (httpx.HTTPError, ValueError) as err:
+                    log.info("museums named %r: %s", q, err)
+                    found = []
+                else:
+                    with _PLACES_LOCK:
+                        _PLACES_KEPT[key] = (time.monotonic(), found)
+                        while len(_PLACES_KEPT) > 500:
+                            _PLACES_KEPT.popitem(last=False)
+                finally:
+                    with _PLACES_LOCK:
+                        _PLACES_ASKING.pop(key, None)
+                return found
+
+            asking = _PLACES_ASKING[key] = _PLACES_POOL.submit(ask)
+    try:
+        return await asyncio.wait_for(
+            asyncio.shield(asyncio.wrap_future(asking)), PLACE_SEARCH_WAIT
+        )
+    except TimeoutError:
+        log.info("museums named %r: Wikidata not here within %.1f s", q, PLACE_SEARCH_WAIT)
+        return []
 
 
 @router.get("/places", response_model=list[PlaceHit])
@@ -1435,12 +1486,12 @@ async def places(
     words = fold(q)
     if words:
         hits = [h for h in hits if words in fold(f"{h.name} {h.city}")]
-    if len(words) >= PLACE_SEARCH_LETTERS:
-        try:
-            extra = await run_in_threadpool(urgent_call(svc.museum_places.hits), q)
-        except (httpx.HTTPError, ValueError) as err:
-            log.info("museums named %r: %s", q, err)
-            extra = []
+    # Wikidata only for what the list has not (Mateusz 2026-11-25: "Po co
+    # pytamy wikidate o muzea zamiast znaleźć wpisywane miasto w ramach
+    # istniejącej listy muzeów?"): a museum with no work here yet, or one
+    # the works only name (its Wikidata key learnt, :func:`_one_each`).
+    if len(words) >= PLACE_SEARCH_LETTERS and not any(QID.match(h.key) for h in hits):
+        extra = await _wikidata_places(svc, q)
         have = {h.key for h in hits}
         hits += [h for h in extra if h.key not in have]
     merged, learnt = _one_each(hits)
