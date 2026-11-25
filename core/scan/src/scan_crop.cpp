@@ -420,13 +420,17 @@ int decide(double sure, const std::optional<Quad>& quad, int w, int h, double cu
 // its box turned by `turn` degrees about `middle`.
 struct Impression {
     std::array<double, 4> box;  // left, top, right, bottom
+    std::array<double, 4> inked;  // the same with its lettering (`cut_caption` leaves it out)
+    std::vector<std::array<double, 4>> others;  // the sheet's other inked parts, as `box`
     double turn = 0;
     cv::Point2d middle;
     int cols = 0, rows = 0;
     cv::Mat to_sheet;
 
-    std::array<cv::Point2d, 4> corners(double grow = 0) const {
-        double u0 = box[0] - grow, v0 = box[1] - grow, u1 = box[2] + grow, v1 = box[3] + grow;
+    std::array<cv::Point2d, 4> corners(double grow = 0) const { return corners_of(box, grow); }
+
+    std::array<cv::Point2d, 4> corners_of(const std::array<double, 4>& of, double grow = 0) const {
+        double u0 = of[0] - grow, v0 = of[1] - grow, u1 = of[2] + grow, v1 = of[3] + grow;
         double a = turn * M_PI / 180.0, ca = std::cos(a), sa = std::sin(a);
         std::array<std::array<double, 2>, 4> uv{{{u0, v0}, {u1, v0}, {u1, v1}, {u0, v1}}};
         std::array<cv::Point2d, 4> out;
@@ -435,8 +439,10 @@ struct Impression {
         return out;
     }
 
-    std::array<double, 4> margins() const {
-        auto q = corners();
+    std::array<double, 4> margins() const { return margins_of(box); }
+
+    std::array<double, 4> margins_of(const std::array<double, 4>& of) const {
+        auto q = corners_of(of);
         return {(q[0].x + q[3].x) / 2, (q[0].y + q[1].y) / 2, cols - (q[1].x + q[2].x) / 2,
                 rows - (q[2].y + q[3].y) / 2};
     }
@@ -661,11 +667,31 @@ std::optional<Impression> impression(const cv::Mat& rgb, const Quad& sheet) {
     std::vector<double> ku, kv;
     for (size_t i = 0; i < u.size(); i++)
         if (u[i] >= box[0] && u[i] <= box[2] && v[i] >= box[1] && v[i] <= box[3]) ku.push_back(u[i]), kv.push_back(v[i]);
+    found.inked = box;
     std::tie(box[0], box[2]) = cut_caption(ku, box[0], box[2], box[3] - box[1]);
     std::tie(box[1], box[3]) = cut_caption(kv, box[1], box[3], box[2] - box[0]);
     found.box = box;
     found.turn = turn;
     found.middle = {cx, cy};
+    {
+        // `crop_model._others`: the other inked parts, all but specks.
+        double a = turn * M_PI / 180.0, ca = std::cos(a), sa = std::sin(a);
+        const double inf = std::numeric_limits<double>::infinity();
+        std::vector<std::array<double, 4>> spans(static_cast<size_t>(n), {inf, inf, -inf, -inf});
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++) {
+                if (!work.at<unsigned char>(r, c)) continue;
+                int j = parts.at<int>(r, c);
+                if (j == 0 || j == k) continue;
+                double uu = (c - cx) * ca + (r - cy) * sa, vv = -(c - cx) * sa + (r - cy) * ca;
+                auto& x = spans[static_cast<size_t>(j)];
+                x[0] = std::min(x[0], uu), x[1] = std::min(x[1], vv);
+                x[2] = std::max(x[2], uu + 1), x[3] = std::max(x[3], vv + 1);
+            }
+        for (int j = 1; j < n; j++)
+            if (j != k && static_cast<double>(count[static_cast<size_t>(j)]) >= PLATE_PART * rows * cols)
+                found.others.push_back(spans[static_cast<size_t>(j)]);
+    }
     found.cols = cols, found.rows = rows;
     // Plain paper round it: alike on every side, light, and little on it.
     std::array<cv::Rect, 4> sides{cv::Rect(e, e, cols - 2 * e, b - e), cv::Rect(e, rows - b, cols - 2 * e, b - e),
@@ -726,8 +752,29 @@ std::optional<std::pair<Quad, Quad>> plate(const cv::Mat& rgb, const Quad& sheet
     double least = std::min(found->box[2] - found->box[0], found->box[3] - found->box[1]);
     auto margins = found->margins();
     if (*std::max_element(margins.begin(), margins.end()) <= over * least) return std::nullopt;
-    double pad = std::max(0.0, std::min(PLATE_MARGIN * least, *std::min_element(margins.begin(), margins.end())));
-    auto cut = valid(found->on_photo(found->corners(pad), rgb.cols, rgb.rows));
+    // The margin round the impression with its lettering, and round
+    // whatever else it would cut through.
+    auto inked = found->inked;
+    double pad = 0;
+    for (int round = 0; round < 3; round++) {
+        least = std::min(inked[2] - inked[0], inked[3] - inked[1]);
+        margins = found->margins_of(inked);
+        pad = std::max(0.0, std::min(PLATE_MARGIN * least, *std::min_element(margins.begin(), margins.end())));
+        std::array<double, 4> reach{inked[0] - pad, inked[1] - pad, inked[2] + pad, inked[3] + pad};
+        bool touched = false;
+        auto grown = inked;
+        for (const auto& o : found->others) {
+            bool meets = o[0] < reach[2] && o[2] > reach[0] && o[1] < reach[3] && o[3] > reach[1];
+            bool inside = o[0] >= reach[0] && o[1] >= reach[1] && o[2] <= reach[2] && o[3] <= reach[3];
+            if (!meets || inside) continue;
+            touched = true;
+            grown[0] = std::min(grown[0], o[0]), grown[1] = std::min(grown[1], o[1]);
+            grown[2] = std::max(grown[2], o[2]), grown[3] = std::max(grown[3], o[3]);
+        }
+        if (!touched) break;
+        inked = grown;
+    }
+    auto cut = valid(found->on_photo(found->corners_of(inked, pad), rgb.cols, rgb.rows));
     if (!cut) return std::nullopt;
     return std::make_pair(*cut, kept(found->on_photo(found->corners(), rgb.cols, rgb.rows)));
 }
@@ -763,6 +810,13 @@ int frame_crop_letterbox(const unsigned char* pixels, int rows, int columns, int
     } catch (...) {
         return failed("the photograph could not be made the model's", error, error_size);
     }
+}
+
+double frame_crop_upright(const double* quad, int rows, int columns) {
+    if (!quad || rows <= 0 || columns <= 0) return 90.0;
+    frame::crop::Quad q;
+    for (int i = 0; i < 4; i++) q[i] = {quad[2 * i], quad[2 * i + 1]};
+    return frame::crop::upright_off(q, columns, rows);
 }
 
 int frame_crop_plate(const unsigned char* pixels, int rows, int columns, const double* sheet, double over,

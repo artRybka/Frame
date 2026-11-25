@@ -46,7 +46,9 @@ enum MuseumCrop {
     /// chyba że margines od odbitki jest wtedy bardzo duży”): as the
     /// server does it (`crop_model.PLATE`, told it with what was found),
     /// over this share of the impression's shorter side (`PLATE_OVER`).
-    static let plates = 1
+    /// 2: a print the model left whole is the photograph's whole sheet,
+    /// cut down round its impression all the same (Mateusz 2026-11-25).
+    static let plates = 2
     static let plateOver = 0.15
     /// A print (`crop_model.KINDS`).
     static let printKind = 2
@@ -161,7 +163,9 @@ enum MuseumCrop {
     /// A print's `sheet` on `photo` cut down round its impression when its
     /// paper is wide (`crop_model.plate`): the cut and the impression
     /// alone; nil when the sheet stays.
-    static func plate(_ photo: Pixels, sheet: [[Double]]) throws -> (cut: [[Double]], plate: [[Double]])? {
+    static func plate(
+        _ photo: Pixels, sheet: [[Double]], over: Double = plateOver
+    ) throws -> (cut: [[Double]], plate: [[Double]])? {
         guard sheet.count == 4, sheet.allSatisfy({ $0.count == 2 }) else { throw Failed(told: "no sheet") }
         let given = sheet.flatMap { $0 }
         var cut = [Double](repeating: 0, count: 8), alone = [Double](repeating: 0, count: 8)
@@ -170,7 +174,7 @@ enum MuseumCrop {
         let size = Int32(error.count)
         let made = photo.rgb.withUnsafeBufferPointer { rgb in
             frame_crop_plate(
-                rgb.baseAddress, Int32(photo.rows), Int32(photo.columns), given, plateOver, &cut, &alone, &found,
+                rgb.baseAddress, Int32(photo.rows), Int32(photo.columns), given, over, &cut, &alone, &found,
                 &error, size
             )
         }
@@ -286,12 +290,59 @@ enum MuseumCrop {
     private static func look(at photo: Pixels, kind: Int) throws -> (found: Found, columns: Int, rows: Int) {
         let (logits, sure) = try ask(photo, kind: kind)
         var found = try find(photo, logits: logits, sure: sure, cutAt: sureOf(kind))
-        if kind == printKind, let sheet = found.work, let made = try plate(photo, sheet: sheet) {
-            found.sheet = sheet
+        if kind == printKind, let made = try sheetCut(photo, verdict: found.verdict, work: found.work) {
+            found.verdict = made.verdict
+            found.sheet = made.sheet
             found.work = made.cut
             found.plate = made.plate
         }
         return (found, photo.columns, photo.rows)
+    }
+
+    /// The photograph's own edges: the sheet of a print with nothing round it.
+    static let edges: [[Double]] = [[0, 0], [1, 0], [1, 1], [0, 1]]
+
+    /// `crop_model.sheet_cut`: a print's cut where its paper says more than
+    /// the model (Mateusz 2026-11-25: „Dlaczego takie dzieło się nie
+    /// kadruje?”); nil: as the model left it.
+    static func sheetCut(
+        _ photo: Pixels, verdict: String, work: [[Double]]?
+    ) throws -> (verdict: String, sheet: [[Double]], cut: [[Double]], plate: [[Double]]?)? {
+        if verdict == "cut" {
+            guard let work, let made = try plate(photo, sheet: work) else { return nil }
+            return (verdict, work, made.cut, made.plate)
+        }
+        if verdict == "unsure", let work {
+            guard upright(work, columns: photo.columns, rows: photo.rows) <= upright else { return nil }
+            if let made = try plate(photo, sheet: work) { return ("cut", work, made.cut, made.plate) }
+            // What the photograph shows apart from its surround is that sheet.
+            if let seen = try plate(photo, sheet: edges, over: 0), boxOverlap(seen.plate, work) >= plateSame {
+                return ("cut", work, work, nil)
+            }
+            return nil
+        }
+        guard let made = try plate(photo, sheet: edges) else { return nil }
+        return ("cut", edges, made.cut, made.plate)
+    }
+
+    /// `crop_model.UPRIGHT`, `PLATE_SAME`.
+    static let upright = 3.0
+    static let plateSame = 0.85
+
+    /// `crop_model.upright_off`: degrees from an upright rectangle.
+    static func upright(_ quad: [[Double]], columns: Int, rows: Int) -> Double {
+        frame_crop_upright(quad.flatMap { $0 }, Int32(rows), Int32(columns))
+    }
+
+    /// `crop_model.box_overlap`: how much two quads' upright boxes overlap.
+    static func boxOverlap(_ a: [[Double]], _ b: [[Double]]) -> Double {
+        func box(_ q: [[Double]]) -> (Double, Double, Double, Double) {
+            (q.map { $0[0] }.min() ?? 0, q.map { $0[1] }.min() ?? 0, q.map { $0[0] }.max() ?? 0, q.map { $0[1] }.max() ?? 0)
+        }
+        let (ax0, ay0, ax1, ay1) = box(a), (bx0, by0, bx1, by1) = box(b)
+        let inter = max(0, min(ax1, bx1) - max(ax0, bx0)) * max(0, min(ay1, by1) - max(ay0, by0))
+        let union = (ax1 - ax0) * (ay1 - ay0) + (bx1 - bx0) * (by1 - by0) - inter
+        return union > 0 ? inter / union : 0
     }
 }
 
