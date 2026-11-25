@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.372
+
+- Pusta „Historia przesłanych” nie ma kafelka w Playlistach; z zawartością
+  ma w rogu szklany znaczek zegara.
+
 ## 1.145.371
 
 - Kadr w karcie dzieła nie wraca już na chwilę do całego zdjęcia: zostaje

@@ -1158,6 +1158,10 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
 
     /// The photos sent once (server: player.SENT_NAME).
     static let sentName = "Historia przesłanych"
+    /// This person's "Historia przesłanych".
+    var isSentHistory: Bool { isMine && name == Self.sentName }
+    /// Not among the cards while nothing was sent (Mateusz 2026-11-25).
+    var isHiddenCard: Bool { isSentHistory && itemCount == 0 }
 }
 
 struct PlaylistDetail: Codable, Sendable {
