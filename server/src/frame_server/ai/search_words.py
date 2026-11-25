@@ -179,6 +179,26 @@ class SearchWords:
         except Exception:
             return Wording(text)
 
+    def ahead(self, text: str) -> Wording:
+        """:meth:`wording` without waiting: what is known of ``text`` now
+        (remembered, the phone's, the library's own words), the model asked
+        behind for what is not, for the next question (Szukaj's suggestions
+        answer from the NAS at once, Mateusz 2026-11-25)."""
+        text = " ".join(text.split())
+        key = _key(text)
+        if not key or len(text) > MAX_CHARS or any(c in text for c in '"=&:'):
+            return Wording(text)
+        with self._lock:
+            known = self._known.get(key)
+        if known is not None and _answered(known):
+            return _remembered(text, known)
+        local = self._from_library(key)
+        if local:
+            return Wording(text, en=local)
+        if self.config.enabled(KIND):
+            self._ask(text, key)
+        return Wording(text)
+
     def known(self, text: str) -> tuple[str, ...]:
         """The English and French of ``text`` known already (its Polish,
         when typed in another language): remembered answers and the

@@ -272,3 +272,28 @@ def test_the_phone_never_replaces_an_answer(service: FrameService, fake: FakeAnt
     assert (words.en, words.fr) == ("old woman", "")
     assert words.in_language("fr") == "stara kobieta"
     assert len(fake.asked) == 1
+
+
+def test_the_suggestions_never_wait_for_a_translation(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    """Mateusz 2026-11-25: "najpierw pytamy to co mamy już na NAS (reakcja
+    natychmiastowa)": what is known now, the model asked behind once."""
+    import time
+
+    held = threading.Event()
+    create = fake.messages.create
+
+    def slow(**params: Any) -> Any:
+        held.wait(10)
+        return create(**params)
+
+    fake.messages.create = slow
+    started = time.monotonic()
+    assert not service.search_words.ahead("stara gitara").translated
+    assert not service.search_words.ahead("stara gitara").translated
+    assert time.monotonic() - started < 0.5
+    held.set()
+    assert service.search_words.wording("stara gitara", wait=5).en == "guitar"
+    assert service.search_words.ahead("stara gitara").en == "guitar"
+    assert len(fake.asked) == 1
