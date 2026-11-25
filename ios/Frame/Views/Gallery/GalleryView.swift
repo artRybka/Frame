@@ -1380,7 +1380,7 @@ private struct GalleryPage: View {
             await ImageLoader.shared.remember(thumb, for: request, maxPixel: Self.cardPixel)
         }
         // Made while the work is shown, before any hold: ready for it.
-        .task(id: GlowOf(on: current || whole, picture: (thumb ?? full).map { ObjectIdentifier($0) })) {
+        .task(id: GlowOf(on: current || whole, picture: (thumb ?? full).map { ObjectIdentifier($0) }, made: glow != nil)) {
             guard current || whole, glow == nil, let picture = thumb ?? full else { return }
             if let made = Glow.wide[work.id] { glow = made; return }
             let made = await Task.detached(priority: .utility) {
@@ -1406,6 +1406,12 @@ private struct GalleryPage: View {
     private struct GlowOf: Hashable {
         let on: Bool
         let picture: ObjectIdentifier?
+        /// Asked again whenever the page has none: a page back from under
+        /// the work's card is given its pictures anew (the same ones), and
+        /// with the glow dropped for them and nothing to ask for it again,
+        /// the work held after a card lay on its bare ground (the probe's
+        /// film, 2026-11-25).
+        let made: Bool
     }
 
     private struct Had: Equatable {
@@ -1813,13 +1819,17 @@ private struct GalleryPage: View {
     private func put(thumb small: UIImage? = nil, full large: UIImage? = nil, about point: UnitPoint) {
         var quiet = Transaction(animation: nil)
         quiet.disablesAnimations = true
+        // The same picture given again (the page back from under a card):
+        // its glow stays.
+        let given = small ?? large
+        let same = given != nil && (given === thumb || given === full)
         withTransaction(quiet) {
             stale = nil
             thumb = small
             full = large
             fullShown = 1
             focus = point
-            glow = nil
+            if !same { glow = nil }
         }
         if stock.focus[work.id] == nil { stock.focus[work.id] = point }
     }
