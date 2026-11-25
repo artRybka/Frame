@@ -212,8 +212,18 @@ private struct GridPicture: View {
                 .transition(.opacity)
             }
         }
-        .task(id: work.id) {
-            guard image == nil, let request = model.backend.request(for: .thumb(work.id)) else { return }
+        .task(id: "\(work.id)|\(work.item.pictureVersion)") {
+            // The stock's, where it has one: fetched ahead, or again since
+            // the work was cut down (its own address then, `thumb(of:)`).
+            if let kept = stock.images[work.id] {
+                if image !== kept {
+                    focus = stock.focus[work.id] ?? focus
+                    withAnimation(.easeOut(duration: 0.2)) { image = kept }
+                }
+                return
+            }
+            guard let request = GalleryView.thumb(of: work.item, model.backend) else { return }
+            let made = stock.made[work.id] ?? 0
             // Asked again when it does not come: a tile left empty stayed
             // so for as long as it was on the screen.
             var loaded: UIImage?
@@ -234,7 +244,7 @@ private struct GridPicture: View {
             let waited = (ContinuousClock.now - asked) / .seconds(1)
             if waited > 2 { GalleryLog.note("tile \(work.id): its picture after \(Int(waited)) s") }
             let found = await SubjectFocus.shared.point(in: got, key: ImageLoader.pictureKey(request), subject: true)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, stock.made[work.id] ?? 0 == made else { return }
             // Its page's, where that found one first: the two are one picture.
             let point = stock.focus[work.id] ?? found
             stock.images[work.id] = got
@@ -250,6 +260,17 @@ private struct GridPicture: View {
     var images: [String: UIImage] = [:]
     /// The point each is cut about, as its page cuts it.
     var focus: [String: UnitPoint] = [:]
+    /// The times each work's picture became another (`drop`): a thumbnail
+    /// asked for before is not kept when it comes.
+    var made: [String: Int] = [:]
+
+    /// The work has another picture (cut down to the work): what was kept
+    /// of the old one goes.
+    func drop(_ id: String) {
+        images[id] = nil
+        focus[id] = nil
+        made[id, default: 0] += 1
+    }
 
     /// Only these kept: the works about the one shown.
     func keep(_ ids: Set<String>) {
