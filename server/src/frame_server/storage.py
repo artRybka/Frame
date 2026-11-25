@@ -9,9 +9,13 @@ default again (or resetting) goes back to frame.env. The values live on the
 shared ``Settings``, so the next trim or growth of the catalogue uses them.
 
 Measuring asks the disk about every thumbnail and original, slow on a NAS
-disk (3.5 to 45 s, the audit of 2026-11-14): a measurement is kept for a
-while, also over a restart, and taken again after the library was trimmed.
-Konfiguracja is shown the one kept at once (:meth:`StorageStore.shown`).
+disk (45 s to 2 min for some 53 GB): it is done once a night, after the
+night's tidying, and kept over a restart. Konfiguracja is shown that
+measurement carried forward by the works gathered or dropped since, which
+the library counts in memory (:meth:`StorageStore.shown`; Mateusz
+2026-11-25: "nie może się dodawać gdzieś w rejestrze/bazie przy dodawaniu
+kolejnych dzieł (nawet w przybliżeniu), a aktualizacja i dokładny pomiar
+raz w nocy").
 """
 
 from __future__ import annotations
@@ -45,11 +49,9 @@ OLD_CACHE_MB = 500
 MB = 1024 * 1024
 #: The last measurement, kept over a restart.
 USAGE_KEY = "storage_usage"
-#: How long a measurement is good for, in seconds.
-MEASURE_MAX_AGE = 600.0
-#: How long Konfiguracja waits for a new measurement before it is shown the
-#: one kept (seconds): a fast disk answers within it.
-SHOWN_WAIT = 1.0
+#: How long a measurement is good for what decides by it, in seconds: the
+#: night measures anew.
+MEASURE_MAX_AGE = 26 * 3600.0
 #: How long a count of the catalogue is good for, in seconds.
 COUNT_MAX_AGE = 60.0
 #: The frame's long side: an original at least this large shows it whole.
@@ -65,6 +67,13 @@ class StorageUsage(BaseModel):
     total_bytes: int
     free_bytes: int | None  # free on the disk the library is on
     measured_at: float  # Unix time
+    #: The library's count when measured (:class:`CatalogueCounts`): museum
+    #: pictures and his own, and originals; the measurement is carried
+    #: forward by how they changed since.
+    pictures: int = 0
+    originals_count: int = 0
+    #: Carried forward from the night's measurement, not measured.
+    estimated: bool = False
 
 
 class StorageView(BaseModel):
@@ -119,6 +128,7 @@ class StorageStore:
         self.defaults = (settings.catalogue_mb, settings.image_cache_mb)
         self._usage: StorageUsage | None = self._kept_usage()
         self._measuring = threading.Lock()
+        self._dirty = False
         self._again: threading.Thread | None = None
         self._forgets = 0
         self._starting = threading.Lock()
@@ -195,7 +205,8 @@ class StorageStore:
         """The last measurement, or a new one when it is older than ``max_age``."""
         with self._measuring:
             usage = self._usage
-            if usage is None or time.time() - usage.measured_at > max_age:
+            if usage is None or self._dirty or time.time() - usage.measured_at > max_age:
+                self._dirty = False
                 forgets = self._forgets
                 usage = self._measure()
                 if forgets != self._forgets:  # trimmed while it was measured
@@ -205,20 +216,33 @@ class StorageStore:
             return usage
 
     def shown(self) -> StorageUsage:
-        """The measurement for Konfiguracja: the one kept, at once. When it
-        is older than :data:`MEASURE_MAX_AGE` a new one is taken beside it,
-        waited for :data:`SHOWN_WAIT` and shown the next time otherwise: the
-        page stood with a spinner for as long as the disk took (45 s on the
-        NAS after a start). What decides by the measurement (the room for
-        originals) asks :meth:`usage`, as before."""
+        """The measurement for Konfiguracja, at once: the night's, carried
+        forward by the pictures and originals the library has gained or
+        lost since, each at the measured average size. Only a server that
+        never measured waits for the disk."""
         usage = self._usage
         if usage is None:  # never measured
             return self.usage()
-        if time.time() - usage.measured_at <= MEASURE_MAX_AGE:
+        counts = self.counts()
+        catalogue = _scaled(usage.catalogue_bytes, usage.pictures, counts.pictures + counts.own)
+        originals = _scaled(usage.originals_bytes, usage.originals_count, counts.originals)
+        if (catalogue, originals) == (usage.catalogue_bytes, usage.originals_bytes):
             return usage
-        again = self._measure_behind()
-        again.join(SHOWN_WAIT)
-        return self._usage or usage
+        grown = catalogue - usage.catalogue_bytes + originals - usage.originals_bytes
+        free = None if usage.free_bytes is None else max(usage.free_bytes - grown, 0)
+        return usage.model_copy(
+            update={
+                "catalogue_bytes": catalogue,
+                "originals_bytes": originals,
+                "total_bytes": usage.total_bytes + grown,
+                "free_bytes": free,
+                "estimated": True,
+            }
+        )
+
+    def measure_now(self) -> StorageUsage:
+        """The night's exact measurement, after its tidying."""
+        return self.usage(max_age=0)
 
     def measure_behind(self) -> None:
         """A measurement taken beside, when none is kept: after a start with
@@ -255,21 +279,14 @@ class StorageStore:
             return None
 
     def forget(self) -> None:
-        """The library changed a lot (trimmed): measured again, beside. The
-        measurement before stays to be shown meanwhile, as one too old:
-        what decides by it (:meth:`usage`) waits for the new one, but
-        Konfiguracja does not. Dropped, it stood "Miejsce na serwerze" with
-        a spinner for as long as the disk took after every trim, and the
-        player trims after almost every change (Mateusz 2026-11-25)."""
+        """The library was trimmed: what decides by the measurement (the
+        room for originals) measures again when it next asks; Konfiguracja
+        goes on carrying the night's forward. It used to be dropped, and
+        "Miejsce na serwerze" stood with a spinner for as long as the disk
+        took after every trim, almost every change of picture (Mateusz
+        2026-11-25)."""
         self._forgets += 1
-        usage = self._usage
-        if usage is not None:
-            usage = usage.model_copy(
-                update={"measured_at": min(usage.measured_at, time.time() - MEASURE_MAX_AGE - 1)}
-            )
-            self._usage = usage
-            self.library.keep_state(USAGE_KEY, usage.model_dump(mode="json"))
-        self._measure_behind()
+        self._dirty = True
 
     def _measure(self) -> StorageUsage:
         root = self.settings.data_dir
@@ -289,6 +306,7 @@ class StorageStore:
             free: int | None = shutil.disk_usage(root).free
         except OSError:
             free = None
+        counts = self.counts(max_age=0)
         return StorageUsage(
             catalogue_bytes=catalogue,
             originals_bytes=originals - own,
@@ -298,6 +316,8 @@ class StorageStore:
             total_bytes=catalogue + originals + large + panel + database,
             free_bytes=free,
             measured_at=time.time(),
+            pictures=counts.pictures + counts.own,
+            originals_count=counts.originals,
         )
 
     # -- counting ------------------------------------------------------------
@@ -340,6 +360,13 @@ class StorageStore:
             own=own,
             counted_at=time.time(),
         )
+
+
+def _scaled(measured: int, then: int, now: int) -> int:
+    """``measured`` bytes of ``then`` files, as for ``now`` of them."""
+    if then <= 0 or now == then:
+        return measured
+    return max(round(measured * now / then), 0)
 
 
 def _size(path: Path) -> int:

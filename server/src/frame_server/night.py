@@ -538,6 +538,9 @@ def tasks(service: FrameService) -> list[NightTask]:
 
     def tidy(night: Night) -> None:
         player.trim_cache()
+        # The disk measured exactly once a night, for Konfiguracja and the
+        # originals' room (Mateusz 2026-11-25).
+        service.storage.measure_now()
 
     def daily(night: Night) -> None:
         service.daily.tick()

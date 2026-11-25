@@ -48,8 +48,6 @@ struct NowView: View {
     @State private var introChecked = false
     @State private var introPlan: SwapPlan?
     @State private var introProgress = 0.0
-    /// Sending a single photo to the frame.
-    static let sendSymbol = "paperplane"
     /// How far the picture follows the finger, browsing sideways.
     @State private var swipe: CGFloat = 0
     /// The finger moved sideways first: the swipe is a browse, not a scroll.
@@ -249,8 +247,10 @@ struct NowView: View {
                     Button {
                         showingSend = true
                     } label: {
-                        Image(systemName: Self.sendSymbol)
+                        // The icon as it was (Mateusz 2026-11-25).
+                        Image(systemName: "square.and.arrow.up")
                             .font(.headline)
+                            .offset(y: -1)
                             .frame(width: 34, height: 34)
                     }
                     .accessibilityLabel("Wyślij zdjęcie na ramkę")
