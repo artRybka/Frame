@@ -164,10 +164,11 @@ struct ConnectionSettingsView: View {
     }
 
     private func load() async {
-            // The disk is measured after the rest has come: the server
-            // looks at every picture for it (up to 45 s on the NAS, the
-            // audit of 2026-11-14), and the page's other rows waited
-            // behind it for the server and for a connection.
+            // The disk's size comes at once now, the last measurement kept
+            // (the server measures again beside it): it no longer waits
+            // behind the rest, which kept "Miejsce na serwerze" spinning
+            // (Mateusz 2026-11-25).
+            async let storage: Void = model.loadLibraryStorage()
             async let counts: Void = model.loadCatalogueCounts()
             async let night: Void = model.loadNightTasks()
             async let panel: Void = model.loadPanelApp()
@@ -175,8 +176,7 @@ struct ConnectionSettingsView: View {
             async let ai: Void = model.loadAiSettings()
             async let keys: Void = model.loadSourceKeys()
             async let notifications: Void = model.loadNotifications()
-            _ = await (counts, night, panel, update, ai, keys, notifications)
-            await model.loadLibraryStorage()
+            _ = await (storage, counts, night, panel, update, ai, keys, notifications)
     }
 }
 
@@ -388,6 +388,14 @@ struct SettingsPageView: View {
                 .padding(.horizontal, Theme.gutter)
                 .padding(.top, 8)
                 .padding(.bottom, 40)
+            }
+            .task(id: page) {
+                // Opened before Konfiguracja's rows came, or again later:
+                // its own numbers, fresh.
+                guard page == .library, !model.demoMode else { return }
+                async let storage: Void = model.loadLibraryStorage()
+                async let counts: Void = model.loadCatalogueCounts()
+                _ = await (storage, counts)
             }
             .task {
                 // CI screenshots: `-scroll restorer` on the Gemini page,

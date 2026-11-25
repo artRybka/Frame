@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.369
+
+- Ramka: obraz przewija się palcem w lewo i w prawo zamiast strzałek;
+  wysyłka, ustawienia ramki i Konfiguracja razem po prawej, wysyłka
+  pierwsza.
+- Miejsce na serwerze otwiera się od razu: dokładny pomiar dysku raz
+  w nocy, w dzień przeliczany z liczników biblioteki.
+
 ## 1.145.368
 
 - Galeria od nowa: dwa widoki, pełny ekran i siatka miniatur od brzegu do

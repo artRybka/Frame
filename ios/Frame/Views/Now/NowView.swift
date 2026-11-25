@@ -1,8 +1,10 @@
 import CoreLocation
 import SwiftUI
 
-/// Home: the picture on the frame, presented like an exhibit. The arrows
-/// browse what was and what will be on the frame without sending anything,
+/// Home: the picture on the frame, presented like an exhibit. A swipe of
+/// the picture, left or right (Mateusz 2026-11-25: "przewijać prawo-lewo
+/// palcem zamiast strzałek"), browses what will be and what was on the
+/// frame without sending anything,
 /// and "Teraz" jumps back to the one on it; a tap on the picture opens
 /// it on the crop screen, and "Pokaż na ramce" sends the one browsed to.
 /// A picture that did not reach the frame says so, with the one the frame
@@ -46,6 +48,10 @@ struct NowView: View {
     @State private var introChecked = false
     @State private var introPlan: SwapPlan?
     @State private var introProgress = 0.0
+    /// How far the picture follows the finger, browsing sideways.
+    @State private var swipe: CGFloat = 0
+    /// The finger moved sideways first: the swipe is a browse, not a scroll.
+    @State private var swipeAxis: Axis?
     /// Scrolled back to the top when Teraz is tapped again in the tab bar.
     @State private var scroll = ScrollPosition()
 
@@ -234,43 +240,40 @@ struct NowView: View {
                 }
             }
             .toolbar {
-                // The frame's state and settings, once a tab of their own
-                // (Mateusz 2026-11-23: "przekierowanie do karty Ramka").
-                ToolbarItem(placement: .topBarLeading) {
+                // All three on the right, sending a single photo first
+                // (Mateusz 2026-11-25: "Ustawienia i trybik - na prawą
+                // stronę. Wysyłka pojedynczych - obok nich, jako pierwsze").
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        showingSend = true
+                    } label: {
+                        // The icon as it was (Mateusz 2026-11-25).
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.headline)
+                            .offset(y: -1)
+                            .frame(width: 34, height: 34)
+                    }
+                    .accessibilityLabel("Wyślij zdjęcie na ramkę")
+                    // The frame's state and settings, once a tab of their own
+                    // (Mateusz 2026-11-23: "przekierowanie do karty Ramka").
                     Button {
                         path.append(FrameSettingsRoute())
                     } label: {
                         Image(systemName: "slider.horizontal.3")
                             .font(.headline)
                             .frame(width: 34, height: 34)
-                            .background(.ultraThinMaterial, in: Circle())
                     }
                     .accessibilityLabel("Stan i ustawienia ramki")
-                }
-                // Konfiguracja (a household member's "Mój dostęp") right
-                // beside it, as a page (Mateusz 2026-11-23).
-                ToolbarItem(placement: .topBarLeading) {
+                    // Konfiguracja (a household member's "Mój dostęp") right
+                    // beside it, as a page (Mateusz 2026-11-23).
                     Button {
                         path.append(ConfigurationRoute())
                     } label: {
                         Image(systemName: model.isOwner ? "gearshape" : "person.crop.circle")
                             .font(.headline)
                             .frame(width: 34, height: 34)
-                            .background(.ultraThinMaterial, in: Circle())
                     }
                     .accessibilityLabel(model.isOwner ? "Konfiguracja" : "Mój dostęp")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingSend = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.headline)
-                            .offset(y: -1)
-                            .frame(width: 34, height: 34)
-                            .background(.ultraThinMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("Wyślij zdjęcie na ramkę")
                 }
             }
             // The first launch's squares say it themselves.
@@ -446,10 +449,7 @@ struct NowView: View {
 
     private var hero: some View {
         let aspect: CGFloat = model.isPortrait ? 9.0 / 16.0 : 16.0 / 9.0
-        return HStack(spacing: 0) {
-            arrow(-1)
-            Spacer(minLength: 2)
-            FramedArtwork(
+        return FramedArtwork(
                 ref: heroRef, aspectRatio: aspect,
                 placeholder: shownItem?.placeholderColor ?? browsed?.summary.placeholderColor ?? Theme.mat,
                 shadow: false,
@@ -514,33 +514,74 @@ struct NowView: View {
                 }
             }
             .frame(maxWidth: model.isPortrait ? 290 : .infinity)
-            Spacer(minLength: 2)
-            arrow(1)
-        }
-        .padding(.horizontal, -Theme.gutter + 2)  // the arrows at the sides of the screen
-        .animation(.easeInOut, value: model.working)
+            .offset(x: swipe)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .simultaneousGesture(browseSwipe, including: canBrowse ? .all : .subviews)
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: browse(1)
+                case .decrement: browse(-1)
+                @unknown default: break
+                }
+            }
+            .animation(.easeInOut, value: model.working)
+    }
+
+    // MARK: Browsing by swipe
+
+    /// Nothing to browse while a picture is on its way, before the server
+    /// answers, or in the first launch's squares.
+    private var canBrowse: Bool { !inFlight && !stale && intro == nil && !cropping }
+
+    /// There is a picture one place back (−1) or ahead (+1).
+    private func canGo(_ direction: Int) -> Bool {
+        let target = offset + direction
+        return target == 0 || summary(at: target) != nil
     }
 
     /// Browse one picture back (−1) or ahead (+1); nothing is sent.
-    private func arrow(_ direction: Int) -> some View {
+    private func browse(_ direction: Int) {
+        guard canBrowse, canGo(direction) else { return }
         let target = offset + direction
-        let enabled = target == 0 || summary(at: target) != nil
-        return Button {
-            withAnimation(.easeInOut(duration: 0.25)) {
-                browsed = target == 0 ? nil : summary(at: target).map { Browsed(summary: $0, offset: target) }
+        browsed = target == 0 ? nil : summary(at: target).map { Browsed(summary: $0, offset: target) }
+    }
+
+    /// The picture follows the finger sideways; let go far enough (or
+    /// flicked), it goes off that side and the next one comes in from the
+    /// other: to the left is ahead, to the right is back, as pages turn.
+    /// Where there is nothing more, it only gives a little. A finger that
+    /// moves up or down first scrolls the page as before.
+    private var browseSwipe: some Gesture {
+        DragGesture(minimumDistance: 12)
+            .onChanged { value in
+                let dx = value.translation.width, dy = value.translation.height
+                if swipeAxis == nil { swipeAxis = abs(dx) > abs(dy) ? .horizontal : .vertical }
+                guard swipeAxis == .horizontal else { return }
+                swipe = canGo(dx < 0 ? 1 : -1) ? dx : dx / 4
             }
-        } label: {
-            Image(systemName: direction < 0 ? "chevron.left" : "chevron.right")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Theme.ink.opacity(0.75))
-                .frame(width: 34, height: 72)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressableStyle())
-        .disabled(!enabled || inFlight || stale || intro != nil)
-        .opacity(inFlight ? 0 : enabled && !stale && intro == nil ? 1 : 0.2)
-        .animation(.easeInOut(duration: 0.3), value: inFlight)
-        .accessibilityLabel(direction < 0 ? "Poprzedni" : "Następny")
+            .onEnded { value in
+                defer { swipeAxis = nil }
+                guard swipeAxis == .horizontal else { return }
+                let dx = value.translation.width
+                let flung = value.predictedEndTranslation.width
+                let direction = dx < 0 ? 1 : -1
+                let far = abs(dx) > 70 || abs(flung) > 180
+                guard far, canGo(direction) else {
+                    withAnimation(.spring(duration: 0.3)) { swipe = 0 }
+                    return
+                }
+                let away: CGFloat = 420 * (dx < 0 ? -1 : 1)
+                withAnimation(.easeIn(duration: 0.14)) { swipe = away } completion: {
+                    var instant = Transaction()
+                    instant.disablesAnimations = true
+                    withTransaction(instant) {
+                        browse(direction)
+                        swipe = -away
+                    }
+                    withAnimation(.spring(duration: 0.32, bounce: 0.12)) { swipe = 0 }
+                }
+            }
     }
 
     // MARK: Controls
