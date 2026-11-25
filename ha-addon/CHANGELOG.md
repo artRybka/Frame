@@ -11,6 +11,8 @@
   w dół od góry dojeżdża pod palcem do widoku całego dzieła (telefon stuka,
   gdy tam jest), a po puszczeniu dzieło przybliża się do kadru na pełnym
   ekranie. Puszczona wcześniej, przed połową drogi, wraca na miejsce.
+- Galeria: po powrocie z karty dzieła przytrzymane dzieło znów leży na swojej
+  łunie (wcześniej po wizycie w karcie zostawał sam ciemny podkład).
 
 ## 1.145.378
 
