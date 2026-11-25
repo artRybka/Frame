@@ -208,3 +208,24 @@ def test_the_catalogue_count_over_the_api(tmp_path: Path) -> None:
         counts = client.get("/api/library/catalogue")
         assert counts.status_code == 200, counts.text
         assert set(counts.json()) >= {"works", "pictures", "originals", "frame_size", "own"}
+
+
+def test_a_trim_leaves_the_last_measurement_shown(service: FrameService, monkeypatch) -> None:
+    # "Miejsce na serwerze" stood with a spinner after every trim while the
+    # disk was measured again (Mateusz 2026-11-25): the measurement before is
+    # shown at once, the new one the next time.
+    storage = service.storage
+    first = storage.usage()
+    measure = storage._measure
+
+    def slow():  # type: ignore[no-untyped-def]
+        time.sleep(3)
+        return measure()
+
+    monkeypatch.setattr(storage, "_measure", slow)
+    storage.forget()
+    started = time.monotonic()
+    shown = storage.view().usage
+    assert time.monotonic() - started < 2
+    assert shown.total_bytes == first.total_bytes
+    assert storage.usage().measured_at > first.measured_at  # what decides waits for the new one

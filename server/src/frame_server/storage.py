@@ -212,7 +212,7 @@ class StorageStore:
         NAS after a start). What decides by the measurement (the room for
         originals) asks :meth:`usage`, as before."""
         usage = self._usage
-        if usage is None:  # never measured, or the library was trimmed since
+        if usage is None:  # never measured
             return self.usage()
         if time.time() - usage.measured_at <= MEASURE_MAX_AGE:
             return usage
@@ -222,10 +222,9 @@ class StorageStore:
 
     def measure_behind(self) -> None:
         """A measurement taken beside, when none is kept: after a start with
-        none (the first of this version) and after the library was trimmed,
-        so that Konfiguracja, opened later, need not wait for the disk
-        (over two minutes while the server was starting, the NAS on
-        2026-11-14)."""
+        none (the first of this version), so that Konfiguracja, opened
+        later, need not wait for the disk (over two minutes while the
+        server was starting, the NAS on 2026-11-14)."""
         if self._usage is None:
             self._measure_behind()
 
@@ -256,10 +255,20 @@ class StorageStore:
             return None
 
     def forget(self) -> None:
-        """The library changed a lot (trimmed): measured again, beside."""
+        """The library changed a lot (trimmed): measured again, beside. The
+        measurement before stays to be shown meanwhile, as one too old:
+        what decides by it (:meth:`usage`) waits for the new one, but
+        Konfiguracja does not. Dropped, it stood "Miejsce na serwerze" with
+        a spinner for as long as the disk took after every trim, and the
+        player trims after almost every change (Mateusz 2026-11-25)."""
         self._forgets += 1
-        self._usage = None
-        self.library.keep_state(USAGE_KEY, None)
+        usage = self._usage
+        if usage is not None:
+            usage = usage.model_copy(
+                update={"measured_at": min(usage.measured_at, time.time() - MEASURE_MAX_AGE - 1)}
+            )
+            self._usage = usage
+            self.library.keep_state(USAGE_KEY, usage.model_dump(mode="json"))
         self._measure_behind()
 
     def _measure(self) -> StorageUsage:
