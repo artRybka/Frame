@@ -350,7 +350,9 @@ struct GalleryView: View {
         } label: {
             GridMark()
                 .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                .padding(10)
+                // The circle's middle as high as the heart's.
+                .padding(.horizontal, 10)
+                .padding(.vertical, 3)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -908,7 +910,7 @@ struct GalleryView: View {
     private func letGo() {
         guard peek != nil, !engaged else { return }
         pulling = false
-        withAnimation(GalleryPage.toWhole) {
+        withAnimation(GalleryPage.fromWhole) {
             peek = nil
             pull.up = 0
         }
@@ -1253,6 +1255,13 @@ private struct GalleryPage: View {
     /// then (points): the screen's own, about.
     static let pressedIn: CGFloat = 0.955
     static let pressedCorner: CGFloat = 44
+    /// Seconds from the whole work let go to the work cut to the screen
+    /// again, sharp and at its size (Mateusz 2026-11-25 12:21: "Powrót po
+    /// puszczeniu podglądu całego dzieła - wolniej, płynniej - teraz jest
+    /// zbyt agresywnie"; it took a fifth of a second and sprang). The
+    /// whole work goes into its glow first, the glow then off the cut one
+    /// coming sharp under it; nothing springs.
+    static let back: Double = 0.55
     /// Seconds to draw back from `closer` to the whole picture.
     static let drawBack: Double = 20
 
@@ -1288,7 +1297,7 @@ private struct GalleryPage: View {
             ZStack {
                 placeholder
                 ground.opacity(whole ? 1 : 0)
-                    .animation(.easeOut(duration: 0.16), value: whole)
+                    .animation(whole ? .easeOut(duration: 0.16) : .easeInOut(duration: Self.back * 0.8), value: whole)
             }
             .ignoresSafeArea()
         }
@@ -1384,13 +1393,19 @@ private struct GalleryPage: View {
         .frame(width: geo.size.width, height: geo.size.height)
         .clipped()
         // Pressed in while the finger lies, all the time the phone taps;
-        // let go, it springs back out. Held, it melts as small as it is.
+        // let go before the hold, it springs back out. Held, it melts as
+        // small as it is, and grows back as calmly as the rest of the way
+        // back goes (`back`), with no spring.
         .clipShape(RoundedRectangle(cornerRadius: sunk ? Self.pressedCorner : 0, style: .continuous))
         .scaleEffect(sunk ? Self.pressedIn : 1)
+        .transaction(value: whole) { if !whole { $0.animation = .easeInOut(duration: Self.back) } }
         .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
+        // Back from the whole work it is there soon, under the glow that
+        // is still going, and comes sharp slowly.
         .blur(radius: whole ? Self.melt : 0)
+        .animation(whole ? .easeIn(duration: 0.16) : .easeInOut(duration: Self.back), value: whole)
         .opacity(whole ? 0 : 1)
-        .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: 0.2).delay(0.05), value: whole)
+        .animation(whole ? .easeIn(duration: 0.16) : .easeOut(duration: Self.back * 0.55), value: whole)
     }
 
     /// The colours of the whole work's edges, the screen full of them
@@ -1408,7 +1423,7 @@ private struct GalleryPage: View {
         .frame(width: geo.size.width, height: geo.size.height)
         .modifier(PulledUp(pull: pull, on: whole))
         .opacity(whole ? 1 : 0)
-        .animation(whole ? .easeOut(duration: 0.2) : .easeIn(duration: 0.14), value: whole)
+        .animation(whole ? .easeOut(duration: 0.2) : .easeInOut(duration: Self.back * 0.8), value: whole)
     }
 
     /// The whole work, as large as on its card, and the card's head under
@@ -1433,7 +1448,7 @@ private struct GalleryPage: View {
         .scaleEffect(whole ? 1 : 0.96, anchor: UnitPoint(x: 0.5, y: 0.5 + place.offset.height / max(geo.size.height, 1)))
         .offset(y: whole ? 0 : 14)
         .opacity(whole ? 1 : 0)
-        .animation(whole ? .spring(duration: 0.42, bounce: 0.32).delay(0.06) : .easeIn(duration: 0.12), value: whole)
+        .animation(whole ? .spring(duration: 0.42, bounce: 0.32).delay(0.06) : .easeInOut(duration: Self.back * 0.6), value: whole)
         .allowsHitTesting(false)
         .onChange(of: current ? lies : CGRect.null, initial: true) { _, rect in
             guard !rect.isNull else { return }
@@ -1774,6 +1789,8 @@ private struct GalleryPage: View {
     /// To the whole work and back, for what has no timing of its own; all
     /// of it quick (Mateusz 2026-11-24: "Przejście … szybsze").
     static let toWhole = Animation.easeInOut(duration: 0.25)
+    /// Back from it, for the same: as calm as the page's own way (`back`).
+    static let fromWhole = Animation.easeInOut(duration: back * 0.8)
 
     /// How far a work drifts sideways while it draws back (points), at most.
     static let drift: CGFloat = 22
@@ -1959,15 +1976,22 @@ struct Glow: View {
 /// 2026-11-23 17:42: "bez tego wielkiego rozbłysku na zewnątrz"; 19:01:
 /// "wypełnianie od środka a nie od dołu. Szybsze. Z lekkim, chwilowym
 /// rozbłyskiem żywszą czerwienią wewnątrz serca, przy jego krawędzi").
-/// Nine small squares of the heart's clear glass: the grid's button on the
-/// page's other corner.
+/// Nine small white squares in a circle of the heart's clear glass: the
+/// grid's button on the page's other corner (Mateusz 2026-11-25 12:21:
+/// "Ikonka 9 kwadracików - zamień na w kółku").
 private struct GridMark: View {
-    private static let size: CGFloat = 28
+    /// The circle across, and the nine squares in it (points).
+    static let size: CGFloat = 40
+    private static let squares: CGFloat = 17
 
     var body: some View {
-        Color.clear
+        GridShape()
+            .fill(.white.opacity(0.94))
+            .frame(width: Self.squares, height: Self.squares)
+            // Seen on a white sky too.
+            .shadow(color: .black.opacity(0.22), radius: 1.5, y: 0.5)
             .frame(width: Self.size, height: Self.size)
-            .glassEffect(Glass.clear.interactive(), in: GridShape())
+            .glassEffect(Glass.clear.interactive(), in: Circle())
             // The same glass in dark mode as in light, as the heart's.
             .environment(\.colorScheme, .light)
     }
