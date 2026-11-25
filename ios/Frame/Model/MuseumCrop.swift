@@ -4,6 +4,7 @@ import CoreML
 import Foundation
 import FrameScan
 import ImageIO
+import UIKit
 
 /// A museum photograph cut down to the work by a small model on the phone,
 /// with no Claude (Mateusz 2026-11-20: "Celem jest całkowite uniknięcie
@@ -194,6 +195,14 @@ enum MuseumCrop {
         try Loaded.shared.model(file(of: kind))
     }
 
+    /// Both models loaded while the app starts: the first card opened after
+    /// an update waited a minute on the new one (nga:2993, 2026-11-25).
+    static func warm() async {
+        await Task.detached(priority: .utility) {
+            for kind in [0, 1] { _ = try? loaded(of: kind) }
+        }.value
+    }
+
     private final class Loaded: @unchecked Sendable {
         static let shared = Loaded()
         private let lock = NSLock()
@@ -266,7 +275,15 @@ enum MuseumCrop {
 
     /// The photograph's file looked at, start to end: what the server is told.
     static func look(at file: Data, kind: Int) throws -> (found: Found, columns: Int, rows: Int) {
-        let photo = try pixels(of: file)
+        try look(at: try pixels(of: file), kind: kind)
+    }
+
+    /// A picture already read (the card's own, no longer than `photoSide`).
+    static func look(at image: CGImage, kind: Int) throws -> (found: Found, columns: Int, rows: Int) {
+        try look(at: try pixels(of: image), kind: kind)
+    }
+
+    private static func look(at photo: Pixels, kind: Int) throws -> (found: Found, columns: Int, rows: Int) {
         let (logits, sure) = try ask(photo, kind: kind)
         var found = try find(photo, logits: logits, sure: sure, cutAt: sureOf(kind))
         if kind == printKind, let sheet = found.work, let made = try plate(photo, sheet: sheet) {
@@ -364,12 +381,32 @@ extension MuseumCrop {
     /// to the server: the work as it is now when it was cut, else nil.
     /// Nothing when the server has nothing for the phone to look at (an
     /// older server, a work looked at already, not the owner's phone).
-    static func look(itemID: String, backend: any FrameBackend, asked: PhoneCropAsk? = nil) async throws -> PhoneCropResult? {
+    ///
+    /// `picture`: the work's picture as the card shows it (the museum's
+    /// photograph while it is not cut), read through the app's own cache
+    /// instead of asking the server for the photograph again (Mateusz
+    /// 2026-11-25: seconds behind other downloads there). `seen`: what the
+    /// model found, and the picture it looked at, before the server is told.
+    static func look(
+        itemID: String, backend: any FrameBackend, asked: PhoneCropAsk? = nil, picture: ImageRef? = nil,
+        seen: (@MainActor (Found, UIImage) async -> Void)? = nil
+    ) async throws -> PhoneCropResult? {
         let ask: PhoneCropAsk
         if let asked { ask = asked } else { ask = try await backend.phoneCropAsk(itemID: itemID) }
         guard ask.look, ask.model == modelOf(ask.kind) else { return nil }
-        let file = try await backend.museumPhoto(itemID: itemID, side: ask.side)
-        let looked = try await Task.detached(priority: .userInitiated) { try MuseumCrop.look(at: file, kind: ask.kind) }.value
+        var shown: UIImage?
+        if let picture, let request = backend.request(for: picture) {
+            shown = try? await ImageLoader.shared.image(for: request, maxPixel: CGFloat(ask.side), priority: .high)
+        }
+        let looked: (found: Found, columns: Int, rows: Int)
+        if let image = shown?.cgImage {
+            looked = try await Task.detached(priority: .userInitiated) { try MuseumCrop.look(at: image, kind: ask.kind) }.value
+        } else {
+            let file = try await backend.museumPhoto(itemID: itemID, side: ask.side)
+            looked = try await Task.detached(priority: .userInitiated) { try MuseumCrop.look(at: file, kind: ask.kind) }.value
+            shown = UIImage(data: file)
+        }
+        if let seen, let shown { await seen(looked.found, shown) }
         let found = PhoneCropFound(
             model: ask.model, picture: ask.picture, verdict: looked.found.verdict, sure: looked.found.sure,
             work: looked.found.work, surround: looked.found.surround, width: looked.columns, height: looked.rows,
