@@ -151,6 +151,9 @@ struct ItemDetailView: View {
     @State private var arrivedAt: ContinuousClock.Instant?
     /// Going back to Galeria (`leaveToGallery`).
     @State private var leavingCard = false
+    /// Drawn down from its top, back to the whole work it came from
+    /// (`CardLeave`); nil where it did not come from one.
+    @State private var leave: CardLeave?
     /// The colours of the work's edges glowing out behind it, as behind the
     /// whole work in Galeria (Mateusz 2026-11-24 07:36: "zastosuj to samo
     /// tło „łuny” za dziełem").
@@ -165,6 +168,7 @@ struct ItemDetailView: View {
         let arrival = CardArrival.pending[itemID]
         _arrival = State(initialValue: arrival)
         _arrived = State(initialValue: arrival == nil)
+        _leave = State(initialValue: arrival?.rest != nil && arrival?.back != nil ? CardLeave() : nil)
         _edgeGlow = State(initialValue: Glow.kept[itemID])
         _farGlow = State(initialValue: arrival?.from != nil ? Glow.wide[itemID] : nil)
         let known = ItemPeeks.polish[itemID]
@@ -206,7 +210,7 @@ struct ItemDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeOut(duration: 0.3), value: showsCard)
             }
-            .glowLift($scrolled)
+            .modifier(CardScroll(lift: $scrolled, leave: leave) { letGoDrawnDown() })
             .task {
                 // CI screenshots: "Podobne wyglądem" at the card's end, once
                 // the card and the row are in (whatever the Polish texts do).
@@ -258,8 +262,7 @@ struct ItemDetailView: View {
             if let arrival {
                 arrival.ground
                     .ignoresSafeArea()
-                    .opacity(arrived ? 0 : 1)
-                    .animation(CardArrival.ground, value: arrived)
+                    .modifier(BroughtBack(leave: leave, shown: !arrived))
                     .allowsHitTesting(false)
             }
         }
@@ -466,6 +469,7 @@ struct ItemDetailView: View {
             picture(item)
             Group {
             titleBlock(item).id("title")
+            Group {
             actions(item)
             if !item.colors.isEmpty { palette(item).id("palette") }
             // A tile set is looked at in full screen, not listed.
@@ -493,11 +497,14 @@ struct ItemDetailView: View {
             }
             facts(item)
             }
+            .modifier(LeftBehind(leave: leave))
+            }
             .modifier(restOfCard)
         }
         .layoutProbe("column")
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
+        .modifier(CardHeld(leave: leave))
     }
 
     /// The work, at once from the last visit if there was one, then fresh
@@ -594,6 +601,7 @@ struct ItemDetailView: View {
                 .pickerStyle(.segmented)
                 .frame(maxWidth: 260)
                 .disabled(true)
+                .modifier(LeftBehind(leave: leave))
                 .modifier(restOfCard)
             }
             .padding(.top, 8)
@@ -612,6 +620,7 @@ struct ItemDetailView: View {
             .labelStyle(ActionLabelStyle())
             .disabled(true)
             .opacity(0.45)
+            .modifier(LeftBehind(leave: leave))
             if loadFailed {
                 Button("Spróbuj ponownie", systemImage: "arrow.clockwise") {
                     Task { await load() }
@@ -626,6 +635,7 @@ struct ItemDetailView: View {
         }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
+        .modifier(CardHeld(leave: leave))
     }
 
     /// The title block as the tile knew it.
@@ -1385,7 +1395,7 @@ struct ItemDetailView: View {
 
     /// The work on its way from Galeria to its place here.
     private var arriving: ArrivingPicture {
-        ArrivingPicture(pending: arrival, arrived: arrived, home: arrivalHome) { rect in
+        ArrivingPicture(pending: arrival, arrived: arrived, home: arrivalHome, leave: leave) { rect in
             // Its place followed till the way starts: the first measure can
             // come before the box has its width (at the left, small), and a
             // way from there ran on a slant (Mateusz 2026-11-24 10:48:
@@ -1434,7 +1444,8 @@ struct ItemDetailView: View {
             placed = home.minY >= 0 && rise > -1
         }
         return RestOfCard(
-            shown: arrived, placed: placed, animation: arrival.map(CardArrival.rest) ?? .default, rise: rise
+            shown: arrived, placed: placed, animation: arrival.map(CardArrival.rest) ?? .default, rise: rise,
+            leave: leave, rest: arrival?.rest
         )
     }
 
@@ -1445,8 +1456,7 @@ struct ItemDetailView: View {
         if let farGlow {
             GeometryReader { box in
                 Glow(edges: farGlow, size: box.size, offset: .zero, spread: Glow.far)
-                    .opacity((scheme == .light ? 0.62 : 1) * (arrived ? 0 : 1))
-                    .animation(CardArrival.ground, value: arrived)
+                    .modifier(BroughtBack(leave: leave, shown: !arrived, strength: scheme == .light ? 0.62 : 1))
                     .frame(width: box.size.width, height: box.size.height)
             }
         }
@@ -1461,7 +1471,29 @@ struct ItemDetailView: View {
     private func leaveToGallery() {
         guard let back = arrival?.back, !leavingCard else { return }
         leavingCard = true
-        back()
+        back(false)
+    }
+
+    /// The finger that drew the card down has lifted (`CardLeave`): far
+    /// enough, the card goes the rest of the way back to the whole work
+    /// and Galeria takes over from there, the work growing to the screen
+    /// again; not far enough, the scroll's own spring brings the card back.
+    private func letGoDrawnDown() {
+        guard let leave, leave.on, !leavingCard, let back = arrival?.back else { return }
+        let share = leave.share
+        GalleryLog.note("card: let go drawn down, \(Int((share * 100).rounded()))% of the way back")
+        guard share >= CardLeave.enough else { return }
+        leavingCard = true
+        if share > 0.98 {
+            leave.gone = true
+            back(true)
+            return
+        }
+        withAnimation(.easeOut(duration: 0.14)) { leave.gone = true }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            back(true)
+        }
     }
 
     /// The glow behind the work: Galeria's own when it made one, else made
@@ -1565,6 +1597,7 @@ struct ItemDetailView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.8)))
                 }
             }
+            .modifier(LeftBehind(leave: leave))
             .modifier(restOfCard)
             if view == .frame {
                 Text(bound: frameHint)
@@ -2191,6 +2224,36 @@ enum FramePositionProbe {
 /// The card's own way back to Galeria (`leaveToGallery`): a back button
 /// of its own and the swipe from the left edge, in place of the pop's
 /// slide.
+/// The card's scroll: how far it is scrolled, for the glow at its top
+/// (`glowLift`); and, where the card came from Galeria's whole work, how
+/// far a finger has drawn it past its top, and the finger lifting
+/// (`CardLeave`). One modifier on the card's body, which the compiler
+/// can only just type-check as it is.
+private struct CardScroll: ViewModifier {
+    @Binding var lift: CGFloat
+    let leave: CardLeave?
+    let letGo: () -> Void
+
+    func body(content: Content) -> some View {
+        if let leave {
+            content
+                .glowLift($lift)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    max(-(geometry.contentOffset.y + geometry.contentInsets.top), 0)
+                } action: { _, over in
+                    leave.scrolled(over: over)
+                }
+                .onScrollPhaseChange { before, now in
+                    leave.touching = now == .interacting || now == .tracking
+                    if before == .interacting, now != .interacting { letGo() }
+                }
+                .sensoryFeedback(.impact(weight: .medium), trigger: leave.reached)
+        } else {
+            content.glowLift($lift)
+        }
+    }
+}
+
 private struct GalleryWayBack: ViewModifier {
     let on: Bool
     let leave: () -> Void
@@ -2219,12 +2282,22 @@ private struct RestOfCard: ViewModifier {
     /// How far below its place it starts (and leaves): as far as the work
     /// is from its own.
     var rise: CGFloat = 0
+    /// Drawn down again, it goes with the work to where Galeria has the
+    /// whole work's head: under the work resting there (`rest`).
+    var leave: CardLeave?
+    var rest: CGRect?
 
     func body(content: Content) -> some View {
         content
             .offset(y: shown ? 0 : rise)
             .animation(CardArrival.move, value: shown)
+            .offset(y: fall)
             .opacity(shown || placed ? 1 : 0)
             .animation(animation, value: shown)
+    }
+
+    private var fall: CGFloat {
+        guard let leave, let rest, let lies = leave.home else { return 0 }
+        return (rest.maxY - lies.maxY) * leave.share
     }
 }

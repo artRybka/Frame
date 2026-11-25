@@ -114,6 +114,17 @@ final class GalleryProbeTests: XCTestCase {
         mark(app, "held and let go")
         shot("08-after-the-hold")
 
+        // Held as soon as a work is come to, while it still draws back
+        // and drifts: the press leaves that as it is (Mateusz 2026-11-25
+        // 18:08: "przy przytrzymaniu palca najpierw szuka środka a potem
+        // zmniejsza"; the log's "under the finger" lines, frame by frame).
+        swipe(from: at(0.5, 0.78), to: at(0.5, 0.35))
+        mark(app, "hold at once begins")
+        at(0.5, 0.55).press(forDuration: 1.6)
+        sleep(2)
+        mark(app, "held at once and let go")
+        shot("08b-after-the-hold-at-once")
+
         // Held and drawn up: the card.
         mark(app, "hold and pull begin")
         at(0.5, 0.6).press(forDuration: 1.2, thenDragTo: at(0.5, 0.42), withVelocity: .slow, thenHoldForDuration: 0.4)
@@ -129,6 +140,25 @@ final class GalleryProbeTests: XCTestCase {
         sleep(3)
         mark(app, "back from the card")
         shot("10-back-from-the-card")
+
+        // The card again, and drawn down by its work: back to the whole
+        // work under the finger, and to the page once it lifts (Mateusz
+        // 2026-11-25 18:12).
+        mark(app, "hold and pull begin again")
+        at(0.5, 0.6).press(forDuration: 1.2, thenDragTo: at(0.5, 0.42), withVelocity: .slow, thenHoldForDuration: 0.4)
+        sleep(4)
+        mark(app, "pulled up again: the card")
+        mark(app, "card drawn down begins")
+        at(0.5, 0.3).press(forDuration: 0.05, thenDragTo: at(0.5, 0.6), withVelocity: .slow, thenHoldForDuration: 1.0)
+        sleep(3)
+        if back.exists {
+            // Not by its work: by the blank beside its artist, then.
+            mark(app, "the card stayed; drawn down beside its head")
+            at(0.85, 0.64).press(forDuration: 0.05, thenDragTo: at(0.85, 0.89), withVelocity: .slow, thenHoldForDuration: 1.0)
+            sleep(3)
+        }
+        mark(app, back.exists ? "the card stayed again" : "card drawn down and let go: the page")
+        shot("10b-back-by-drawing-the-card-down")
 
         // A quick run of swipes: the grid, the wall flowing on.
         mark(app, "quick swipes begin")
