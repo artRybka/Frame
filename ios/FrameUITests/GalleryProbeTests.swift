@@ -67,6 +67,18 @@ final class GalleryProbeTests: XCTestCase {
         mark(app, "spread")
         shot("07-from-a-spread")
 
+        // A finger drawn down slowly from the upper part and left lying:
+        // the grid comes by itself (Mateusz 2026-11-25: the work stopped
+        // half way and waited for the finger to lift).
+        mark(app, "slow drag down begins")
+        at(0.5, 0.14).press(forDuration: 0.05, thenDragTo: at(0.5, 0.5), withVelocity: .slow, thenHoldForDuration: 1.6)
+        sleep(2)
+        mark(app, "drawn down and held: the grid")
+        shot("07b-grid-under-the-finger")
+        at(0.5, 0.5).tap()
+        sleep(3)
+        mark(app, "tile tapped again")
+
         // Held: the whole work while the finger lies.
         mark(app, "hold begins")
         at(0.5, 0.55).press(forDuration: 2.2)
@@ -121,6 +133,36 @@ final class GalleryProbeTests: XCTestCase {
         sleep(3)
         mark(app, "sweep: tile tapped")
         shot("13-from-the-sweep")
+    }
+
+    /// Thumbnails of another shape than their full pictures (`-galleryStale`,
+    /// as one kept from before its work was cut down): the full picture
+    /// fades in as itself over the one looked at, and the works coming are
+    /// whole before they are seen (Mateusz 2026-11-25: "przeskok, jakby
+    /// dzieło zmieniało proporcje i zoom").
+    @MainActor
+    func testAThumbnailOfAnotherShape() throws {
+        try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-demo", "YES", "-screen", "gallery", "-galleryStale", "YES",
+            "-galleryLog", "\(Self.folder)/gallery-stale.log", "-galleryTrace", "YES",
+        ]
+        app.launch()
+        mark(app, "stale: launched")
+        sleep(7)
+        shot("14-stale-first")
+        let window = app.windows.firstMatch
+        for _ in 0 ..< 3 {
+            window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+                .press(
+                    forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35)),
+                    withVelocity: .fast, thenHoldForDuration: 0
+                )
+            sleep(3)
+        }
+        mark(app, "stale: three swipes up")
+        shot("15-stale-fourth")
     }
 
     private func shot(_ name: String) {

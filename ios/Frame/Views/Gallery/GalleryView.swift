@@ -1450,6 +1450,7 @@ private struct GalleryPage: View {
             )
         }
         guard !Task.isCancelled else { return }
+        if let image = small, UserDefaults.standard.bool(forKey: "galleryStale") { small = Self.narrowed(image) }
         if let image = small {
             let point = await cutPoint(of: image, key: ImageLoader.pictureKey(thumbRequest), anew: again)
             guard !Task.isCancelled else { return }
@@ -1481,6 +1482,17 @@ private struct GalleryPage: View {
         fullShown = 0
         full = image
         withAnimation(.easeInOut(duration: 0.7)) { fullShown = 1 }
+    }
+
+    /// The probe's (`-galleryStale YES`): a thumbnail of another shape than
+    /// the full picture, as one kept from before its work was cut down.
+    private static func narrowed(_ image: UIImage) -> UIImage {
+        guard let whole = image.cgImage else { return image }
+        let part = CGRect(
+            x: CGFloat(whole.width) * 0.15, y: 0, width: CGFloat(whole.width) * 0.7, height: CGFloat(whole.height)
+        ).integral
+        guard let cut = whole.cropping(to: part) else { return image }
+        return UIImage(cgImage: cut, scale: image.scale, orientation: image.imageOrientation)
     }
 
     /// Two pictures of one shape: one cut of the work, to be laid out as
