@@ -721,3 +721,20 @@ def test_pros_notification_opens_the_works_card(app: Any) -> None:
     service._restored_pro(own, OWNER_ID, True)
     service._restored_pro(own, OWNER_ID, False)
     assert routes == [f"work/{own.id}", f"work/{own.id}"]
+
+
+def test_a_restored_works_tile_takes_its_drawings_shape(app: Any) -> None:
+    """A drawing of the work cut out of the museum's photograph is not that
+    photograph's shape: the tile (and the whole screen growing out of it)
+    takes the drawing's, not bars beside it (Mateusz 2026-11-26)."""
+    from frame_server.library.models import SharperCopy
+
+    _client, service, _web, _painter = app
+    own = _small(service)
+    drawn = SharperCopy(
+        url="", item_id=f"owned:{own.id}", source="owned", width=1560, height=2000, restored=True
+    )
+    restored = service.library.update(own.id, sharper=drawn)
+    assert restored is not None
+    summary = ItemSummary.of(restored)
+    assert (summary.width, summary.height) == (1560, 2000)
