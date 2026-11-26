@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.395
+
+- Karta dzieła, które nie ma jeszcze opisu, od razu pokazuje, że kurator
+  pisze notkę: w „O dziele” jak na maszynie wpisują się i kasują słowa
+  o dziele (to, co widać, kolory, technika, rok, muzeum). Gdy notka
+  przyjdzie, słowa się kasują, a notka wpisuje w ich miejsce. Przycisk
+  „Przygotuj studium dzieła” pojawia się dopiero po notce.
+
 ## 1.145.394
 
 - Menu „…” dzieła nie dokłada już pozycji po otwarciu: serwer jest pytany
