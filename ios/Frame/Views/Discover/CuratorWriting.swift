@@ -30,8 +30,8 @@ struct CuratorWriting: View {
     private static let lineSpacing: CGFloat = 5
     /// The caret alone at first, before the first word.
     private static let firstWait = 1.8
-    private static let letter = 1.0 / 22
-    private static let erase = 1.0 / 45
+    private static let letter = 1.0 / 14
+    private static let erase = 1.0 / 30
     /// The note is typed in at most this long, however long it is.
     private static let noteTyping = 2.6
 
@@ -103,7 +103,7 @@ struct CuratorWriting: View {
             let slow = [2.4, 1.8, 1.3].indices.contains(turn) ? [2.4, 1.8, 1.3][turn] : 1
             await type(piece, each: Self.letter * slow, uneven: true)
             turn += 1
-            await pause(Double.random(in: 0.25 ... 0.6, using: &random))
+            await pause(Double.random(in: 0.5 ... 1.0, using: &random))
             // A part of a word taken back: typed again, or the word let go.
             if turn > 2, word.count > 3, Double.random(in: 0 ... 1, using: &random) < 0.45 {
                 let back = Int.random(in: 2 ... word.count - 1, using: &random)
