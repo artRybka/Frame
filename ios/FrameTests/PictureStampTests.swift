@@ -37,8 +37,9 @@ final class PictureStampTests: XCTestCase {
         XCTAssertEqual(first.pictureVersion, "")
         XCTAssertNotEqual(other.pictureVersion, first.pictureVersion)
         XCTAssertEqual(other.summary.pictureVersion, other.pictureVersion)
-        // The card's original is the one it shows already: not asked again.
-        XCTAssertEqual(other.originalRef, first.originalRef)
+        // The card's original follows the stamp too: a printed page's scan
+        // made again without its screen shows at once (Mateusz 2026-11-26).
+        XCTAssertNotEqual(other.originalRef, first.originalRef)
         // With a copy in its place the stamp stays beside the copy's id.
         other.sharper = SharperCopy(url: "https://x/2.jpg", itemId: "wmc:9", source: "commons", museum: "Wikimedia Commons", width: 3000, height: 2000)
         XCTAssertEqual(other.pictureVersion, "wmc:9@1a2b3c4d5e6f")

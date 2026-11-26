@@ -809,7 +809,9 @@ async def sharpen_item(
     asked for a sharper copy of it in the background. ``wait``: seconds to
     wait for the answer."""
     item = await _work(svc, item_id)
-    future = svc.sharper.soon(item)
+    # In a thread: whether a printed picture is still kept with its screen
+    # is read from its file the first time (ImageCache.uncleared).
+    future = await asyncio.to_thread(svc.sharper.soon, item)
     if wait:
         with contextlib.suppress(TimeoutError):
             await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), wait)
