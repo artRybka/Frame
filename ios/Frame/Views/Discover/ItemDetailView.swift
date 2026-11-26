@@ -302,12 +302,16 @@ struct ItemDetailView: View {
                     model: model, item: item, changed: { self.item = $0 },
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
                     findingCopies: $findingCopies, pictureSide: offer.pictureSide,
-                    restore: offer.restore ? { Task { await restoreByModel() } } : nil,
-                    restorePro: offer.pro ? { Task { await orderPro() } } : nil,
+                    // A pick lets go of what the open menu held: its own
+                    // change shows at the next opening (Mateusz 2026-11-26:
+                    // "Menu odświeża się dopiero gdy wyjdę i wrócę do karty";
+                    // `onDisappear` of an entry does not come on every close).
+                    restore: offer.restore ? { menuHeld = nil; Task { await restoreByModel() } } : nil,
+                    restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
                     proWaiting: offer.proWaiting,
                     correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
                     undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: offer.recover ? { Task { await toggleCleaning() } } : nil,
+                    recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
                     recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
                     editOwn: ownActions(item) ? { editingOwn = true } : nil,
                     retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
@@ -503,12 +507,14 @@ struct ItemDetailView: View {
         )
         do {
             _ = try await model.restorePro(itemID: itemID)
-            proOrdered = true
         } catch let BackendError.http(status, body) where status == 429 || status == 409 {
+            proOrdered = false
             model.notices.warn(LowRes.proName, Self.detail(body))
         } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
+            proOrdered = false
             model.notices.warn(LowRes.proName, "Model Google odmówił pracy, bo to dzieło chronione")
         } catch {
+            proOrdered = false
             if !error.isCancellation { model.show(error) }
         }
     }
