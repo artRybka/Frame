@@ -1220,7 +1220,7 @@ private struct FollowsTiltWhen: ViewModifier {
 enum ProGold {
     static let rest = Color(light: 0xC99A2E, dark: 0xD9AE45)
 
-    static func colour(_ tilt: Tilt?, dark: Bool) -> Color {
+    @MainActor static func colour(_ tilt: Tilt?, dark: Bool) -> Color {
         guard let tilt else { return rest }
         // Both turns, so it glints whichever way the phone is moved.
         let t = 0.5 + 0.5 * sin(Double.pi * (tilt.x * 1.4 + tilt.y * 0.7))
