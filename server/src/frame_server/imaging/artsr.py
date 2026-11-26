@@ -171,18 +171,26 @@ class ArtSR:
         if max(h, w) <= TILE:
             out = run(x)
         else:
-            out = np.empty((1, 3, SCALE * h, SCALE * w), np.float32)
+            # Bytes, not floats: a picture of 1800 px is 7200 px drawn.
+            out = np.empty((1, 3, SCALE * h, SCALE * w), np.uint8)
             for y in range(0, h, TILE):
                 for x0 in range(0, w, TILE):
                     y1, x1 = min(y + TILE, h), min(x0 + TILE, w)
                     ya, xa = max(0, y - OVERLAP), max(0, x0 - OVERLAP)
                     yb, xb = min(h, y1 + OVERLAP), min(w, x1 + OVERLAP)
                     part = run(x[:, :, ya:yb, xa:xb])
-                    out[:, :, SCALE * y : SCALE * y1, SCALE * x0 : SCALE * x1] = part[
-                        :,
-                        :,
-                        SCALE * (y - ya) : SCALE * (y1 - ya),
-                        SCALE * (x0 - xa) : SCALE * (x1 - xa),
-                    ]
-        rgb = np.clip(out[0].transpose(1, 2, 0), 0.0, 1.0)
-        return Image.fromarray((rgb * 255.0 + 0.5).astype(np.uint8), "RGB")
+                    out[:, :, SCALE * y : SCALE * y1, SCALE * x0 : SCALE * x1] = _bytes(
+                        part[
+                            :,
+                            :,
+                            SCALE * (y - ya) : SCALE * (y1 - ya),
+                            SCALE * (x0 - xa) : SCALE * (x1 - xa),
+                        ]
+                    )
+            return Image.fromarray(np.ascontiguousarray(out[0].transpose(1, 2, 0)), "RGB")
+        return Image.fromarray(np.ascontiguousarray(_bytes(out)[0].transpose(1, 2, 0)), "RGB")
+
+
+def _bytes(part: np.ndarray) -> np.ndarray:
+    """The model's 0..1 values as bytes."""
+    return (np.clip(part, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8)

@@ -1269,6 +1269,10 @@ enum LowRes {
     /// `side` when it is small for the frame, else 0.
     static func side(_ side: Int) -> Int { side > 0 && side < limit ? side : 0 }
 
+    /// The server's `RESTORE_SIDE`: "Restauracja" is offered under it
+    /// (Mateusz 2026-11-26: "Rozszerzmy zdjęcia kwalifikujące się do 1800px").
+    static let restoreLimit = 1800
+
     static func spoken(_ side: Int) -> String { "niska rozdzielczość, \(side) pikseli" }
 }
 

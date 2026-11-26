@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.401
+
+- Restauracja: model dostaje całe zdjęcie, bez zmniejszania (wynik dalej
+  2K), i jest w menu dla zdjęć poniżej 1800 px.
+
 ## 1.145.400
 
 - Po wyborze Restauracji PRO menu „…” od razu pokazuje ją jako zamówioną

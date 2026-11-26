@@ -66,7 +66,7 @@ from ..library import Item, ItemKind, ItemSummary, Job, Look, PhotoInfo, Playlis
 from ..library.duplicates import work_key
 from ..library.hosts import OverBudget, Resting, urgent_call
 from ..library.images import Gone, kept_side
-from ..library.low_res import low_side
+from ..library.low_res import low_side, restore_side
 from ..library.models import POLISH_TITLE, Framing, SharperCopy
 from ..library.museums import MUSEUMS, LoginRefused
 from ..library.repo import Abandoned, Hidden, SortKey, asked_by
@@ -795,6 +795,9 @@ class SharperView(BaseModel):
     #: The picture's long side when it is small for the frame
     #: (``low_res.low_side``), else 0: the card's mark.
     low_side: int = 0
+    #: The picture's long side when our restorer is offered for it
+    #: (``low_res.restore_side``, under 1800 px), else 0.
+    restore_side: int = 0
     #: ``Item.picture_stamp`` after the look: the original came as another
     #: photograph than the thumbnail while it ran (a mirror's, the museum
     #: being down), and the card tells the lists to ask for it again.
@@ -825,6 +828,7 @@ async def sharpen_item(
         width=size[0],
         height=size[1],
         low_side=low_side(stored or item, (size[0], size[1]) if size[0] else None),
+        restore_side=restore_side(stored or item, (size[0], size[1]) if size[0] else None),
         held_by=svc.holders.fill(stored or item).held_by,
         held_at=svc.holders.fill(stored or item).held_at,
         picture_stamp=(stored or item).picture_stamp,

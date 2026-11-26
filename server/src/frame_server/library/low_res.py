@@ -27,6 +27,10 @@ from .models import Item, ItemKind
 #: 2560 px enlarge it 1.6 times or more, and its softness shows on the
 #: panel from close by (de Chirico's on WikiArt are under 1000 px).
 LOW_SIDE = 1600
+#: A picture shorter than this is offered to our restorer (Mateusz
+#: 2026-11-26: "Rozszerzmy zdjęcia kwalifikujące się do 1800px"); the
+#: mark of a small picture stays at :data:`LOW_SIDE`.
+RESTORE_SIDE = 1800
 
 Sides = Callable[[Item], int | None]
 
@@ -40,11 +44,11 @@ def known_sizes(sides: Sides | None) -> None:
     _sides = sides
 
 
-def low_side(item: Item, size: tuple[int, int] | None = None) -> int:
+def low_side(item: Item, size: tuple[int, int] | None = None, below: int = LOW_SIDE) -> int:
     """The long side of ``item``'s picture when it is known and shorter than
     :data:`LOW_SIDE`, else 0. Museum works only (not the owner's photos,
     nor a tile of a work). ``size``: the original's, when the caller has
-    read it already."""
+    read it already. ``below``: the side it is to be shorter than."""
     if item.kind != ItemKind.ARTWORK or item.part_of or item.source in OWN_SOURCES:
         return 0
     side = said_side(item) if item.sharper is not None else None
@@ -58,4 +62,10 @@ def low_side(item: Item, size: tuple[int, int] | None = None) -> int:
     if side is not None and shown is not None and item.cut is not None:
         # Sizes are the museum photograph's; the work cut out of it is less.
         side = round(side * long_share(shown, (round(item.cut.aspect * 1000), 1000)))
-    return side if side is not None and 0 < side < LOW_SIDE else 0
+    return side if side is not None and 0 < side < below else 0
+
+
+def restore_side(item: Item, size: tuple[int, int] | None = None) -> int:
+    """The long side of ``item``'s picture when our restorer is offered for
+    it (shorter than :data:`RESTORE_SIDE`), else 0."""
+    return low_side(item, size, below=RESTORE_SIDE)

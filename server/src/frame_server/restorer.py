@@ -47,7 +47,7 @@ from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to
 from .imaging.cut import cut_aspect, warp
 from .imaging.descreen import descreened
 from .library import Item, ItemKind
-from .library.low_res import LOW_SIDE, low_side
+from .library.low_res import LOW_SIDE, restore_side
 from .library.models import Note, Playlist, PlaylistKind
 from .library.viewer import OWNER_ID
 
@@ -66,9 +66,6 @@ ORIGIN_PRO = "Restauracja PRO"
 SIZE = "2K"
 #: A picture this long or longer gains nothing from a drawing of 2K.
 LONGEST = 2048
-#: Our model is given the picture at most this long (four times it is
-#: twice :data:`LONGEST`): a minute or two on the NAS, not several.
-MODEL_INPUT = 1024
 #: The proportions of the drawing may differ from the picture's by this
 #: share and are then set right; by more it is not taken.
 SKEW_FIXED = 0.005
@@ -279,7 +276,7 @@ class Restorer:
             if item.id in seen or item.id in skip or self.restored(item) or item.excluded:
                 continue
             seen.add(item.id)
-            if item.look is None and low_side(item) > 0:
+            if item.look is None and restore_side(item) > 0:
                 found.append(item)
         return found
 
@@ -330,16 +327,12 @@ class Restorer:
 
     def draw(self, item: Item, picture: Image.Image) -> Image.Image:
         """Our model's drawing of ``picture``, :data:`LONGEST` long."""
-        given = picture
-        if max(given.size) > MODEL_INPUT:
-            k = MODEL_INPUT / max(given.size)
-            given = given.resize(
-                (max(1, round(given.width * k)), max(1, round(given.height * k))),
-                Image.Resampling.LANCZOS,
-            )
+        # The whole picture, not made smaller first (Mateusz 2026-11-26:
+        # "materiał wejściowy podajemy pełny"): four times it is brought
+        # down to :data:`LONGEST`.
         with self._drawing:
             look = self._look(picture)
-            drawn = self.model.larger(given, look, artsr.kind_of(item))
+            drawn = self.model.larger(picture, look, artsr.kind_of(item))
         k = LONGEST / max(drawn.size)
         return drawn.resize(
             (round(drawn.width * k), round(drawn.height * k)), Image.Resampling.LANCZOS

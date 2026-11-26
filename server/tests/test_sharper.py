@@ -326,6 +326,7 @@ def test_the_card_asks_and_the_frame_gets_the_copy(tmp_path: Path) -> None:
             "held_by": "",
             "held_at": "",
             "low_side": 0,
+            "restore_side": 0,
             "picture_stamp": "",
         }
 
