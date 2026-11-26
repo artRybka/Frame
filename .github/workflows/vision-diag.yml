@@ -12,4 +12,14 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
-      - run: swift scratch/vision-diag/diag.swift scratch/vision-diag/*.jpg
+      - name: Works to look at besides the two
+        run: |
+          mkdir -p "$RUNNER_TEMP/works"
+          n=0
+          while read -r url; do
+            n=$((n + 1))
+            curl -sS -m 60 -A "frame-diag/1.0 (art frame test script)" -o "$(printf '%s/works/w%02d.jpg' "$RUNNER_TEMP" "$n")" "$url" || true
+            sleep 1
+          done < scratch/vision-diag/works.txt
+          ls -la "$RUNNER_TEMP/works"
+      - run: swift scratch/vision-diag/diag.swift scratch/vision-diag/*.jpg "$RUNNER_TEMP"/works/*.jpg

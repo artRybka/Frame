@@ -46,7 +46,12 @@ actor SubjectFocus {
     /// than the picture (Galeria, Mateusz 2026-11-23: "Staraj się kadrować
     /// na temat"): the main faces; else the largest figure's head; else the
     /// most telling of the places that draw the eye, not all of them
-    /// together (a middle between two of them is often empty).
+    /// together (a middle between two of them is often empty). Of a
+    /// subject much wider than the screen its middle says little (the ribs
+    /// of Stubbs's tiger, the shaft of a cart; Mateusz 2026-11-26: "kadr
+    /// obejmuje jego środek który nic nie mówi"): the cut goes to the part
+    /// of it that draws the eye most (`telling`), and of faces too far
+    /// apart for one screen to the largest and those beside it (`together`).
     ///
     /// `ahead` false: a picture fetched before it is shown (Galeria's
     /// stock for its grid). It waits for all that are on the screen: a
@@ -166,7 +171,140 @@ actor SubjectFocus {
         let salient = (attention.results?.first?.salientObjects ?? [])
             .filter { $0.confidence > 0.3 }
             .map { (box: topLeft($0.boundingBox), weight: CGFloat($0.confidence)) }
-        return subject(faces: faceBoxes, figures: figures, salient: salient)
+        return subject(
+            faces: faceBoxes, figures: figures, salient: salient,
+            heat: (attention.results?.first).flatMap { Heat($0.pixelBuffer) },
+            shape: CGFloat(cgImage.width) / CGFloat(max(cgImage.height, 1))
+        )
+    }
+
+    /// Vision's map of what draws the eye in a picture: the whole picture
+    /// on a small grid, rows from the top.
+    struct Heat {
+        let wide: Int
+        let tall: Int
+        let values: [Float]
+
+        init(wide: Int, tall: Int, values: [Float]) {
+            self.wide = wide
+            self.tall = tall
+            self.values = values
+        }
+
+        init?(_ buffer: CVPixelBuffer) {
+            guard CVPixelBufferGetPixelFormatType(buffer) == kCVPixelFormatType_OneComponent32Float else { return nil }
+            CVPixelBufferLockBaseAddress(buffer, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+            let wide = CVPixelBufferGetWidth(buffer), tall = CVPixelBufferGetHeight(buffer)
+            guard wide > 0, tall > 0, let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
+            let stride = CVPixelBufferGetBytesPerRow(buffer)
+            var values: [Float] = []
+            values.reserveCapacity(wide * tall)
+            for y in 0 ..< tall {
+                let row = base.advanced(by: y * stride).assumingMemoryBound(to: Float32.self)
+                values.append(contentsOf: UnsafeBufferPointer(start: row, count: wide))
+            }
+            self.init(wide: wide, tall: tall, values: values)
+        }
+
+        /// What each column (or each row) holds of the rows (columns)
+        /// from `from` up to `to`, fractions of the picture.
+        func sums(columns: Bool, from: CGFloat = 0, to: CGFloat = 1) -> [CGFloat] {
+            let count = columns ? wide : tall, across = columns ? tall : wide
+            let first = min(max(Int((from * CGFloat(across)).rounded(.down)), 0), across - 1)
+            let last = min(max(Int((to * CGFloat(across)).rounded(.up)), first + 1), across)
+            var sums = [CGFloat](repeating: 0, count: count)
+            for along in 0 ..< count {
+                for other in first ..< last {
+                    let value = columns ? values[other * wide + along] : values[along * wide + other]
+                    sums[along] += CGFloat(max(value, 0))
+                }
+            }
+            return sums
+        }
+    }
+
+    /// The shape of the screen a work fills in Galeria (and of its tile in
+    /// the grid), width to height.
+    static let screen: CGFloat = 0.46
+    /// The part of a subject the cut moves to holds this much more of what
+    /// draws the eye than the part about its middle; less, and the work is
+    /// cut as it was.
+    static let tells: CGFloat = 1.1
+    /// Windows that hold this share of the best one's are as good as it.
+    static let asGood: CGFloat = 0.98
+
+    /// How much of a picture of `shape` (width to height) a screen filled
+    /// by it shows, and whether it is the picture's width that is cut.
+    static func seen(of shape: CGFloat) -> (share: CGFloat, sideways: Bool) {
+        shape > screen ? (screen / max(shape, 0.01), true) : (max(shape, 0.01) / screen, false)
+    }
+
+    /// Where a screen filled by the picture is best cut: about `point`
+    /// (the middle of what draws the eye), unless another part of the
+    /// picture holds clearly more of it than a screen about `point` does.
+    /// Then the middle of that part, and across it where its heat is.
+    static func telling(_ heat: Heat, shape: CGFloat, from point: UnitPoint) -> UnitPoint {
+        let (share, sideways) = seen(of: shape)
+        guard share < 0.95 else { return point }
+        let sums = heat.sums(columns: sideways)
+        let count = CGFloat(sums.count)
+        var upTo: [CGFloat] = [0]
+        for sum in sums { upTo.append(upTo[upTo.count - 1] + sum) }
+        guard let all = upTo.last, all > 0 else { return point }
+        // What a window about `middle` holds: whole cells and parts of the
+        // two at its ends.
+        func held(_ middle: CGFloat) -> CGFloat {
+            func before(_ place: CGFloat) -> CGFloat {
+                let at = min(max(place * count, 0), count)
+                let cell = min(Int(at), sums.count - 1)
+                return upTo[cell] + (at - CGFloat(cell)) * sums[cell]
+            }
+            return before(middle + share / 2) - before(middle - share / 2)
+        }
+        let least = share / 2, most = 1 - share / 2
+        let steps = 200
+        let middles = (0 ... steps).map { least + (most - least) * CGFloat($0) / CGFloat(steps) }
+        let holds = middles.map(held)
+        guard let best = holds.indices.max(by: { holds[$0] < holds[$1] }) else { return point }
+        let now = min(max(sideways ? point.x : point.y, least), most)
+        guard holds[best] > held(now) * tells else { return point }
+        // The middle of the windows as good as the best one, about it.
+        var first = best, last = best
+        while first > 0, holds[first - 1] >= holds[best] * asGood { first -= 1 }
+        while last < steps, holds[last + 1] >= holds[best] * asGood { last += 1 }
+        let along = (middles[first] + middles[last]) / 2
+        // Across the window: where its heat is.
+        let across = heat.sums(columns: !sideways, from: along - share / 2, to: along + share / 2)
+        var weight: CGFloat = 0, moment: CGFloat = 0
+        for (cell, sum) in across.enumerated() {
+            weight += sum
+            moment += (CGFloat(cell) + 0.5) * sum
+        }
+        let other = weight > 0 ? moment / weight / CGFloat(across.count) : (sideways ? point.y : point.x)
+        return sideways ? UnitPoint(x: along, y: other) : UnitPoint(x: other, y: along)
+    }
+
+    /// Faces on one screen take no more of it than this, edge to edge.
+    static let facesFill: CGFloat = 0.8
+
+    /// The largest of `faces` and those that are on one screen with it
+    /// (larger ones first), as one box: of faces too far apart for one
+    /// screen their middle is the empty wall between them.
+    static func together(_ faces: [CGRect], shape: CGFloat) -> CGRect? {
+        let (share, sideways) = seen(of: shape)
+        guard share < 0.95 else { return union(faces) }
+        let room = share * facesFill
+        var box: CGRect?
+        for face in faces.sorted(by: { $0.area > $1.area }) {
+            guard let so = box else {
+                box = face
+                continue
+            }
+            let with = so.union(face)
+            if (sideways ? with.width : with.height) <= room { box = with }
+        }
+        return box
     }
 
     /// A figure this small (a share of the picture's height) is staffage,
@@ -174,10 +312,13 @@ actor SubjectFocus {
     static let figureLeast: CGFloat = 0.25
 
     /// See `point(in:key:near:subject:)`. Boxes are fractions with the
-    /// origin top-left.
-    static func subject(faces: [CGRect], figures: [CGRect], salient: [(box: CGRect, weight: CGFloat)]) -> UnitPoint {
+    /// origin top-left; `shape` is the picture's, width to height.
+    static func subject(
+        faces: [CGRect], figures: [CGRect], salient: [(box: CGRect, weight: CGFloat)],
+        heat: Heat? = nil, shape: CGFloat = SubjectFocus.screen
+    ) -> UnitPoint {
         let largest = faces.map(\.area).max() ?? 0
-        if let box = union(faces.filter { $0.area >= largest * 0.4 }) {
+        if let box = together(faces.filter { $0.area >= largest * 0.4 }, shape: shape) {
             return UnitPoint(x: box.midX, y: box.midY)
         }
         if let figure = figures.filter({ $0.height >= figureLeast }).max(by: { $0.area < $1.area }) {
@@ -187,7 +328,8 @@ actor SubjectFocus {
         // the picture it takes (the square root: a big field is no subject
         // for its size alone).
         if let best = salient.max(by: { $0.weight * $0.box.area.squareRoot() < $1.weight * $1.box.area.squareRoot() }) {
-            return UnitPoint(x: best.box.midX, y: best.box.midY)
+            let middle = UnitPoint(x: best.box.midX, y: best.box.midY)
+            return heat.map { telling($0, shape: shape, from: middle) } ?? middle
         }
         return .center
     }
