@@ -139,15 +139,16 @@ def test_saving_one_limit_leaves_the_other(service: FrameService) -> None:
 
 
 def test_the_app_s_largest_limits_are_kept_whole(service: FrameService) -> None:
-    # Konfiguracja offers 100 GB for both (Mateusz 2026-11-24): nothing cuts
-    # them back to an older maximum, also after a restart.
-    service.storage.save(StorageUpdate(catalogue_mb=100000, originals_mb=100000))
-    assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (100000, 100000)
+    # Konfiguracja offers 100 GB for the catalogue (Mateusz 2026-11-24) and
+    # 2 TB for the originals (2026-11-26): nothing cuts them back to an older
+    # maximum, also after a restart.
+    service.storage.save(StorageUpdate(catalogue_mb=100000, originals_mb=2_000_000))
+    assert (service.settings.catalogue_mb, service.settings.image_cache_mb) == (100000, 2_000_000)
     view = service.storage.view()
-    assert (view.catalogue_mb, view.originals_mb) == (100000, 100000)
+    assert (view.catalogue_mb, view.originals_mb) == (100000, 2_000_000)
     settings = _settings(service.settings.data_dir)
     StorageStore(settings, service.library, service.images, service.store)
-    assert (settings.catalogue_mb, settings.image_cache_mb) == (100000, 100000)
+    assert (settings.catalogue_mb, settings.image_cache_mb) == (100000, 2_000_000)
 
 
 def test_the_view_says_when_the_catalogue_is_full(service: FrameService) -> None:

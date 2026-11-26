@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.386
+
+- Miejsce na serwerze: oryginały dzieł mogą zająć także 500 GB, 1 TB,
+  1,5 TB i 2 TB (serwer przyjmuje limity do 10 TB).
+
 ## 1.145.385
 
 - Galeria: narożniki wciskanego ekranu są w każdej klatce współśrodkowe

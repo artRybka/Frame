@@ -111,8 +111,8 @@ class CatalogueCounts(BaseModel):
 class StorageUpdate(BaseModel):
     """Either limit or both; the default value goes back to frame.env."""
 
-    catalogue_mb: int | None = Field(default=None, ge=100, le=1_000_000)
-    originals_mb: int | None = Field(default=None, ge=100, le=1_000_000)
+    catalogue_mb: int | None = Field(default=None, ge=100, le=10_000_000)
+    originals_mb: int | None = Field(default=None, ge=100, le=10_000_000)
 
 
 class StorageStore:
