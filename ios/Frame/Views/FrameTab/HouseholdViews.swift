@@ -217,7 +217,7 @@ struct HouseholdSection: View {
                     get: { limit },
                     set: { value in Task { await save { try await $0.setAccess(id: person.id, PersonAccess(proLimit: value)) } } }
                 ), in: 0 ... 50) {
-                    Text(bound: "Restaurator Pro dziennie: \(limit)").font(.caption)
+                    Text(bound: "Restauracja PRO dziennie: \(limit)").font(.caption)
                 }
             }
             ForEach(person.devices) { device in
@@ -376,7 +376,7 @@ struct MyAccessView: View {
                                         .foregroundStyle(Theme.inkSoft)
                                 }
                                 if let left = me.proLeft {
-                                    Text(bound: "Restaurator Pro na dziś: zostało \(left)")
+                                    Text(bound: "Restauracja PRO na dziś: zostało \(left)")
                                         .font(.caption)
                                         .foregroundStyle(Theme.inkSoft)
                                 }

@@ -32,13 +32,13 @@ struct RestorerSection: View {
     @ViewBuilder
     private func content(_ state: RestorerState) -> some View {
         if state.pro == false {
-            Label("Restaurator Pro potrzebuje klucza Gemini. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
+            Label("Restauracja PRO potrzebuje klucza Gemini. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
                 .font(.caption)
                 .foregroundStyle(Theme.warn)
             Divider()
         }
         Text(bound:
-            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px, w barwach oryginału, własnym modelem na serwerze, bez opłat. Restaurator Pro rysuje modelem Google, w ciągu doby. Szczegóły są dorysowane, dlatego takie dzieła mają iskierki. Zamawiasz w menu „…” playlisty albo dzieła. Odnowione trafiają do playlisty Restaurator."
+            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px, w barwach oryginału, własnym modelem na serwerze, bez opłat. Restauracja PRO rysuje modelem Google, w ciągu doby. Szczegóły są dorysowane, dlatego takie dzieła mają iskierki. Zamawiasz w menu „…” playlisty albo dzieła. Odnowione trafiają do playlisty Restaurator."
         )
         .font(.caption)
         .foregroundStyle(Theme.inkSoft)
@@ -48,7 +48,7 @@ struct RestorerSection: View {
         }
         row("Odnowione", Names.pictures(state.restored), symbol: LowRes.restoredSymbol)
         if let settings = model.aiSettings, let days = settings.costDays, let rows = settings.geminiCosts {
-            row("Restaurator Pro, \(days) dni", AiSection.usd(rows.first { $0.key == "restorer" }?.daysUsd ?? 0))
+            row("Restauracja PRO, \(days) dni", AiSection.usd(rows.first { $0.key == "restorer" }?.daysUsd ?? 0))
         }
     }
 

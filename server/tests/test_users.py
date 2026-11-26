@@ -539,7 +539,8 @@ def test_each_person_has_restaurator_pro_works_a_day(tmp_path: Path) -> None:
         work = _add(app.state.service, 1)
         refused = client.post(f"/api/library/items/{work.id}/restore/pro", headers=guest)
         assert refused.status_code == 429
-        assert refused.json()["detail"] == "Na dziś to już 0 dzieł Restauratora Pro. Kolejne jutro."
+        said = refused.json()["detail"]
+        assert said == "Na dziś to już 0 dzieł w Restauracji PRO. Kolejne jutro."
         # Given back when never drawn.
         svc = app.state.service
         paulina = svc.users.user(client.get("/api/me", headers=member).json()["id"])

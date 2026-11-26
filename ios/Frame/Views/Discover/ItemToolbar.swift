@@ -42,6 +42,9 @@ struct ItemToolbar: ToolbarContent {
     var retakeOwn: (() -> Void)? = nil
     var deleteOwn: (() -> Void)? = nil
     var deletingOwn: Binding<Bool>? = nil
+    /// Told when "…" opens and closes: the host holds what it offers
+    /// while it is open (`MenuOffer`).
+    var menuOpened: ((Bool) -> Void)? = nil
 
     /// A museum's work, which other sources may have too. Another copy
     /// changes the picture for the whole household: the owner's to pick
@@ -73,6 +76,7 @@ struct ItemToolbar: ToolbarContent {
             Menu {
                 // Hidden for this person only, a guest too (Mateusz 2026-11-20:
                 // „żeby działało dla każdego użytkownika indywidualnie”).
+                // Its appearing is the menu's opening.
                 Button(
                     item.excluded ? "Przywróć dzieło" : "Ukryj dzieło",
                     systemImage: item.excluded ? "eye" : "eye.slash"
@@ -83,6 +87,8 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
+                .onAppear { menuOpened?(true) }
+                .onDisappear { menuOpened?(false) }
                 if editOwn != nil || retakeOwn != nil {
                     Divider()
                     if let editOwn {
@@ -157,7 +163,7 @@ struct ItemToolbar: ToolbarContent {
                             Text(bound: LowRes.proName)
                             Text(bound: proNote)
                         } icon: {
-                            Image(systemName: "sparkles.rectangle.stack")
+                            LowRes.proMenuImage
                         }
                     }
                 }
@@ -244,7 +250,7 @@ struct ItemToolbar: ToolbarContent {
         }
     }
 
-    /// Under "Restaurator Pro": when it comes, and what is left of the day.
+    /// Under "Restauracja PRO": when it comes, and what is left of the day.
     private var proNote: String {
         if let left = model.me?.proLeft { return "Model Google, w ciągu doby · zostało \(left)" }
         return "Model Google, w ciągu doby"
@@ -256,4 +262,14 @@ struct ItemToolbar: ToolbarContent {
         if let side = pictureSide, side > 0 { return "Teraz \(side) px" }
         return "W innych muzeach i bazach"
     }
+}
+
+/// What the work's "…" offers that the server tells after the card opens,
+/// held while the menu is open (`ItemToolbar.menuOpened`).
+struct MenuOffer: Equatable {
+    var pictureSide: Int?
+    var restore: Bool
+    var pro: Bool
+    var recover: Bool
+    var recoveryKind: ColourRecovery.Kind
 }

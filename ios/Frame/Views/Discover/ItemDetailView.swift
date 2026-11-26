@@ -46,6 +46,11 @@ struct ItemDetailView: View {
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
     @State private var orderingPro = false
+    /// What "…" offers as it was opened, held while it is open: what the
+    /// server tells meanwhile (the colours' correction, how small the
+    /// picture is) no longer adds entries under his finger (Mateusz
+    /// 2026-11-26: „po otwarciu menu pozycje przeskakują/dodają się”).
+    @State private var menuHeld: MenuOffer?
     /// A work of his own: "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu".
     @State private var editingOwn = false
     @State private var retakingOwn = false
@@ -279,21 +284,22 @@ struct ItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item {
+                let offer = menuHeld ?? menuOffer(item)
                 ItemToolbar(
                     model: model, item: item, changed: { self.item = $0 },
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
-                    findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
-                    restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
-                    restorePro: canRestorePro(item) ? { Task { await orderPro() } } : nil,
+                    findingCopies: $findingCopies, pictureSide: offer.pictureSide,
+                    restore: offer.restore ? { Task { await restoreByModel() } } : nil,
+                    restorePro: offer.pro ? { Task { await orderPro() } } : nil,
                     correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
                     undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: recoveryKind != nil && !cleaning
-                        ? { Task { await toggleCleaning() } } : nil,
-                    recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
+                    recover: offer.recover ? { Task { await toggleCleaning() } } : nil,
+                    recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
                     editOwn: ownActions(item) ? { editingOwn = true } : nil,
                     retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
                     deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
-                    deletingOwn: $deletingOwn
+                    deletingOwn: $deletingOwn,
+                    menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
                 )
             }
         }
@@ -436,6 +442,17 @@ struct ItemDetailView: View {
         }
     }
 
+    /// What "…" offers now (`menuHeld` while it is open).
+    private func menuOffer(_ item: Item) -> MenuOffer {
+        MenuOffer(
+            pictureSide: pictureSize.map { max($0.0, $0.1) },
+            restore: canRestore(item),
+            pro: canRestorePro(item),
+            recover: recoveryKind != nil && !cleaning,
+            recoveryKind: recoveryKind ?? .varnish
+        )
+    }
+
     /// "Kreatywny restaurator" in the menu: for everyone (2026-11-19), a museum work
     /// whose picture is small for the frame and not drawn again yet.
     private func canRestore(_ item: Item) -> Bool {
@@ -461,7 +478,7 @@ struct ItemDetailView: View {
             let order = try await model.restorePro(itemID: itemID)
             let left = order.left.map { " Na dziś zostało: \($0)." } ?? ""
             model.notices.info(
-                order.sent ? "Zamówione u Restauratora Pro" : "Już czeka u Restauratora Pro",
+                order.sent ? "Zamówiona Restauracja PRO" : "Już czeka na Restaurację PRO",
                 "Damy znać, gdy będzie gotowe, zwykle w ciągu kilku godzin.\(left)"
             )
         } catch let BackendError.http(status, body) where status == 429 || status == 409 {
@@ -486,7 +503,7 @@ struct ItemDetailView: View {
     private func restoreByModel() async {
         restoring = true
         defer { restoring = false }
-        model.notices.info("Restauracja dzieła trwa…", "Potrwa minutę lub dwie.")
+        model.notices.info("Restauracja trwa…", "Potrwa minutę lub dwie.")
         do {
             copyPicked(try await model.restore(itemID: itemID))
         } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
@@ -976,8 +993,12 @@ struct ItemDetailView: View {
     /// picture's place on the card, as it fades in.
     private func sharpen() async {
         guard let id = described, id == itemID, item?.kind == .artwork, item?.sharper == nil else { return }
-        for attempt in 0..<4 {
-            guard let view = try? await model.backend.sharpen(itemID: id, wait: attempt == 0 ? 25 : 30),
+        // First at once: how small the picture is, for "…" (Mateusz
+        // 2026-11-26: entries came under his finger), then the long wait.
+        for attempt in 0..<5 {
+            guard let view = try? await model.backend.sharpen(
+                itemID: id, wait: attempt == 0 ? 0 : attempt == 1 ? 25 : 30
+            ),
                   !Task.isCancelled, id == itemID
             else { return }
             if let width = view.width, let height = view.height, width > 0 {
@@ -1306,7 +1327,7 @@ struct ItemDetailView: View {
             return
         }
         recovery = nil
-        try? await Task.sleep(for: .milliseconds(600))
+        // At once: "…" waits for it (Mateusz 2026-11-26).
         guard !Task.isCancelled, let told = try? await model.backend.recovery(itemID: item.id, made: made),
               !Task.isCancelled, key == recoveryKey
         else { return }
