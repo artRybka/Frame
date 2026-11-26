@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.400
+
+- Po wyborze Restauracji PRO menu „…” od razu pokazuje ją jako zamówioną
+  (przygaszoną, z iskierkami), bez wychodzenia z karty.
+
 ## 1.145.399
 
 - Raster druku znika też po wejściu w kartę dzieła: zapisane wcześniej
