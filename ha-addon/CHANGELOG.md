@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.394
+
+- Menu „…” dzieła nie dokłada już pozycji po otwarciu: serwer jest pytany
+  od razu, a otwarte menu zostaje takie, jakie się otworzyło.
+- „Restauracja dzieła” nazywa się teraz „Restauracja”, a „Restaurator Pro”
+  „Restauracja PRO”, z nową ikoną: iskierki z małym plusem.
+
 ## 1.145.393
 
 - Restaurator Pro: rysunek Gemini zostaje w całości, z oryginału brane są

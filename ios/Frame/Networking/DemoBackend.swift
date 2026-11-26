@@ -744,7 +744,7 @@ actor DemoBackend: FrameBackend {
         _ = try update(itemID) { item in
             var copy = Self.restoredCopy(item)
             copy.pro = true
-            copy.museum = "Restaurator Pro"
+            copy.museum = "Restauracja PRO"
             item.sharper = copy
         }
         return ProOrder(sent: true, left: nil)

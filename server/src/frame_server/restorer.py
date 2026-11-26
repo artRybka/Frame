@@ -61,7 +61,7 @@ log = logging.getLogger(__name__)
 KIND = "restorer"
 #: Where the drawing is from, as the card names it.
 ORIGIN = "Kreatywny restaurator"
-ORIGIN_PRO = "Restaurator Pro"
+ORIGIN_PRO = "Restauracja PRO"
 #: Google's output: some 2048 px on the long side; ours is brought to it.
 SIZE = "2K"
 #: A picture this long or longer gains nothing from a drawing of 2K.

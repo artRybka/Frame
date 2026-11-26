@@ -111,7 +111,7 @@ final class ColourRecoveryTests: XCTestCase {
         let looks = [Set<Treatment>(), [.colours], [.restored], [.colours, .restored]].map(Treatment.look)
         XCTAssertEqual(Set(looks).count, 4)
         XCTAssertEqual(Treatment.look([]), 0)
-        XCTAssertEqual(LowRes.restoredName, "Restauracja dzieła")
+        XCTAssertEqual(LowRes.restoredName, "Restauracja")
     }
 
     /// A work the server sends cleaned: shown so, its pictures had anew, a
