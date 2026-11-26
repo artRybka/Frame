@@ -252,7 +252,8 @@ def test_a_print_is_analysed_on_its_plate(service: FrameService) -> None:
 
 
 def test_a_small_picture_is_drawn_larger_before_its_study(tmp_path: Path) -> None:
-    from test_restorer import FakePainter
+    import numpy as np
+    from test_restorer import FakeModel, FakePainter
 
     app = _app(tmp_path)
     svc: FrameService = app.state.service
@@ -264,6 +265,9 @@ def test_a_small_picture_is_drawn_larger_before_its_study(tmp_path: Path) -> Non
     painter = FakePainter()
     svc.painter = painter  # type: ignore[assignment]
     svc.restorer.painter = painter  # type: ignore[assignment]
+    model = FakeModel()
+    svc.restorer.model = model  # type: ignore[assignment]
+    svc.restorer.look_of = lambda picture: np.ones(768, np.float32)
     with TestClient(app) as client:
         _catalogue(svc)
         _like(svc)
@@ -297,7 +301,7 @@ def test_a_small_picture_is_drawn_larger_before_its_study(tmp_path: Path) -> Non
                     break
         finally:
             svc.ai.stop()
-        assert painter.asked == [("restorer", "2K")]
+        assert model.asked == [((900, 640), "painting")] and painter.asked == []
         assert parts[0] == "restoring" and "sources" in parts
         restored = svc.library.get("aic:20")
         assert restored is not None and restored.sharper is not None and restored.sharper.restored
