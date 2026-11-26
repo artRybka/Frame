@@ -305,14 +305,14 @@ struct ArtCard: View {
             label += ", można mocno przybliżyć"
         }
         if item.restored == true {
-            // Restaurator Pro's in the title's own ink, a step darker than
-            // the server's own (Mateusz 2026-11-26).
+            // Restaurator Pro's in gold (Mateusz 2026-11-26); on a tile it
+            // stands still, at the title on the card it glints with the turn.
             let pro = item.restoredPro == true
             text = text
                 + Text("\u{00A0}").font(font)
                 + Text(Image(systemName: LowRes.restoredSymbol))
-                    .font(.system(size: 11.5, weight: pro ? .bold : .medium))
-                    .foregroundStyle(pro ? Theme.ink : LowRes.tint)
+                    .font(.system(size: 11.5, weight: pro ? .semibold : .medium))
+                    .foregroundStyle(pro ? ProGold.rest : LowRes.tint)
             label += pro ? ", \(LowRes.proSpoken)" : ", odnowione restauracją dzieła"
         } else if let side = item.lowSide, side > 0 {
             text = text
@@ -1180,7 +1180,7 @@ struct TitleWithYear: View {
     /// Drawn again by the image model: amber sparkles on a badge in place
     /// of the low resolution's (`LowRes.restoredSymbol`).
     var restored = false
-    /// By "Restaurator Pro": the sparkles on a solid badge.
+    /// By "Restaurator Pro": the sparkles alone, in gold glinting with the turn.
     var restoredPro = false
     /// Cut out of the museum's photograph (`Item.cut`): the crop's symbol
     /// on a badge right after the year (Mateusz 2026-11-14).
@@ -1191,11 +1191,43 @@ struct TitleWithYear: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var scale
 
+    @Environment(\.accessibilityReduceMotion) private var still
+
     var body: some View {
+        let pro = restored && restoredPro
+        // Read only for a Pro mark: the title is laid out again with the turn.
+        let gold = pro ? ProGold.colour(still ? nil : Tilt.shared, dark: scheme == .dark) : nil
         TitleYear.text(
             title, date: date, font: font, scheme: scheme, scale: scale, zoom: zoom, lowSide: lowSide,
-            restored: restored, restoredPro: restoredPro, cropped: cropped, cleaned: cleaned
+            restored: restored, gold: gold, cropped: cropped, cleaned: cleaned
         )
+        .modifier(FollowsTiltWhen(on: pro))
+    }
+}
+
+/// The gyroscope kept running only while a glinting mark is on screen.
+private struct FollowsTiltWhen: ViewModifier {
+    let on: Bool
+
+    func body(content: Content) -> some View {
+        if on { content.followsTilt() } else { content }
+    }
+}
+
+/// Restaurator Pro's gold (Mateusz 2026-11-26): the sparkles go from a
+/// deep gold through the metal's own to a pale glint as the phone turns
+/// (`Tilt`); still, the metal's own.
+enum ProGold {
+    static let rest = Color(light: 0xC99A2E, dark: 0xD9AE45)
+
+    static func colour(_ tilt: Tilt?, dark: Bool) -> Color {
+        guard let tilt else { return rest }
+        // Both turns, so it glints whichever way the phone is moved.
+        let t = 0.5 + 0.5 * sin(Double.pi * (tilt.x * 1.4 + tilt.y * 0.7))
+        let deep = dark ? (0.62, 0.45, 0.12) : (0.55, 0.38, 0.08)
+        let glint = dark ? (1.0, 0.93, 0.62) : (0.98, 0.86, 0.45)
+        func mix(_ a: Double, _ b: Double) -> Double { a + (b - a) * t }
+        return Color(red: mix(deep.0, glint.0), green: mix(deep.1, glint.1), blue: mix(deep.2, glint.2))
     }
 }
 
@@ -1218,7 +1250,9 @@ enum LowRes {
     static let restoredName = "Restauracja dzieła"
     /// "Restaurator Pro" (Mateusz 2026-11-26): Google's model through its
     /// Batch, ordered within each person's day. Its mark after the title:
-    /// the same sparkles in the paper's colour on a solid badge (sketch C).
+    /// the sparkles alone, in gold that glints as the phone turns
+    /// (`ProGold`; 13:28 UTC: „znaczek iskierki tylko złote, mieniące się
+    /// przy przechyleniu”).
     static let proName = "Restaurator Pro"
     static let proSpoken = "odnowione Restauratorem Pro"
     /// The marks' grey, not a warning's amber (Mateusz 2026-11-14: the
@@ -1265,7 +1299,7 @@ enum CleanedMark {
 enum TitleYear {
     static func text(
         _ title: String, date: String, font: Font, scheme: ColorScheme, scale: CGFloat, zoom: Int? = nil,
-        lowSide: Int? = nil, restored: Bool = false, restoredPro: Bool = false, cropped: Bool = false,
+        lowSide: Int? = nil, restored: Bool = false, gold: Color? = nil, cropped: Bool = false,
         cleaned: Bool = false
     ) -> Text {
         var text = Text(bound: title).font(font).foregroundStyle(Theme.ink)
@@ -1289,11 +1323,17 @@ enum TitleYear {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
             label += zoom > 0 ? ", można przybliżyć \(zoom) razy" : ", można mocno przybliżyć"
         }
-        if restored,
-           let badge = badge("", scheme: scheme, scale: scale, symbol: LowRes.restoredSymbol, soft: true,
-                             solid: restoredPro) {
+        if restored, let gold {
+            // Restaurator Pro's: the sparkles alone, in gold, no badge.
+            text = text + Text(" ").font(font)
+                + Text(Image(systemName: LowRes.restoredSymbol))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(gold)
+            label += ", \(LowRes.proSpoken)"
+        } else if restored,
+           let badge = badge("", scheme: scheme, scale: scale, symbol: LowRes.restoredSymbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
-            label += restoredPro ? ", \(LowRes.proSpoken)" : ", odnowione restauracją dzieła"
+            label += ", odnowione restauracją dzieła"
         } else if let lowSide, lowSide > 0,
            let badge = badge("\(lowSide) px", scheme: scheme, scale: scale, symbol: LowRes.symbol, soft: true) {
             text = text + Text(" ").font(font) + Text(badge).baselineOffset(-3)
@@ -1316,14 +1356,11 @@ enum TitleYear {
 
     /// The badge drawn once per date, look and screen.
     private static func badge(
-        _ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil, soft: Bool = false,
-        solid: Bool = false
+        _ date: String, scheme: ColorScheme, scale: CGFloat, symbol: String? = nil, soft: Bool = false
     ) -> Image? {
-        let key = "\(date)|\(symbol ?? "")|\(soft)|\(solid)|\(scheme == .dark)|\(scale)"
+        let key = "\(date)|\(symbol ?? "")|\(soft)|\(scheme == .dark)|\(scale)"
         if let image = drawn[key] { return image }
-        let renderer = ImageRenderer(
-            content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol, soft: soft, solid: solid)
-        )
+        let renderer = ImageRenderer(content: YearBadge(date: date, dark: scheme == .dark, symbol: symbol, soft: soft))
         renderer.scale = scale
         guard let cgImage = renderer.cgImage else { return nil }
         // Decorative: VoiceOver reads the date from the text's label.
@@ -1347,15 +1384,11 @@ private struct YearBadge: View {
     /// In the marks' grey (`LowRes.tint`: the low resolution's, the
     /// restorer's, the crop's), not the title's ink.
     var soft = false
-    /// Turned over: the symbol in the paper's colour on the ink, solid
-    /// ("Restaurator Pro", Mateusz 2026-11-26, sketch C).
-    var solid = false
 
     var body: some View {
         let ink = soft
             ? Color(hex: dark ? 0xA79F94 : 0x6E675E)
             : Color(hex: dark ? 0xF1ECE4 : 0x1D1B18)
-        let paper = Color(hex: dark ? 0x1D1B18 : 0xF6F1E8)
         HStack(spacing: 3) {
             if symbol == LowRes.symbol {
                 LowRes.image
@@ -1377,9 +1410,9 @@ private struct YearBadge: View {
         // the year's badge: all of them stand on one line, the same top and
         // bottom (Mateusz 2026-11-14).
         .frame(minHeight: Self.lineHeight)
-        .foregroundStyle(solid ? paper : ink)
+        .foregroundStyle(ink)
         .padding(.horizontal, 6)
         .padding(.vertical, 2.5)
-        .background(solid ? ink : ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+        .background(ink.opacity(0.08), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
     }
 }

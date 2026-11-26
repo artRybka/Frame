@@ -521,6 +521,7 @@ struct RestoredTag: View {
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: LowRes.restoredSymbol).font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(pro ? ProGold.rest : LowRes.tint)
             Text(bound: pro ? LowRes.proName : LowRes.restoredName)
                 .font(.system(size: 9.5, weight: .bold))
                 .tracking(0.6)

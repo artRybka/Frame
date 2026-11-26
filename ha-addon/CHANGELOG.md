@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.389
+
+- Znacznik Restauratora Pro: przy tytule na karcie dzieła same złote
+  iskierki, mieniące się przy przechylaniu telefonu; na kafelkach złote,
+  nieruchome.
+
 ## 1.145.388
 
 - Restauracja dzieł własnym modelem na serwerze, bez opłat i bez odmów:
