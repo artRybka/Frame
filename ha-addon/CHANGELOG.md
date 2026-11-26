@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.393
+
+- Restaurator Pro: rysunek Gemini zostaje w całości, z oryginału brane są
+  tylko barwy i jasność.
+- Zapisane restauracje całego zdjęcia są przycinane do dzieła także wtedy,
+  gdy kadr jest niewiele węższy od zdjęcia.
+
 ## 1.145.392
 
 - Restaurator Pro zamówiony po zwykłej restauracji trzyma kadr dzieła:
