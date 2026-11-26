@@ -1064,6 +1064,21 @@ class ImageCache:
                 del self._before_drawn[next(iter(self._before_drawn))]
         return img
 
+    def work_before_drawn(self, item: Item, urgent: bool = False) -> Image.Image:
+        """The work as the restorer's drawing of ``item`` was drawn from:
+        the museum's photograph (:meth:`before_drawn`) cut down to the work
+        by the cut set on that photograph, or on a drawing of it whole.
+        Drawn again (Restaurator Pro after our model), a work kept its cut
+        no longer: the whole photograph was drawn, its frame and the board
+        it lay on (Mateusz 2026-11-26: „Restaurator PRO nie powinien
+        ignorować wcześniejszego kadrowania”)."""
+        img = self.before_drawn(item, urgent)
+        cut = item.cut
+        quad = cut.shown() if cut is not None else None
+        if cut is None or quad is None or not same_picture(cut.aspect, img.size):
+            return img
+        return warp(img, quad, ratio=self._ratio(item))
+
     def tile(self, thumb: Path) -> Path:
         """The thumbnail ``thumb`` as a cover tile shows it: the work
         without the paper, mount or backdrop around it
