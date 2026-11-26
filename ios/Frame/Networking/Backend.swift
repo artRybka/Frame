@@ -104,6 +104,9 @@ protocol FrameBackend: Sendable {
     /// by the image model (half a minute) and kept in its place, as a copy
     /// the owner picked. A 422 "refused: …" when the model would not.
     func restore(itemID: String) async throws -> Item
+    /// "Restaurator Pro": the work sent to Google's model (within a day);
+    /// 429 past this person's day, 409 without Google's key.
+    func restorePro(itemID: String) async throws -> ProOrder
     /// Konfiguracja: the works waiting in Google's batches and those drawn.
     func restorer() async throws -> RestorerState
     /// The playlist's "…" → "Kreatywny restaurator": its works under
@@ -427,9 +430,6 @@ protocol FrameBackend: Sendable {
     /// before keeping it.
     func saveGeminiKey(_ key: String) async throws -> AiSettings
     func deleteGeminiKey() async throws -> AiSettings
-    /// fal.ai's key for the creative restorer; checked with fal before kept.
-    func saveFalKey(_ key: String) async throws -> AiSettings
-    func deleteFalKey() async throws -> AiSettings
     /// Keys of art sources; the server checks a key with its source before keeping it.
     func sourceKeys() async throws -> [SourceKey]
     func saveSourceKey(_ source: String, key: String) async throws -> [SourceKey]

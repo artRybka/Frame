@@ -22,6 +22,9 @@ struct ItemToolbar: ToolbarContent {
     /// colours' correction: for a picture small for the frame (`LowRes`),
     /// drawn again by the image model.
     var restore: (() -> Void)? = nil
+    /// "Restaurator Pro" (Mateusz 2026-11-26): Google's model through its
+    /// Batch, within this person's day; told when drawn.
+    var restorePro: (() -> Void)? = nil
     /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
     /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
     var correctCut: (() -> Void)? = nil
@@ -121,7 +124,7 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
-                if recover != nil || restore != nil { Divider() }
+                if recover != nil || restore != nil || restorePro != nil { Divider() }
                 if let recover {
                     Button(action: recover) {
                         Label {
@@ -145,6 +148,16 @@ struct ItemToolbar: ToolbarContent {
                             Text("Model AI dorysuje szczegóły")
                         } icon: {
                             Image(systemName: LowRes.restoredSymbol)
+                        }
+                    }
+                }
+                if let restorePro {
+                    Button(action: restorePro) {
+                        Label {
+                            Text(bound: LowRes.proName)
+                            Text(bound: proNote)
+                        } icon: {
+                            Image(systemName: "sparkles.rectangle.stack")
                         }
                     }
                 }
@@ -229,6 +242,12 @@ struct ItemToolbar: ToolbarContent {
             await model.saveToPhotos(item, framed: framed)
             savingPhoto = false
         }
+    }
+
+    /// Under "Restaurator Pro": when it comes, and what is left of the day.
+    private var proNote: String {
+        if let left = model.me?.proLeft { return "Model Google, w ciągu doby · zostało \(left)" }
+        return "Model Google, w ciągu doby"
     }
 
     /// Under "Szukaj lepszej kopii": how large the picture is now.

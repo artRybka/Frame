@@ -1,9 +1,12 @@
-"""The creative restorer (``frame_server.restorer``): one work from its card,
-the owner's favourites under the threshold from Konfiguracja, a playlist's
-from its "…" (Mateusz 2026-11-13)."""
+"""The restorer (``frame_server.restorer``): one work from its card by our
+own model, the owner's favourites under the threshold from Konfiguracja and
+a playlist's from its "…" by it in the background (Mateusz 2026-11-13), and
+"Restaurator Pro" from the card, through Google's Batch, within each
+person's day (2026-11-26)."""
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 
 import httpx
@@ -29,16 +32,25 @@ Svc = Annotated[FrameService, Depends(service)]
 
 
 class RestorerView(BaseModel):
-    """Konfiguracja's line: the favourites the batch would draw (``items``,
-    about ``usd``), those waiting in batches, and the works drawn so far."""
+    """Konfiguracja's line: the favourites our model would draw (``items``,
+    for nothing: ``usd`` 0), those waiting, and the works drawn so far."""
 
     enabled: bool
-    #: Drawn by SeedVR2 on fal.ai (its key in Konfiguracja), not Google's.
-    by_fal: bool = False
+    #: Restaurator Pro can draw (Google's key in Konfiguracja).
+    pro: bool = False
     items: int
     usd: float
     waiting: int
     restored: int
+
+
+class ProOrder(BaseModel):
+    """A work ordered of Restaurator Pro: whether it was sent now (False:
+    it waits already), and how many more its orderer may order today
+    (None: no limit)."""
+
+    sent: bool
+    left: int | None = None
 
 
 def _view(svc: FrameService, works: list[Item] | None = None) -> RestorerView:
@@ -47,7 +59,7 @@ def _view(svc: FrameService, works: list[Item] | None = None) -> RestorerView:
     waiting, restored = svc.restorer.counts()
     return RestorerView(
         enabled=svc.restorer.enabled(),
-        by_fal=svc.restorer.by_fal(),
+        pro=svc.restorer.pro_enabled(),
         items=items,
         usd=usd,
         waiting=waiting,
@@ -61,15 +73,10 @@ async def restorer_view(svc: Svc) -> RestorerView:
 
 
 @router.post("/ai/restorer/favourites", response_model=RestorerView, dependencies=Owner)
-async def restore_favourites(svc: Svc) -> RestorerView:
-    """The favourites whose picture is small for the frame drawn again
-    through the Batch API (within 24 hours, half the price)."""
-    try:
-        await run_in_threadpool(svc.restorer.order_favourites)
-    except AiUnavailable as err:
-        raise HTTPException(409, str(err)) from err
-    except httpx.HTTPError as err:
-        raise HTTPException(502, f"the image model did not answer: {err}") from err
+async def restore_favourites(svc: Svc, user: CurrentUser) -> RestorerView:
+    """The favourites whose picture is small for the frame drawn again by
+    our model in the background."""
+    await run_in_threadpool(svc.restorer.order_favourites, user.id)
     return await run_in_threadpool(_view, svc)
 
 
@@ -80,7 +87,7 @@ def _playlist_works(svc: FrameService, playlist_id: int, user: User) -> list[Ite
 @router.get("/ai/restorer/playlists/{playlist_id}", response_model=RestorerView, dependencies=Owner)
 async def restorer_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> RestorerView:
     """The playlist's line: its works whose picture is small for the frame
-    (under ``low_res.LOW_SIDE``) and that the batch would draw."""
+    (under ``low_res.LOW_SIDE``) and that our model would draw."""
     works = await run_in_threadpool(_playlist_works, svc, playlist_id, user)
     return await run_in_threadpool(_view, svc, works)
 
@@ -89,31 +96,63 @@ async def restorer_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> Re
     "/ai/restorer/playlists/{playlist_id}", response_model=RestorerView, dependencies=Owner
 )
 async def restore_playlist(playlist_id: int, svc: Svc, user: CurrentUser) -> RestorerView:
-    """The playlist's works whose picture is small for the frame drawn again
-    through the Batch API (within 24 hours, half the price; the playlist's
-    "…" → "Kreatywny restaurator")."""
+    """The playlist's works whose picture is small for the frame drawn
+    again by our model, one after another in the background (the
+    playlist's "…" → "Restauracja dzieł")."""
     works = await run_in_threadpool(_playlist_works, svc, playlist_id, user)
-    try:
-        await run_in_threadpool(svc.restorer.order, works)
-    except AiUnavailable as err:
-        raise HTTPException(409, str(err)) from err
-    except httpx.HTTPError as err:
-        raise HTTPException(502, f"the image model did not answer: {err}") from err
+    await run_in_threadpool(svc.restorer.order, works, user.id)
     return await run_in_threadpool(_view, svc, works)
 
 
 @router.post("/library/items/{item_id:item}/restore", response_model=Item)
-async def restore_item(item_id: str, svc: Svc) -> Item:
-    """The work's picture drawn again larger by the image model and kept in
-    its place ("Kreatywny restaurator"; some 25 s). 422 for a work that is
-    not drawn, its detail led by the reason's code ("refused: …": the
-    model would not draw it)."""
+async def restore_item(item_id: str, svc: Svc, user: CurrentUser) -> Item:
+    """The work's picture drawn again larger by our model and kept in its
+    place, in the asker's "Restaurator" (a minute or two on the NAS). 422
+    for a work that is not drawn, its detail led by the reason's code."""
     item = await _work(svc, item_id)
     try:
-        return await run_in_threadpool(urgent_call(svc.restorer.restore), item)
+        return await run_in_threadpool(urgent_call(svc.restorer.restore), item, user.id)
+    except NotRestored as err:
+        raise HTTPException(422, f"{err.code}: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"picture unavailable: {err}") from err
+
+
+@router.post("/library/items/{item_id:item}/restore/pro", response_model=ProOrder)
+async def restore_item_pro(item_id: str, svc: Svc, user: CurrentUser) -> ProOrder:
+    """The work sent to Restaurator Pro (Google's model through the Batch
+    API, within a day); its orderer is told when it is drawn. 429 past
+    their day's limit, 409 without Google's key, 422 for a work that is
+    not drawn ("refused: …": the model would not draw it)."""
+    item = await _work(svc, item_id)
+    today = date.today()
+    if svc.users.pro_left(user, today) == 0:
+        stored = svc.users.user(user.id) or user
+        limit = stored.pro_a_day()
+        raise HTTPException(
+            429, f"Na dziś to już {limit} {_works(limit)} Restauratora Pro. Kolejne jutro."
+        )
+    if not svc.restorer.pro_enabled():
+        raise HTTPException(409, "Restaurator Pro potrzebuje klucza Google w Konfiguracji.")
+    if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
+        item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
+    try:
+        sent = await run_in_threadpool(urgent_call(svc.restorer.order_pro), item, user.id)
     except NotRestored as err:
         raise HTTPException(422, f"{err.code}: {err}") from err
     except AiUnavailable as err:
         raise HTTPException(409, str(err)) from err
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"picture unavailable: {err}") from err
+    if sent:
+        svc.users.ordered_pro(user, today)
+    return ProOrder(sent=sent, left=svc.users.pro_left(user, today))
+
+
+def _works(n: int) -> str:
+    """ "dzieło", "dzieła", "dzieł" after ``n``."""
+    if n == 1:
+        return "dzieło"
+    if n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        return "dzieła"
+    return "dzieł"

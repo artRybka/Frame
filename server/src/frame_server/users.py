@@ -41,6 +41,11 @@ SEEN_EVERY = timedelta(minutes=5)
 #: 2026-11-19: "domownik - 3 dziennie, gość - 1 dziennie").
 STUDIES_A_DAY = 3
 GUEST_STUDIES_A_DAY = 1
+#: Works a day a member and a guest may order of "Restaurator Pro" (Mateusz
+#: 2026-11-26: "limity konserwacji PRO do wykonania podobnie jak limity
+#: studium dzieła").
+PRO_A_DAY = 3
+GUEST_PRO_A_DAY = 1
 OWNER_NAME = "Właściciel"
 
 
@@ -54,6 +59,10 @@ def default_studies(role: Role) -> int:
     return GUEST_STUDIES_A_DAY if role == Role.GUEST else STUDIES_A_DAY
 
 
+def default_pro(role: Role) -> int:
+    return GUEST_PRO_A_DAY if role == Role.GUEST else PRO_A_DAY
+
+
 class User(BaseModel):
     id: str
     name: str
@@ -62,6 +71,8 @@ class User(BaseModel):
     #: Studies a day this person may order (None: what their role starts
     #: with, ``default_studies``); the owner sets it in Konfiguracja.
     study_limit: int | None = None
+    #: Works a day of Restaurator Pro (None: ``default_pro``).
+    pro_limit: int | None = None
 
     @property
     def is_owner(self) -> bool:
@@ -73,6 +84,9 @@ class User(BaseModel):
 
     def studies_a_day(self) -> int:
         return self.study_limit if self.study_limit is not None else default_studies(self.role)
+
+    def pro_a_day(self) -> int:
+        return self.pro_limit if self.pro_limit is not None else default_pro(self.role)
 
 
 class Device(BaseModel):
@@ -116,6 +130,8 @@ class People(BaseModel):
     #: 1.145.271 still set it). Unused since.
     study_limit: int = STUDIES_A_DAY
     studies: dict[str, StudyOrders] = Field(default_factory=dict)
+    #: Works ordered of Restaurator Pro, each person's today.
+    pro: dict[str, StudyOrders] = Field(default_factory=dict)
 
 
 class JoinError(Exception):
@@ -372,10 +388,14 @@ class Users:
             self._save(people)
 
     def set_access(
-        self, user_id: str, role: Role | None = None, study_limit: int | None = None
+        self,
+        user_id: str,
+        role: Role | None = None,
+        study_limit: int | None = None,
+        pro_limit: int | None = None,
     ) -> User | None:
         """Konfiguracja → Domownicy: a person made a member or a guest, and
-        the studies a day they may order."""
+        the studies and Restaurator Pro's works a day they may order."""
         if user_id == OWNER_ID:
             raise ValueError("właściciel ma zawsze pełny dostęp")
         if role == Role.OWNER:
@@ -389,6 +409,8 @@ class Users:
                     u.role = role
                 if study_limit is not None:
                     u.study_limit = max(0, min(study_limit, 100))
+                if pro_limit is not None:
+                    u.pro_limit = max(0, min(pro_limit, 100))
             self._save(people)
         return self.user(user_id)
 
@@ -414,4 +436,38 @@ class Users:
                 orders = StudyOrders(day=day.isoformat())
             orders.count += 1
             people.studies[user.id] = orders
+            self._save(people)
+
+    # -- works a member or guest orders of Restaurator Pro ----------------------------
+
+    def pro_left(self, user: User, day: date) -> int | None:
+        """Works ``user`` may still order of Restaurator Pro on ``day``; None: no limit."""
+        if user.is_owner:
+            return None
+        people = self._load()
+        stored = next((u for u in people.users if u.id == user.id), user)
+        orders = people.pro.get(user.id)
+        used = orders.count if orders is not None and orders.day == day.isoformat() else 0
+        return max(0, stored.pro_a_day() - used)
+
+    def ordered_pro(self, user: User, day: date) -> None:
+        if user.is_owner:
+            return
+        with self._lock:
+            people = self._load()
+            orders = people.pro.get(user.id)
+            if orders is None or orders.day != day.isoformat():
+                orders = StudyOrders(day=day.isoformat())
+            orders.count += 1
+            people.pro[user.id] = orders
+            self._save(people)
+
+    def unordered_pro(self, user_id: str, day: date) -> None:
+        """A work Restaurator Pro never drew given back to the day's limit."""
+        with self._lock:
+            people = self._load()
+            orders = people.pro.get(user_id)
+            if orders is None or orders.day != day.isoformat() or orders.count <= 0:
+                return
+            orders.count -= 1
             self._save(people)

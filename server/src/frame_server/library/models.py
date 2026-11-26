@@ -238,6 +238,9 @@ class SharperCopy(BaseModel):
     #: ("Kreatywny restaurator", Mateusz 2026-11-12): the same work, its
     #: detail invented, not recovered; kept as the owner's pick.
     restored: bool = False
+    #: Drawn by "Restaurator Pro" (Google's model), not by our own
+    #: (Mateusz 2026-11-26).
+    pro: bool = False
 
 
 def quads_close(
@@ -819,6 +822,8 @@ class ItemSummary(BaseModel):
     #: restaurator": ``SharperCopy.restored``): its mark in place of the
     #: low resolution's.
     restored: bool = False
+    #: Drawn by "Restaurator Pro" (``SharperCopy.pro``): its own mark.
+    restored_pro: bool = False
     #: Its picture is cut out of the museum's photograph (``Item.cut``): a
     #: mark after the title. ``cut``: changes with every change of the cut.
     cropped: bool = False
@@ -841,7 +846,7 @@ class ItemSummary(BaseModel):
         summary = cls(
             **item.model_dump(
                 include=set(cls.model_fields)
-                - {"subtitle", "zoom", "low_side", "restored", "cropped", "cut"}
+                - {"subtitle", "zoom", "low_side", "restored", "restored_pro", "cropped", "cut"}
                 - {"cleaned", "cleaned_at"}
             )
         )
@@ -866,6 +871,7 @@ class ItemSummary(BaseModel):
         if item.sharper is not None:
             summary.picture = item.sharper.item_id
             summary.restored = item.sharper.restored
+            summary.restored_pro = item.sharper.restored and item.sharper.pro
         if item.kind == ItemKind.PHOTO:
             summary.title = photo_title(item)
             summary.subtitle = photo_line(item)

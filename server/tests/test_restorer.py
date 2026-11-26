@@ -1,6 +1,6 @@
-"""The creative restorer (frame_server.restorer): a small picture drawn again
-larger by the image model, kept as the owner's pick in the work's own id
-(Mateusz 2026-11-12)."""
+"""The restorer (frame_server.restorer): a small picture drawn again larger
+by our own model, or by Google's as "Restaurator Pro", kept as the owner's
+pick in the work's own id (Mateusz 2026-11-12, 2026-11-26)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ from test_sharper import OWN, OWN_THUMB, Web, _jpeg, _own, _print, _serve
 from frame_server.ai.gatekeeper import asked_by_rules
 from frame_server.ai.gemini import MODEL, PRO, Ask, NotDrawn
 from frame_server.config import Settings
+from frame_server.imaging import artsr
 from frame_server.library import Item, low_res
 from frame_server.library.models import ItemSummary
 from frame_server.library.viewer import OWNER_ID
@@ -98,6 +99,24 @@ class FakePainter:
         return found
 
 
+class FakeModel:
+    """Our model: the picture four times as large, noting what it was given."""
+
+    def __init__(self) -> None:
+        self.asked: list[tuple[tuple[int, int], str]] = []
+        self.tint = (1.0, 1.0, 1.0)
+
+    def here(self) -> bool:
+        return True
+
+    def larger(self, picture: Image.Image, look: np.ndarray, kind: str) -> Image.Image:
+        assert look.shape == (768,)
+        self.asked.append((picture.size, kind))
+        w, h = picture.size
+        big = np.asarray(picture.resize((w * 4, h * 4), Image.Resampling.BICUBIC), np.float32)
+        return Image.fromarray(np.clip(big * self.tint, 0, 255).astype(np.uint8))
+
+
 def _small(service: FrameService, **kw: Any) -> Item:
     own = _own(service, **kw)
     small = service.library.update(own.id, width=SMALL[0], height=SMALL[1])
@@ -118,10 +137,20 @@ def app(tmp_path: Path) -> Iterator[tuple[TestClient, FrameService, Web, FakePai
         painter = FakePainter()
         service.painter = painter  # type: ignore[assignment]
         service.restorer.painter = painter  # type: ignore[assignment]
+        # The background left out: each test drains and polls itself.
+        service.restorer.stop()
+        if service.restorer._thread is not None:
+            service.restorer._thread.join(10)
+        service.restorer._stop.clear()
+        service.restorer.model = FakeModel()  # type: ignore[assignment]
+        service.restorer.look_of = lambda picture: np.ones(768, np.float32)
         yield client, service, web, painter
 
 
 def test_a_small_picture_drawn_again_stays_the_same_work(app: Any) -> None:
+    """Our own model draws it, on the server, for nothing (Mateusz
+    2026-11-26), led by how it looks and by its kind; it goes into the
+    asker's "Restaurator"."""
     client, service, _web, painter = app
     own = _small(service, favorite=True)
     assert low_res.low_side(own) == 900
@@ -132,10 +161,15 @@ def test_a_small_picture_drawn_again_stays_the_same_work(app: Any) -> None:
     assert item["id"] == own.id and item["favorite"]
     copy = item["sharper"]
     assert copy["restored"] and copy["chosen"] and copy["source"] == "owned"
+    assert not copy["pro"]
     assert copy["museum"] == "Kreatywny restaurator"
-    # Twice as large, a hair off its proportions: kept so.
-    assert (copy["width"], copy["height"]) == (1803, 1200)
-    assert painter.asked == [("restorer", "2K")]
+    # Four times larger, brought to 2K.
+    assert (copy["width"], copy["height"]) == (2048, 1365)
+    assert painter.asked == [] and painter.batches == {}
+    model = service.restorer.model
+    assert model.asked == [((900, 600), "painting")]
+    note = service.library.note(own.id, "restorer")
+    assert note.model == "artsr-g3" and note.data["usd"] == 0.0
 
     stored = service.library.get(own.id)
     assert stored is not None
@@ -147,74 +181,39 @@ def test_a_small_picture_drawn_again_stays_the_same_work(app: Any) -> None:
     view = client.post(f"/api/library/items/{own.id}/sharpen").json()
     assert view["status"] == "found" and view["sharper"]["restored"]
     assert view["low_side"] == 0
+    # In "Restaurator", made for it.
+    playlist = service.restorer.playlist(OWNER_ID)
+    assert playlist is not None and playlist.name == "Restaurator"
+    assert playlist.item_ids == [own.id] and playlist.owner == OWNER_ID
+    # Drawn once.
+    again = client.post(f"/api/library/items/{own.id}/restore")
+    assert again.status_code == 422 and again.json()["detail"].startswith("restored:")
     # Back to the museum's picture.
     back = client.delete(f"/api/library/items/{own.id}/copy").json()
     assert back["sharper"] is None
     assert service.restorer.candidates()[0].id == own.id
 
 
-def test_a_refusal_is_noted_and_not_sent_again(app: Any) -> None:
-    client, service, _web, painter = app
-    own = _small(service, favorite=True)
-    painter.refuse.add(SMALL)
+def test_the_kind_the_model_is_led_by() -> None:
+    def kind(medium: str, classification: str = "") -> str:
+        return artsr.kind_of(
+            Item(
+                id="x:1",
+                source="x",
+                source_id="1",
+                title="t",
+                medium=medium,
+                classification=classification,
+            )
+        )
 
-    resp = client.post(f"/api/library/items/{own.id}/restore")
-    assert resp.status_code == 422
-    assert resp.json()["detail"].startswith("refused:")
-    # Asked five times before it gives up (a refusal costs nothing): twice
-    # of 2.1, then of Pro (Mateusz 2026-11-16).
-    assert len(painter.asked) == REFUSED_TRIES == 5
-    assert painter.models == [MODEL, MODEL, PRO, PRO, PRO]
-    assert service.library.get(own.id).sharper is None
-    assert service.restorer.candidates() == []
-
-
-def test_a_refusal_now_and_then_is_asked_again(app: Any) -> None:
-    """Google now and then takes the question it refused: the card asks
-    again (Mateusz 2026-11-13, Delacroix's "Rzeź na Chios")."""
-    client, service, _web, painter = app
-    own = _small(service, favorite=True)
-    refusals = iter([True, True, False])
-    draw = painter.paint
-
-    def paint(kind: str, prompt: str, pictures: Any, size: str = "1K", **kw: Any) -> Any:
-        if next(refusals):
-            painter.asked.append((kind, size))
-            raise NotDrawn("Google answered 400", "image_recitation")
-        return draw(kind, prompt, pictures, size, **kw)
-
-    painter.paint = paint
-    resp = client.post(f"/api/library/items/{own.id}/restore")
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["sharper"]["restored"]
-    assert len(painter.asked) == 3
-    assert painter.models == [PRO]  # the third try, of Pro
-    assert service.library.note(own.id, "restorer").model == PRO
-
-
-def test_pro_after_two_tries_of_2_1() -> None:
-    assert [model_for(n) for n in range(4)] == [MODEL] * FIRST_TRIES + [PRO] * 2
-
-
-def test_a_drawing_2_1_did_not_give_is_asked_of_pro(app: Any) -> None:
-    """No picture from 2.1 twice: Pro draws it (Mateusz 2026-11-16: "gdy
-    pierwsze 2 zawiodą odpalajmy pro"); with none from Pro either, the card
-    says so."""
-    client, service, _web, painter = app
-    own = _small(service, favorite=True)
-    painter.blank.add(MODEL)
-    resp = client.post(f"/api/library/items/{own.id}/restore")
-    assert resp.status_code == 200, resp.text
-    assert painter.models == [MODEL, MODEL, PRO]
-
-
-def test_no_drawing_from_pro_either(app: Any) -> None:
-    client, service, _web, painter = app
-    own = _small(service, favorite=True)
-    painter.blank |= {MODEL, PRO}
-    resp = client.post(f"/api/library/items/{own.id}/restore")
-    assert resp.status_code == 422 and resp.json()["detail"].startswith("not_drawn:")
-    assert painter.models == [MODEL, MODEL, PRO]
+    assert kind("Oil on canvas") == "painting"
+    assert kind("Etching and drypoint") == "print"
+    assert kind("Litografia barwna") == "print"
+    assert kind("Pen and brown ink over graphite") == "drawing"
+    assert kind("Watercolor on paper") == "drawing"
+    assert kind("", "Prints") == "print"
+    assert kind("") == "painting"
 
 
 def test_a_large_picture_is_not_drawn(app: Any) -> None:
@@ -224,9 +223,11 @@ def test_a_large_picture_is_not_drawn(app: Any) -> None:
     own = service.library.update(own.id, width=2400, height=1600)
     resp = client.post(f"/api/library/items/{own.id}/restore")
     assert resp.status_code == 422 and resp.json()["detail"].startswith("large:")
+    resp = client.post(f"/api/library/items/{own.id}/restore/pro")
+    assert resp.status_code == 422 and resp.json()["detail"].startswith("large:")
 
 
-def test_the_favourites_through_the_batch(app: Any) -> None:
+def test_the_favourites_drawn_in_the_background(app: Any) -> None:
     client, service, _web, painter = app
     own = _small(service)
     service.library.set_favorite(OWNER_ID, own.id, True)
@@ -234,83 +235,28 @@ def test_the_favourites_through_the_batch(app: Any) -> None:
     view = client.get("/api/ai/restorer").json()
     assert view == {
         "enabled": True,
-        "by_fal": False,
+        "pro": True,
         "items": 1,
-        "usd": 0.03,
+        "usd": 0.0,
         "waiting": 0,
         "restored": 0,
     }
     view = client.post("/api/ai/restorer/favourites").json()
     assert view["items"] == 0 and view["waiting"] == 1
-    assert list(painter.batches) == ["batches/1"]
     # Ordered once: not again while it waits.
     assert service.restorer.order_favourites() == 0
-
-    assert service.restorer.poll() == 0  # not done yet
-    painter.done.add("batches/1")
-    assert service.restorer.poll() == 1
+    assert service.restorer.drain() == 1
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None and stored.sharper.restored
+    assert painter.batches == {}
     view = client.get("/api/ai/restorer").json()
     assert view["waiting"] == 0 and view["restored"] == 1 and view["items"] == 0
 
 
-def test_a_batch_refusal_is_sent_again_then_noted(app: Any) -> None:
-    _client, service, _web, painter = app
-    own = _small(service)
-    service.library.set_favorite(OWNER_ID, own.id, True)
-    painter.refuse.add(SMALL)
-    assert service.restorer.order_favourites() == 1
-    for n in range(1, REFUSED_TRIES + 1):
-        painter.done.add(f"batches/{n}")
-        assert service.restorer.poll() == 0
-    # Each refusal sent again in a batch of its own, five in all: two of
-    # 2.1, then of Pro.
-    assert len(painter.batches) == REFUSED_TRIES
-    assert list(painter.batch_models.values()) == [MODEL, MODEL, PRO, PRO, PRO]
-    assert service.restorer.waiting() == set()
-    assert service.library.get(own.id).sharper is None
-    assert service.restorer.candidates() == []
-    assert service.restorer.order_favourites() == 0
-
-
-def test_a_batch_refusal_drawn_the_next_time(app: Any) -> None:
-    _client, service, _web, painter = app
-    own = _small(service)
-    service.library.set_favorite(OWNER_ID, own.id, True)
-    painter.refuse.add(SMALL)
-    assert service.restorer.order_favourites() == 1
-    painter.done.add("batches/1")
-    assert service.restorer.poll() == 0
-    assert service.restorer.waiting() == {own.id}  # sent again
-    painter.refuse.clear()
-    painter.done.add("batches/2")
-    assert service.restorer.poll() == 1
-    stored = service.library.get(own.id)
-    assert stored is not None and stored.sharper is not None and stored.sharper.restored
-
-
-def test_a_batch_drawing_2_1_did_not_give_goes_to_pro(app: Any) -> None:
-    _client, service, _web, painter = app
-    own = _small(service)
-    service.library.set_favorite(OWNER_ID, own.id, True)
-    painter.blank.add(MODEL)
-    assert service.restorer.order_favourites() == 1
-    for n in (1, 2):
-        painter.done.add(f"batches/{n}")
-        assert service.restorer.poll() == 0
-    assert list(painter.batch_models.values()) == [MODEL, MODEL, PRO]
-    painter.done.add("batches/3")
-    assert service.restorer.poll() == 1
-    stored = service.library.get(own.id)
-    assert stored is not None and stored.sharper is not None and stored.sharper.restored
-    assert service.library.note(own.id, "restorer").model == PRO
-
-
-def test_a_playlists_works_through_the_batch(app: Any) -> None:
-    """The playlist's "…" → "Kreatywny restaurator" (Mateusz 2026-11-13):
-    its works under the threshold, not only the favourites."""
-    client, service, _web, painter = app
+def test_a_playlists_works_drawn_in_the_background(app: Any) -> None:
+    """The playlist's "…" → "Restauracja dzieł" (Mateusz 2026-11-13): its
+    works under the threshold, not only the favourites."""
+    client, service, _web, _painter = app
     own = _small(service)
     made = client.post(
         "/api/playlists", json={"name": "Małe", "kind": "manual", "item_ids": [own.id]}
@@ -320,26 +266,154 @@ def test_a_playlists_works_through_the_batch(app: Any) -> None:
     # Not a favourite: Konfiguracja's line leaves it out, the playlist's has it.
     assert client.get("/api/ai/restorer").json()["items"] == 0
     view = client.get(f"/api/ai/restorer/playlists/{playlist_id}").json()
-    assert view == {
-        "enabled": True,
-        "by_fal": False,
-        "items": 1,
-        "usd": 0.03,
-        "waiting": 0,
-        "restored": 0,
-    }
+    assert view["items"] == 1 and view["usd"] == 0.0
 
     view = client.post(f"/api/ai/restorer/playlists/{playlist_id}").json()
     assert view["items"] == 0 and view["waiting"] == 1
-    assert [a.name for a in painter.batches["batches/1"]] == [own.id]
-    # Ordered once: not again while it waits.
     assert client.post(f"/api/ai/restorer/playlists/{playlist_id}").json()["waiting"] == 1
-    assert list(painter.batches) == ["batches/1"]
+    assert service.restorer.drain() == 1
+    view = client.get(f"/api/ai/restorer/playlists/{playlist_id}").json()
+    assert view["items"] == 0 and view["restored"] == 1 and view["waiting"] == 0
+    assert client.get("/api/ai/restorer/playlists/999").status_code == 404
+
+
+def test_restaurator_pro_through_the_batch(app: Any) -> None:
+    """Google's 2.1 through the Batch API, one work ordered from its card
+    (Mateusz 2026-11-26: "2.1 dla Restauratora PRO"); whoever ordered it
+    is told."""
+    client, service, _web, painter = app
+    own = _small(service)
+    told: list[tuple[str, str, bool]] = []
+    service.restorer.on_pro = lambda item, by, ok: told.append((item.id, by, ok))
+
+    resp = client.post(f"/api/library/items/{own.id}/restore/pro")
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"sent": True, "left": None}  # the owner has no limit
+    assert list(painter.batch_models.values()) == [MODEL]
+    # Ordered once: not again while it waits.
+    assert client.post(f"/api/library/items/{own.id}/restore/pro").json()["sent"] is False
+    assert service.restorer.waiting() == {own.id}
+
+    assert service.restorer.poll() == 0  # not done yet
     painter.done.add("batches/1")
     assert service.restorer.poll() == 1
-    view = client.get(f"/api/ai/restorer/playlists/{playlist_id}").json()
-    assert view["items"] == 0 and view["restored"] == 1
-    assert client.get("/api/ai/restorer/playlists/999").status_code == 404
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.restored and stored.sharper.pro
+    assert stored.sharper.museum == "Restaurator Pro"
+    assert told == [(own.id, OWNER_ID, True)]
+    assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
+    # Drawn by Pro: not again.
+    again = client.post(f"/api/library/items/{own.id}/restore/pro")
+    assert again.status_code == 422 and again.json()["detail"].startswith("restored:")
+
+
+def test_pro_draws_a_work_ours_drew_from_the_museums_picture(app: Any) -> None:
+    client, service, _web, painter = app
+    own = _small(service)
+    assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
+    assert client.post(f"/api/library/items/{own.id}/restore/pro").json()["sent"]
+    asked = painter.batches["batches/1"]
+    assert asked[0].pictures[0].size == SMALL  # not our drawing
+    painter.done.add("batches/1")
+    assert service.restorer.poll() == 1
+    stored = service.library.get(own.id)
+    assert stored.sharper.pro and (stored.sharper.width, stored.sharper.height) == (1803, 1200)
+    assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
+
+
+def test_without_googles_key_pro_is_not_ordered(app: Any) -> None:
+    client, service, _web, painter = app
+    own = _small(service)
+    painter.enabled = lambda: False
+    resp = client.post(f"/api/library/items/{own.id}/restore/pro")
+    assert resp.status_code == 409
+    assert client.get("/api/ai/restorer").json()["pro"] is False
+
+
+def test_pro_after_two_tries_of_2_1() -> None:
+    assert [model_for(n) for n in range(4)] == [MODEL] * FIRST_TRIES + [PRO] * 2
+
+
+def test_a_batch_refusal_is_sent_again_then_noted(app: Any) -> None:
+    _client, service, _web, painter = app
+    own = _small(service)
+    told: list[tuple[str, str, bool]] = []
+    service.restorer.on_pro = lambda item, by, ok: told.append((item.id, by, ok))
+    painter.refuse.add(SMALL)
+    assert service.restorer.order_pro(own, "someone")
+    for n in range(1, REFUSED_TRIES + 1):
+        painter.done.add(f"batches/{n}")
+        assert service.restorer.poll() == 0
+    # Each refusal sent again in a batch of its own, five in all: two of
+    # 2.1, then of Pro.
+    assert len(painter.batches) == REFUSED_TRIES
+    assert list(painter.batch_models.values()) == [MODEL, MODEL, PRO, PRO, PRO]
+    assert service.restorer.waiting() == set()
+    assert service.library.get(own.id).sharper is None
+    assert told == [(own.id, "someone", False)]
+    with pytest.raises(NotRestored):
+        service.restorer.order_pro(own)
+    # Our own model draws it still.
+    assert service.restorer.candidates([own])[0].id == own.id
+
+
+def test_a_batch_refusal_drawn_the_next_time(app: Any) -> None:
+    _client, service, _web, painter = app
+    own = _small(service)
+    painter.refuse.add(SMALL)
+    assert service.restorer.order_pro(own)
+    painter.done.add("batches/1")
+    assert service.restorer.poll() == 0
+    assert service.restorer.waiting() == {own.id}  # sent again
+    painter.refuse.clear()
+    painter.done.add("batches/2")
+    assert service.restorer.poll() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None and stored.sharper.pro
+
+
+def test_a_batch_drawing_2_1_did_not_give_goes_to_pro(app: Any) -> None:
+    _client, service, _web, painter = app
+    own = _small(service)
+    painter.blank.add(MODEL)
+    assert service.restorer.order_pro(own)
+    for n in (1, 2):
+        painter.done.add(f"batches/{n}")
+        assert service.restorer.poll() == 0
+    assert list(painter.batch_models.values()) == [MODEL, MODEL, PRO]
+    painter.done.add("batches/3")
+    assert service.restorer.poll() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None and stored.sharper.pro
+    assert service.library.note(own.id, "restorer").model == PRO
+
+
+def test_a_batch_from_before_goes_to_our_model(app: Any) -> None:
+    """fal's and the favourites' batches waiting at the update: their works
+    are drawn by our model instead."""
+    _client, service, _web, _painter = app
+    own = _small(service)
+    service.library.set_state(
+        "restorer.batches", [{"name": "fal:x", "model": "fal-ai/seedvr", "ids": [own.id]}]
+    )
+    assert service.restorer.poll() == 0
+    assert service.restorer.waiting() == {own.id}
+    assert service.restorer.drain() == 1
+    assert service.library.get(own.id).sharper.restored
+
+
+def test_the_works_restored_before_go_into_restaurator(app: Any) -> None:
+    client, service, _web, _painter = app
+    own = _small(service)
+    assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
+    service.library.save_playlist(
+        service.restorer.playlist(OWNER_ID).model_copy(update={"item_ids": []})
+    )
+    service.library.set_state("restorer_playlist_filled", False)
+    assert service.restorer.file_kept() == 1
+    assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
+    assert service.restorer.file_kept() == 0  # once
 
 
 def test_the_drawing_has_a_thumbnail(app: Any) -> None:
@@ -374,10 +448,10 @@ def test_the_viewer_shows_the_museums_picture_beside_the_drawing(app: Any) -> No
         with Image.open(io.BytesIO(resp.content)) as img:
             return img.size
 
-    assert size() == (1803, 1200)
+    assert size() == (2048, 1365)
     assert size(restored="false") == SMALL
     assert size(restored="false", cleaned="false") == SMALL
-    assert size(side=600) == (600, 399)
+    assert size(side=600) == (600, 400)
 
 
 def test_a_work_shown_from_its_thumbnail_is_small_and_drawn_from_it(app: Any) -> None:
@@ -400,7 +474,7 @@ def test_a_work_shown_from_its_thumbnail_is_small_and_drawn_from_it(app: Any) ->
     resp = client.post(f"/api/library/items/{own.id}/restore")
     assert resp.status_code == 200, resp.text
     copy = resp.json()["sharper"]
-    assert copy["restored"] and (copy["width"], copy["height"]) == (1203, 800)
+    assert copy["restored"] and (copy["width"], copy["height"]) == (2048, 1365)
     # The full screen's button: without the drawing, the thumbnail again.
     before = client.get(f"/api/library/items/{own.id}/treated", params={"restored": "false"})
     assert before.status_code == 200, before.text
@@ -448,12 +522,10 @@ def test_a_drawing_kept_before_is_put_in_the_pictures_colours(app: Any, monkeypa
     nothing drawn again (Mateusz 2026-11-16: "Tak - poproszę")."""
     from frame_server import restorer as module
 
-    client, service, _web, painter = app
+    client, service, _web, _painter = app
     own = _small(service, favorite=True)
-    draw = painter._draw
-    painter._draw = lambda picture: Image.fromarray(  # a warmer, darker drawing
-        np.clip(np.asarray(draw(picture), np.float32) * [1.1, 0.95, 0.8], 0, 255).astype(np.uint8)
-    )
+    model = service.restorer.model
+    model.tint = (1.1, 0.95, 0.8)  # a warmer, darker drawing
     monkeypatch.setattr(module, "recoloured", lambda picture, drawn: drawn)  # as before
     assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
     monkeypatch.undo()
@@ -468,14 +540,14 @@ def test_a_drawing_kept_before_is_put_in_the_pictures_colours(app: Any, monkeypa
 
     museum = np.asarray(service.images.before_drawn(own), np.float32).mean(axis=(0, 1))
     assert np.abs(tint(own) - museum).max() > 10
-    assert len(painter.asked) == 1
+    assert len(model.asked) == 1
 
     assert service.restorer.recolour_kept() == 1
     stored = service.library.get(own.id)
     assert stored.sharper.restored and stored.sharper.url != before
     assert np.abs(tint(own) - museum).max() < 3
     assert service.library.note(own.id, "restorer").data["colours"] == module.COLOURS
-    assert len(painter.asked) == 1  # nothing drawn again
+    assert len(model.asked) == 1  # nothing drawn again
     # Once.
     assert service.restorer.recolour_kept() == 0
 

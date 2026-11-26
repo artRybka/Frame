@@ -211,6 +211,15 @@ struct HouseholdSection: View {
                     Text(bound: "Studia dziennie: \(limit)").font(.caption)
                 }
             }
+            // Like the studies (Mateusz 2026-11-26): Google's drawings a day.
+            if let limit = person.proLimit, !person.isOwner {
+                Stepper(value: Binding(
+                    get: { limit },
+                    set: { value in Task { await save { try await $0.setAccess(id: person.id, PersonAccess(proLimit: value)) } } }
+                ), in: 0 ... 50) {
+                    Text(bound: "Restaurator Pro dziennie: \(limit)").font(.caption)
+                }
+            }
             ForEach(person.devices) { device in
                 HStack {
                     Image(systemName: "iphone").font(.caption).foregroundStyle(Theme.inkSoft)
@@ -363,6 +372,11 @@ struct MyAccessView: View {
                                     .font(.subheadline.weight(.semibold))
                                 if let left = me.studiesLeft {
                                     Text("Studia dzieł na dziś: zostało \(left)")
+                                        .font(.caption)
+                                        .foregroundStyle(Theme.inkSoft)
+                                }
+                                if let left = me.proLeft {
+                                    Text(bound: "Restaurator Pro na dziś: zostało \(left)")
                                         .font(.caption)
                                         .foregroundStyle(Theme.inkSoft)
                                 }
