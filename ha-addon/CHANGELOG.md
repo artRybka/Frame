@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.392
+
+- Restaurator Pro zamówiony po zwykłej restauracji trzyma kadr dzieła:
+  wcześniej rysował całe zdjęcie z muzeum, razem z ramą i podkładką.
+  Takie już zapisane restauracje są raz przycinane do dzieła, bez
+  ponownego rysowania.
+- Restauracja nie przenosi rastra druku ze skanów reprodukcji (pocztówki,
+  plansze z książek).
+
 ## 1.145.391
 
 - Starsze notki „Kurator”, pisane jeszcze w pięciu dawnych stylach, można
