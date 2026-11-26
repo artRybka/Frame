@@ -756,3 +756,43 @@ def test_the_owner_cuts_a_restored_work_on_its_drawing(app: Any) -> None:
     assert stored is not None and stored.cut_shown() is not None
     with Image.open(service.images.image_path(stored)) as img:
         assert img.width < drawn["sharper"]["width"]  # cut down to the corners
+
+
+def test_a_picture_up_to_1800_px_is_drawn_whole(app: Any) -> None:
+    """Pictures shorter than 1800 px are offered (the mark of a small one
+    stays at 1600), and the model is given the picture whole, not made
+    smaller first (Mateusz 2026-11-26: "materiał wejściowy podajemy pełny.
+    Rozszerzmy zdjęcia kwalifikujące się do 1800px"); the drawing is 2K."""
+    client, service, web, _painter = app
+    own = _small(service, favorite=True)
+    web[OWN] = _jpeg(_print(1, (1700, 1133)), 90)
+    larger = service.library.update(own.id, width=1700, height=1133)
+    assert larger is not None
+    assert low_res.low_side(larger) == 0 and low_res.restore_side(larger) == 1700
+    assert [i.id for i in service.restorer.candidates()] == [own.id]
+
+    resp = client.post(f"/api/library/items/{own.id}/restore")
+    assert resp.status_code == 200, resp.text
+    copy = resp.json()["sharper"]
+    assert service.restorer.model.asked[0][0] == (1700, 1133)
+    assert max(copy["width"], copy["height"]) == 2048
+
+
+def test_our_model_draws_a_large_picture_in_tiles_into_bytes() -> None:
+    """A picture of 1800 px is drawn tile by tile into a picture of bytes
+    four times as large (7200 px of floats would be half a gigabyte)."""
+
+    class Session:
+        def run(self, _out: Any, feed: dict[str, np.ndarray]) -> list[np.ndarray]:
+            part = feed["image"]
+            return [part.repeat(artsr.SCALE, axis=2).repeat(artsr.SCALE, axis=3)]
+
+    model = artsr.ArtSR()
+    model._session = Session()  # type: ignore[assignment]
+    picture = Image.fromarray(
+        np.random.default_rng(1).integers(0, 256, (300, 520, 3), dtype=np.uint8)
+    )
+    drawn = model.larger(picture, np.zeros(768, np.float32), "painting")
+    assert drawn.size == (2080, 1200)
+    small = np.asarray(drawn.resize(picture.size, Image.Resampling.BOX), np.int16)
+    assert np.abs(small - np.asarray(picture, np.int16)).max() <= 1

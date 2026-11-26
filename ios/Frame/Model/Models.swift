@@ -612,6 +612,9 @@ struct SharperView: Codable, Hashable, Sendable {
     var heldAt: String? = nil
     /// `ItemSummary.lowSide`: the card's mark.
     var lowSide: Int? = nil
+    /// The long side when "Restauracja" is offered (under 1800 px), else 0;
+    /// nil from an older server.
+    var restoreSide: Int? = nil
     /// `Item.pictureStamp` after the look: the original came as another
     /// photograph than the thumbnail while it ran; nil from an older server.
     var pictureStamp: String? = nil
