@@ -6,35 +6,71 @@ import UIKit
 // drag and hold on the pages held the scroll back now and then).
 
 /// A swipe from left to right, told apart from the scroll at once and
-/// never in its way: the card's way back to Galeria.
+/// never in its way: the card's way back to Galeria. `leftward`, the
+/// other way: Galeria's own way out to Odkrywaj, taken under the finger
+/// as soon as it has gone far enough, not when it lifts.
 struct SideSwipe: UIGestureRecognizerRepresentable {
     /// Only from the screen's left edge (the card's way back).
     var fromEdge = false
+    var leftward = false
+    var on = true
     let action: () -> Void
 
+    /// How far the finger goes before a swipe is one (points).
+    static let far: CGFloat = 50
+
     func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
-        Coordinator(fromEdge: fromEdge)
+        Coordinator(fromEdge: fromEdge, leftward: leftward)
     }
 
     func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
         let pan = UIPanGestureRecognizer()
         pan.delegate = context.coordinator
         pan.cancelsTouchesInView = false
+        pan.isEnabled = on
         return pan
     }
 
+    func updateUIGestureRecognizer(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        if recognizer.isEnabled != on { recognizer.isEnabled = on }
+    }
+
     func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
-        guard recognizer.state == .ended else { return }
         let move = recognizer.translation(in: recognizer.view)
         let speed = recognizer.velocity(in: recognizer.view)
-        guard move.x > 50 || speed.x > 500, move.x > abs(move.y) * 1.5 else { return }
+        let along = leftward ? -move.x : move.x, pace = leftward ? -speed.x : speed.x
+        let sideways = along > abs(move.y) * 1.5
+        if leftward {
+            let coordinator = context.coordinator
+            switch recognizer.state {
+            case .began: coordinator.taken = false
+            case .changed:
+                guard !coordinator.taken, along > Self.far, sideways else { return }
+                coordinator.taken = true
+                action()
+            case .ended:
+                guard !coordinator.taken, pace > 500, along > 16, sideways else { return }
+                coordinator.taken = true
+                action()
+            default: break
+            }
+            return
+        }
+        guard recognizer.state == .ended else { return }
+        guard along > Self.far || pace > 500, sideways else { return }
         action()
     }
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         let fromEdge: Bool
+        let leftward: Bool
+        /// This swipe has done what it does.
+        var taken = false
 
-        init(fromEdge: Bool) { self.fromEdge = fromEdge }
+        init(fromEdge: Bool, leftward: Bool) {
+            self.fromEdge = fromEdge
+            self.leftward = leftward
+        }
 
         func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
             guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
@@ -43,7 +79,8 @@ struct SideSwipe: UIGestureRecognizerRepresentable {
                 let start = pan.location(in: pan.view).x - pan.translation(in: pan.view).x
                 if start > 44 { return false }
             }
-            return speed.x > 0 && speed.x > abs(speed.y) * 1.5
+            let along = leftward ? -speed.x : speed.x
+            return along > 0 && along > abs(speed.y) * 1.5
         }
 
         func gestureRecognizer(

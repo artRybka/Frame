@@ -22,6 +22,13 @@ import SwiftUI
 /// the whole work on its own colours while the finger lies, and the finger
 /// drawn up from there opens the work's card (18:51).
 struct GalleryView: View {
+    /// Out of Galeria to Odkrywaj: the tabs' own change (`RootView`).
+    let toDiscover: () -> Void
+
+    init(toDiscover: @escaping () -> Void = {}) {
+        self.toDiscover = toDiscover
+    }
+
     @Environment(AppModel.self) private var model
     @Environment(\.colorScheme) private var scheme
     @Environment(\.displayScale) private var displayScale
@@ -307,6 +314,11 @@ struct GalleryView: View {
             pressing: { pressed = $0 ? work.id : nil },
             began: { hold() }, moved: { held($0) }, ended: { letGo() }
         ))
+        // A swipe to the left: out of Galeria, to Odkrywaj (Mateusz
+        // 2026-11-26 00:16: "Czy na pełnym ekranie w galerii możemy dodać
+        // gest przeciągnięcia od prawej do lewej który zamykałby galerie
+        // i przechodził do „Odkrywaj”?"). Not with a work held.
+        .gesture(SideSwipe(leftward: true, on: !gridOpen && peek == nil && pressed == nil) { leaveForDiscover() })
         .id(work.id)
     }
 
@@ -981,6 +993,40 @@ struct GalleryView: View {
         withTransaction(Self.quiet) { path.append(work.id) }
     }
 
+    /// Out to Odkrywaj as a page is turned: the screen as it is goes off
+    /// to the left under the finger's swipe, and Odkrywaj comes in from
+    /// the right after it. The tabs change at once, with nothing of their
+    /// own to show for it: Galeria's picture is laid over the window and
+    /// drawn off, the window's own view (Odkrywaj by then) drawn in.
+    private func leaveForDiscover() {
+        guard !grid, peek == nil, path.isEmpty else { return }
+        GalleryLog.note("swiped left: out to Odkrywaj")
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        guard !UIAccessibility.isReduceMotionEnabled,
+              let window = scenes.first?.keyWindow ?? scenes.first?.windows.first,
+              let root = window.rootViewController?.view,
+              let was = window.snapshotView(afterScreenUpdates: false)
+        else {
+            Self.melt()
+            toDiscover()
+            return
+        }
+        was.isUserInteractionEnabled = false
+        window.addSubview(was)
+        toDiscover()
+        let wide = window.bounds.width
+        root.transform = CGAffineTransform(translationX: wide, y: 0)
+        UIView.animate(
+            withDuration: 0.38, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.4, options: []
+        ) {
+            was.transform = CGAffineTransform(translationX: -wide, y: 0)
+            root.transform = .identity
+        } completion: { _ in
+            was.removeFromSuperview()
+            root.transform = .identity
+        }
+    }
+
     /// What is on the screen now fades off what comes under it with the
     /// next change: the screen as it is, laid over the window and let go.
     /// `bars`: only its top and its foot, where the card's bars are (what
@@ -1503,7 +1549,8 @@ private struct GalleryPage: View {
         // 2026-11-25 21:54: "Zaokrąglenie narożników przy zmianie z pełnego
         // ekranu na całe dzieło jest skokowe").
         .clipShape(Window(
-            inset: sunk ? Self.pressedInset : 0, corner: sunk ? Self.pressedCorner(geo.size) : 0, way: way,
+            inset: sunk ? Self.pressedInset : 0, way: way,
+            screen: ScreenCorner.radius(of: geo.size), pressed: Self.pressedCorner(geo.size), full: Self.pressedInset,
             layout: layout, place: place, pan: pan, last: Self.wholeCorner
         ))
         // Let go before the hold, the page springs back out; to the whole
@@ -2057,40 +2104,59 @@ private struct Nearer: GeometryEffect {
 }
 
 /// What of the page the work is seen through. Cut to the screen: all of
-/// the page, pressed in a little and its corners rounded with the screen's
-/// while a finger lies on it. On the way to the whole work (`way`): what of
-/// that window the picture drawing back still fills, the corners going
-/// from the window's to the whole work's own, so that the last of the way
-/// is the whole work with its corners a little round. The picture's place
-/// is `Lens`'s, without the draw-back and the drift it is shown with
-/// (`Nearer`: numbers with another timing, never among these); the window
-/// is never wider than the picture drifted as far as it is going (`pan`).
+/// the page, pressed in a little while a finger lies on it. On the way to
+/// the whole work (`way`): what of that window the picture drawing back
+/// still fills, so that the last of the way is the whole work with its
+/// corners a little round. The picture's place is `Lens`'s, without the
+/// draw-back and the drift it is shown with (`Nearer`: numbers with
+/// another timing, never among these); the window is never wider than the
+/// picture drifted as far as it is going (`pan`).
+///
+/// Its corners go round with the screen's own in every frame, by how far
+/// in from the screen's edges it is: the screen's radius less that
+/// (Mateusz 2026-11-26 00:16, of his film: "Promień przy wciskaniu nadal
+/// się nie zgadza. Tylko w ok. 00:00:27 jest w porządku. Wcześniej jest za
+/// mały, a pod koniec przytrzymania gdy dzieło jest na pełnym ekranie
+/// z marginesem jest za duży": they grew from none as the page was pressed
+/// in, right only once it was, and on the way to the whole work they went
+/// down by the share of the way gone, round as the screen's while the
+/// window was already well inside it). Pressed in, 62 less the inset from
+/// the first frame; on the way, less the mean of how far in its sides and
+/// its top or foot are, and never rounder than the way's share allows, so
+/// the whole work's own corners are there at its end.
 private struct Window: Shape {
     /// How far in from the page's edges, all round (points).
     var inset: CGFloat
-    /// Its corners while the work is cut to the screen.
-    var corner: CGFloat
     var way: CGFloat
+    /// The screen's own corners, and the window's when it is pressed in
+    /// all the way (`full` points).
+    let screen: CGFloat
+    let pressed: CGFloat
+    let full: CGFloat
     let layout: Fill
     let place: Whole
     let pan: CGFloat
     /// The whole work's corners.
     let last: CGFloat
 
-    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
-        get { AnimatablePair(AnimatablePair(inset, corner), way) }
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(inset, way) }
         set {
-            inset = newValue.first.first
-            corner = newValue.first.second
+            inset = newValue.first
             way = newValue.second
         }
     }
 
     func path(in rect: CGRect) -> Path {
-        let pressed = rect.insetBy(dx: inset, dy: inset)
+        let window = rect.insetBy(dx: inset, dy: inset)
         let gone = min(max(way, 0), 1)
+        // The corners of the window `inset` in: the screen's less that
+        // (where the screen has none, growing to the pressed window's).
+        let cut = max(screen + (pressed - screen) * min(max(inset / max(full, 0.01), 0), 1), 0)
         guard gone > 0, rect.height > 0 else {
-            return Path(roundedRect: pressed, cornerRadius: max(corner, 0), style: .continuous)
+            // All of the page: the phone's own corners are its corners.
+            if inset < 0.05 { return Path(rect) }
+            return Path(roundedRect: window, cornerRadius: cut, style: .continuous)
         }
         let sink = 1 - 2 * inset / rect.height
         let lies = Lens.lies(sink: sink, way: way, layout: layout, place: place, size: layout.size)
@@ -2100,11 +2166,17 @@ private struct Window: Shape {
             width: lies.scale * layout.size.width, height: lies.scale * layout.size.height
         )
         let aside = pan * (1 - gone) * lies.scale
-        let seen = pressed.intersection(picture).intersection(picture.offsetBy(dx: aside, dy: 0))
+        let seen = window.intersection(picture).intersection(picture.offsetBy(dx: aside, dy: 0))
         guard !seen.isNull, seen.width > 1, seen.height > 1 else {
-            return Path(roundedRect: pressed, cornerRadius: max(corner, 0), style: .continuous)
+            return Path(roundedRect: window, cornerRadius: cut, style: .continuous)
         }
-        let round = corner + (last - corner) * gone
+        let sides = min(seen.minX - rect.minX, rect.maxX - seen.maxX)
+        let ends = min(seen.minY - rect.minY, rect.maxY - seen.maxY)
+        let withScreen = cut + inset - (sides + ends) / 2
+        // Never less round than the whole work (than the screen, where
+        // that is squarer still).
+        let least = min(last, max(cut, last * gone))
+        let round = max(min(withScreen, cut + (last - cut) * gone), least)
         return Path(
             roundedRect: seen, cornerRadius: min(max(round, 0), min(seen.width, seen.height) / 2), style: .continuous
         )
