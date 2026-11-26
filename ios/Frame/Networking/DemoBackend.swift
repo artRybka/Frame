@@ -86,7 +86,9 @@ actor DemoBackend: FrameBackend {
         keywordsPhotos: true, daily: true, searchWords: true, curator: true, twinsJudge: true, gatekeeper: true, audit: true, journey: true, webFacts: true, stages: true, varnishBlue: true,
         reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0),
-        plTextProgress: nil, error: nil,
+        plTextProgress: nil,
+        textReview: TextReview(oldForm: 6793, rewriteBatch: 500, rewriteUsd: 3.6, written: 0),
+        error: nil,
         geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
         drawnWaiting: 12, drawnInBatch: 20, geminiError: nil,
         geminiMonthlyLimitUsd: 5, geminiSpentUsd: 1.35, geminiSpentByKind: ["sheet": 1.35],
@@ -2587,6 +2589,17 @@ actor DemoBackend: FrameBackend {
         aiValue.keyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
         aiValue.keyFromApp = true
         aiValue.keywordsProgress = .init(done: 12, waiting: 34, refused: 0, batchItems: 0, batchDone: 0)
+        return aiValue
+    }
+
+    func rewriteOldNotes() async throws -> AiSettings {
+        var review = aiValue.textReview ?? TextReview()
+        review.running = true
+        review.writing = review.rewriteBatch
+        review.oldForm -= review.rewriteBatch
+        review.rewriteBatch = min(500, review.oldForm)
+        review.rewriteUsd = Double(review.rewriteBatch) * 0.0072
+        aiValue.textReview = review
         return aiValue
     }
 

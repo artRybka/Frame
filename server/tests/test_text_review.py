@@ -127,3 +127,69 @@ def test_the_old_notes_are_written_anew_and_a_failed_one_stays(
     assert old is not None and old.full == "Stary pełny tekst." and old.style == ""
     view = review.view()
     assert (view["written"], view["unstyled"], view["unchecked"]) == (1, 1, 1)
+
+
+def test_notes_in_the_old_styles_are_rewritten_a_random_batch_at_a_tap(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+    monkeypatch,
+) -> None:
+    """Mateusz 2026-11-26: "przywróć przycisk. Ale jako losowe partie po
+    500": the notes in one of the five styles, a random batch at a time,
+    written in the new forms; the month's rest leaves them alone."""
+    import frame_server.ai.text_review as text_review
+
+    monkeypatch.setattr(text_review, "REWRITE", 2)
+    review: TextReview = service.text_review
+    old = [_add(service, f"met:{n}", description="") for n in range(1, 4)]
+    for item in old:
+        _kept(service, item, written="note", sources=["obraz"], style="temat")
+    _kept(
+        service, _add(service, "met:9", description=""),
+        written="note", sources=["obraz"], style="krotka/pytanie/obok/3",
+    )  # fmt: skip
+    view = review.view()
+    assert (view["old_form"], view["rewrite_batch"], view["unstyled"]) == (3, 2, 0)
+    assert view["rewrite_usd"] > 0
+    assert review.order(100.0) == (0, 0.0)  # not the month's rest's to rewrite
+
+    assert review.rewrite(text_review.REWRITE) == 2
+    assert review.rewrite() == 0  # one order at a time
+    review.look()
+    (notes,) = fake.batches.values()
+    assert len(notes) == 2
+    question = notes[0]["params"]["messages"][0]["content"][1]["text"]
+    assert "pomysłu nr" in question and "FORMA:" in question
+    fake.ended = True
+    _batch_answers(
+        fake,
+        {f"n{n}": _message({**NOTE_ANSWER, "style": "zwykla/miejsce/malarz/2"}) for n in range(2)},
+    )
+    assert review.look() is False
+    view = review.view()
+    assert (view["old_form"], view["rewrite_batch"], view["written"]) == (1, 1, 2)
+
+
+def test_the_rewrite_tap_answers_with_the_settings(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+    from test_ai import GOOD_KEY
+
+    from frame_server.config import Settings
+    from frame_server.web import create_app
+
+    app = create_app(
+        Settings(data_dir=tmp_path, seed_library=False, scheduler=False, public_host="127.0.0.1")
+    )
+    svc: FrameService = app.state.service
+    svc.claude.factory = FakeAnthropic
+    with TestClient(app) as client:
+        assert client.post("/api/ai/text-review/rewrite").status_code == 409  # no key
+        assert client.put("/api/ai/key", json={"key": GOOD_KEY}).status_code == 200
+        resp = client.post("/api/ai/text-review/rewrite")
+        assert resp.status_code == 409 and resp.json()["detail"] == "Nie ma starszych notek."
+        _kept(
+            svc, _add(svc, "met:1", description=""), written="note", sources=["obraz"], style="opis"
+        )
+        assert client.get("/api/ai").json()["text_review"]["old_form"] == 1
+        view = client.post("/api/ai/text-review/rewrite").json()
+        assert view["text_review"]["running"] is True and view["text_review"]["old_form"] == 0
