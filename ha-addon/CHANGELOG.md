@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.396
+
+- Pisanie kuratora „na maszynie” jest żwawsze: słowa wpisują się szybko,
+  za to przerwy między nimi są dłuższe, a na początku kursor miga dłużej.
+
 ## 1.145.395
 
 - Karta dzieła, które nie ma jeszcze opisu, od razu pokazuje, że kurator
