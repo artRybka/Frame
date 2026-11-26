@@ -122,4 +122,109 @@ final class SubjectFocusTests: XCTestCase {
         let small = CGRect(x: 0.8, y: 0.6, width: 0.03, height: 0.1)
         XCTAssertEqual(SubjectFocus.subject(faces: [], figures: [small], salient: []), .center)
     }
+
+    /// A map of what draws the eye, `wide` by `tall`: `faint` everywhere
+    /// in `body`, 1 in `hot` (cells, rows from the top).
+    private func heat(wide: Int, tall: Int, body: CGRect, hot: CGRect, faint: Float = 0.1) -> SubjectFocus.Heat {
+        var values = [Float](repeating: 0, count: wide * tall)
+        for y in 0 ..< tall {
+            for x in 0 ..< wide {
+                let cell = CGPoint(x: CGFloat(x) + 0.5, y: CGFloat(y) + 0.5)
+                if hot.contains(cell) { values[y * wide + x] = 1 } else if body.contains(cell) { values[y * wide + x] = faint }
+            }
+        }
+        return SubjectFocus.Heat(wide: wide, tall: tall, values: values)
+    }
+
+    /// Galeria: a subject much wider than the screen (Stubbs's tiger, its
+    /// head at the left; Mateusz 2026-11-26) is cut at the part that draws
+    /// the eye, not at its middle, the ribs.
+    func testWideSubjectIsCutWhereItTells() {
+        let tiger = heat(
+            wide: 40, tall: 20, body: CGRect(x: 1, y: 3, width: 38, height: 14), hot: CGRect(x: 2, y: 3, width: 6, height: 5)
+        )
+        let point = SubjectFocus.telling(tiger, shape: 1.8, from: UnitPoint(x: 0.5, y: 0.5))
+        let share = SubjectFocus.seen(of: 1.8).share
+        // The whole head is on the screen.
+        XCTAssertLessThanOrEqual(point.x - share / 2, 2.0 / 40 + 0.001)
+        XCTAssertGreaterThanOrEqual(point.x + share / 2, 8.0 / 40 - 0.001)
+        XCTAssertLessThan(point.y, 0.5)
+    }
+
+    /// A subject one screen holds stays cut about its middle, as it was.
+    func testSubjectOneScreenHoldsIsCutAsItWas() {
+        let rider = heat(
+            wide: 40, tall: 20, body: CGRect(x: 17, y: 4, width: 7, height: 12), hot: CGRect(x: 19, y: 4, width: 2, height: 3)
+        )
+        let middle = UnitPoint(x: 0.51, y: 0.5)
+        XCTAssertEqual(SubjectFocus.telling(rider, shape: 1.8, from: middle), middle)
+    }
+
+    /// Nothing in it draws the eye more than the rest (a field, a sea):
+    /// the middle found before stays.
+    func testEvenPictureIsCutAsItWas() {
+        let sea = heat(wide: 40, tall: 20, body: CGRect(x: 0, y: 0, width: 40, height: 20), hot: .zero)
+        let middle = UnitPoint(x: 0.45, y: 0.6)
+        XCTAssertEqual(SubjectFocus.telling(sea, shape: 2.2, from: middle), middle)
+    }
+
+    /// A picture of the screen's own shape is seen whole: nothing to choose.
+    func testPictureOfTheScreensShapeIsNotMoved() {
+        let any = heat(wide: 20, tall: 40, body: CGRect(x: 0, y: 0, width: 20, height: 40), hot: CGRect(x: 0, y: 0, width: 4, height: 4))
+        let middle = UnitPoint(x: 0.5, y: 0.5)
+        XCTAssertEqual(SubjectFocus.telling(any, shape: SubjectFocus.screen, from: middle), middle)
+    }
+
+    /// A scroll far taller than the screen: the same along its height.
+    func testTallSubjectIsCutWhereItTells() {
+        let scroll = heat(
+            wide: 10, tall: 60, body: CGRect(x: 1, y: 2, width: 8, height: 56), hot: CGRect(x: 3, y: 44, width: 4, height: 8)
+        )
+        let point = SubjectFocus.telling(scroll, shape: 0.15, from: UnitPoint(x: 0.5, y: 0.5))
+        XCTAssertEqual(point.y, 48.0 / 60, accuracy: 0.06)
+        XCTAssertEqual(point.x, 0.5, accuracy: 0.1)
+    }
+
+    /// The whole rule: no face and no figure found (a drawn animal), the
+    /// eye's place a box as wide as the subject.
+    func testGalleryCutsAWideSubjectAtItsHead() {
+        let tiger = heat(
+            wide: 40, tall: 20, body: CGRect(x: 1, y: 3, width: 38, height: 14), hot: CGRect(x: 2, y: 3, width: 6, height: 5)
+        )
+        let whole = (box: CGRect(x: 0.02, y: 0.15, width: 0.95, height: 0.7), weight: CGFloat(0.5))
+        let before = SubjectFocus.subject(faces: [], figures: [], salient: [whole], shape: 1.8)
+        XCTAssertEqual(before.x, 0.495, accuracy: 0.001)
+        let point = SubjectFocus.subject(faces: [], figures: [], salient: [whole], heat: tiger, shape: 1.8)
+        XCTAssertLessThan(point.x, 0.2)
+    }
+
+    /// Two faces too far apart for one screen: the larger one, not the
+    /// wall between them. Near each other, both.
+    func testFacesTooFarApartForOneScreen() {
+        let large = CGRect(x: 0.15, y: 0.2, width: 0.1, height: 0.2)
+        let far = CGRect(x: 0.75, y: 0.25, width: 0.08, height: 0.16)
+        let apart = SubjectFocus.subject(faces: [large, far], figures: [], salient: [], shape: 1.8)
+        XCTAssertEqual(apart.x, large.midX, accuracy: 0.001)
+        let near = CGRect(x: 0.27, y: 0.25, width: 0.08, height: 0.16)
+        let both = SubjectFocus.subject(faces: [large, near], figures: [], salient: [], shape: 1.8)
+        XCTAssertEqual(both.x, large.union(near).midX, accuracy: 0.001)
+        // A picture seen whole: all of them, as before.
+        let whole = SubjectFocus.subject(faces: [large, far], figures: [], salient: [], shape: 0.5)
+        XCTAssertEqual(whole.x, large.union(far).midX, accuracy: 0.001)
+    }
+
+    /// A figure lying down, wider than the screen, with no face found: its
+    /// head is where the eye goes, not over the middle of its box.
+    func testLyingFiguresHeadIsWhereTheEyeGoes() {
+        let figure = CGRect(x: 0.1, y: 0.35, width: 0.8, height: 0.35)
+        let lying = heat(
+            wide: 40, tall: 20, body: CGRect(x: 4, y: 7, width: 32, height: 7), hot: CGRect(x: 29, y: 6, width: 5, height: 4)
+        )
+        let point = SubjectFocus.subject(faces: [], figures: [figure], salient: [], heat: lying, shape: 1.8)
+        XCTAssertGreaterThan(point.x, 0.7)
+        // Standing, one screen holds it: its head, as before.
+        let standing = CGRect(x: 0.45, y: 0.1, width: 0.2, height: 0.8)
+        let upright = SubjectFocus.subject(faces: [], figures: [standing], salient: [], heat: lying, shape: 1.8)
+        XCTAssertEqual(upright.x, standing.midX, accuracy: 0.001)
+    }
 }

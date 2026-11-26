@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.401
+
+- Galeria: gdy temat dzieła jest dużo szerszy niż ekran, kadr pełnego
+  ekranu staje na jego najciekawszej części (głowa tygrysa, woźnice na
+  wozie), a nie na środku, który nic nie mówi. Kadry, które były dobre,
+  zostają bez zmian.
+- Przy twarzach zbyt daleko od siebie, by zmieściły się na jednym
+  ekranie, kadr staje na największej i tych obok niej, nie na pustym
+  miejscu między nimi. Leżąca postać bez znalezionej twarzy jest
+  kadrowana tam, gdzie przyciąga wzrok.
+
 ## 1.145.400
 
 - Po wyborze Restauracji PRO menu „…” od razu pokazuje ją jako zamówioną
