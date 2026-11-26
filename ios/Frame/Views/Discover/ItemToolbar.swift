@@ -28,6 +28,9 @@ struct ItemToolbar: ToolbarContent {
     /// Waiting for "Restauracja PRO": its entry dimmed, not to be tapped,
     /// and the plain one gone (Mateusz 2026-11-26).
     var proWaiting = false
+    /// "Zmierz restaurację na iPhonie": our model on this phone, timed
+    /// (the owner's, for now; Mateusz 2026-11-26: "Przetestujmy").
+    var measureOnPhone: (() -> Void)? = nil
     /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
     /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
     var correctCut: (() -> Void)? = nil
@@ -181,6 +184,16 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                     .disabled(true)
+                }
+                if let measureOnPhone {
+                    Button(action: measureOnPhone) {
+                        Label {
+                            Text(bound: "Zmierz restaurację na iPhonie")
+                            Text(bound: "Próba: czas i temperatura, nic nie zapisuje")
+                        } icon: {
+                            Image(systemName: "stopwatch")
+                        }
+                    }
                 }
                 if hasCopies { Divider() }
                 if hasCopies {

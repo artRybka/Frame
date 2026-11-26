@@ -48,6 +48,8 @@ struct ItemDetailView: View {
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
     @State private var orderingPro = false
+    /// "Zmierz restaurację na iPhonie" running.
+    @State private var measuring = false
     /// Ordered of "Restauracja PRO" from this card (the server's
     /// `restoringPro` comes only with the card's own fetch).
     @State private var proOrdered = false
@@ -311,6 +313,8 @@ struct ItemDetailView: View {
                     restore: offer.restore ? { menuHeld = nil; Task { await restoreByModel() } } : nil,
                     restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
                     proWaiting: offer.proWaiting,
+                    measureOnPhone: model.isOwner && item.kind == .artwork && item.look == nil && !measuring
+                        ? { Task { await measureOnPhone() } } : nil,
                     correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
                     undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
                     recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
@@ -519,6 +523,45 @@ struct ItemDetailView: View {
         } catch {
             proOrdered = false
             if !error.isCancellation { model.show(error) }
+        }
+    }
+
+    /// "Zmierz restaurację na iPhonie": the museum's picture (as the server
+    /// gives our model one, up to 1800 px) drawn by the phone's own copy of
+    /// the model, timed; nothing is kept.
+    private func measureOnPhone() async {
+        measuring = true
+        defer { measuring = false }
+        model.notices.info("Mierzę restaurację na iPhonie…", "Kilka sekund, nic nie zostanie zapisane.")
+        do {
+            let file = try await model.backend.museumPhoto(itemID: itemID, side: LowRes.restoreLimit)
+            let measured = try await Task.detached(priority: .userInitiated) {
+                try PhoneRestorer.measure(try MuseumCrop.pixels(of: file))
+            }.value
+            let seconds = { (d: Duration) in
+                (Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18)
+                    .formatted(.number.precision(.fractionLength(1)))
+            }
+            let warm = Self.thermal(measured.thermalAfter)
+            model.notices.info(
+                "Restauracja na iPhonie: \(seconds(measured.draw)) s",
+                "\(measured.columns)×\(measured.rows) px, \(measured.windows) okien, model wczytany w "
+                    + "\(seconds(measured.load)) s. Telefon: \(warm)."
+            )
+        } catch {
+            if !error.isCancellation {
+                model.notices.warn("Restauracja na iPhonie", error.localizedDescription)
+            }
+        }
+    }
+
+    private static func thermal(_ state: ProcessInfo.ThermalState) -> String {
+        switch state {
+        case .nominal: "chłodny"
+        case .fair: "ciepły"
+        case .serious: "gorący"
+        case .critical: "przegrzany"
+        @unknown default: "nie wiadomo"
         }
     }
 
