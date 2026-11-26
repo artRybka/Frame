@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.389
+
+- Notki „Kurator” przy dziełach brzmią swobodniej i mniej szablonowo. Każda
+  jest pisana wokół jednego pomysłu wziętego z samego dzieła, ma losowaną
+  długość (od dwóch zdań do dłuższej), inny początek (pytanie, szczegół,
+  światło, tytuł, temat…) i ton. Serwer liczy zwroty, które w ostatnich
+  notkach już się opatrzyły, i każe ich unikać. Zapisane notki zostają.
+
 ## 1.145.388
 
 - Restauracja dzieł własnym modelem na serwerze, bez opłat i bez odmów:
