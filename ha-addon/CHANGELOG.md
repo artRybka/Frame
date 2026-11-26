@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.398
+
+- Kopie dzieł zeskanowane z albumu (z „kropkami druku”) przegrywają przy
+  szukaniu lepszej kopii z czystymi zdjęciami, chyba że są od nich dwa razy
+  większe. Dzieło pokazywane ze skanu z albumu jest samo szukane w lepszej
+  kopii, a w „Kopie dzieła” taka kopia ma znacznik „Raster druku”.
+- Gdy czystej kopii nie ma, raster jest zdejmowany z pokazywanego zdjęcia,
+  a obraz lekko wyostrzany. Zapisane już dzieła z rastrem czyści raz
+  nocne zadanie „Raster druku w zdjęciach dzieł”.
+
 ## 1.145.397
 
 - Restauracja PRO: komunikat o zamówieniu pojawia się od razu po

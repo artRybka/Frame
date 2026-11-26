@@ -67,6 +67,7 @@ import numpy as np
 from PIL import Image
 
 from .imaging.color import linear_to_oklab, u8_to_linear
+from .imaging.descreen import screen
 from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.colors import tint_spread
@@ -112,6 +113,13 @@ KIND = "sharper"
 #: colours unless grey (``colour_note``). 6: grey only without any colour
 #: (a muted brown painting was "grey" beside a warmer copy).
 VERSION = "sharper-6"
+#: A copy that is a printed page's scan (``Quality.printed``) is better
+#: than a picture that is none only when this many times larger: its dots
+#: are taken off, and some of its sharpness with them (Mateusz 2026-11-26:
+#: „Przy szukaniu lepszej kopii chciałbym albo odsiewać…”). A copy that is
+#: none is better than a printed one this large at least.
+PRINTED_GAIN = 2.0
+CLEAN_SHARE = 0.75
 #: The version of the look at an art archive's photograph: those looked at
 #: before they took copies in other colours are looked at again.
 ARCHIVE_VERSION = "sharper-archive-2"
@@ -186,6 +194,13 @@ ARCHIVE_WAIT = 600.0
 #: The catalogue's works of Commons' tile sets taken once after the update.
 TILES_KEY = "tiled_copies"
 TILES_VERSION = 1
+#: The library's pictures kept before printed screens were taken off
+#: (``ImageCache._shown``, Mateusz 2026-11-26) looked through once, at
+#: night: where the work's id the look came to, and its version.
+PRINTED_KEY = "printed_pictures"
+PRINTED_VERSION = 1
+#: Every so many works, where the look came to is written down.
+PRINTED_PORTION = 50
 #: A copy in a tile set takes the place of a picture this many times as
 #: large (kept, as the frame's server keeps it), not much smaller.
 TILED_SIDE = 0.9
@@ -201,6 +216,8 @@ class Quality(NamedTuple):
     side: int
     bits: float | None = None
     ratio: float = 1.0
+    #: A scan of a printed page (a screen in it, ``imaging.descreen``).
+    printed: bool = False
 
     @classmethod
     def of(cls, width: int, height: int, size: int) -> Quality:
@@ -226,7 +243,13 @@ class Quality(NamedTuple):
 
     @property
     def weak(self) -> bool:
-        return self.side < WEAK_SIDE or (self.bits is not None and self.bits < WEAK_BITS)
+        """Worth a better copy: small, squeezed, or a printed page's scan
+        (Mateusz 2026-11-26)."""
+        return (
+            self.side < WEAK_SIDE
+            or (self.bits is not None and self.bits < WEAK_BITS)
+            or self.printed
+        )
 
     def better(self, own: Quality, faded: bool = False) -> bool:
         """This picture shows the work clearly better than ``own`` does.
@@ -241,9 +264,13 @@ class Quality(NamedTuple):
         side, own_side = self.kept(ratio), own.kept(ratio)
         if side < LEAST_SIDE:
             return False
-        if side >= own_side * GAIN:
-            return True
         if faded:
+            return True
+        if self.printed and not own.printed:
+            return side >= own_side * PRINTED_GAIN
+        if own.printed and not self.printed:
+            return side >= own_side * CLEAN_SHARE
+        if side >= own_side * GAIN:
             return True
         return (
             side >= own_side * 0.95
@@ -509,6 +536,8 @@ class Sharper:
         if known is not None:
             return known
         faded = archive_own(item)
+        if (self.library.get(item.id) or item).sharper is None and self.images.printed(item):
+            own = own._replace(printed=True)  # a printed page's scan: worth a clean copy
         if self._take_tiled(item, own):
             return "found"
         note = self.library.note(item.id, KIND)
@@ -535,7 +564,7 @@ class Sharper:
             except (httpx.HTTPError, OSError) as err:
                 log.info("sharper copy %s of %s: %s", copy.id, item.id, err)
                 continue
-            quality = Quality.of_image(img)
+            quality = Quality.of_image(img)._replace(printed=bool(screen(img)))
             if not quality.better(own, faded):
                 log.info("copy %s of %s is no better (%s)", copy.id, item.id, quality)
                 continue
@@ -750,7 +779,7 @@ class Sharper:
         if copy.source in SIZE_UNSAID:
             return True
         side = max(copy.width or 0, copy.height or 0)
-        return not side or Quality(side).better(Quality(own.side), faded)
+        return not side or Quality(side).better(Quality(own.side, printed=own.printed), faded)
 
     def same_picture(self, item: Item, copy: Item) -> bool:
         """``copy`` is ``item``'s picture whole and in its colours, by their
@@ -1057,6 +1086,63 @@ class Sharper:
         if done:
             log.info("thumbnails of %d works made again from their copies", done)
         return done
+
+    def printed_at_night(self, quiet: Callable[[], bool]) -> tuple[int, int]:
+        """Once (:data:`PRINTED_VERSION`), a work at a time while ``quiet``:
+        each kept picture that is a printed page's scan is made again
+        without its screen (``ImageCache.recut``), its colours measured
+        again, and the work looked at anew for a clean copy (its last look
+        forgotten; the owner's own choice stands). Goes on where the last
+        night stopped. How many looked at, how many were printed."""
+        kept = self.library.get_state(PRINTED_KEY) or {}
+        if kept.get("version") == PRINTED_VERSION and kept.get("done"):
+            return 0, 0
+        after = str(kept.get("after") or "") if kept.get("version") == PRINTED_VERSION else ""
+        here = self.images.originals_here()
+        items = sorted(
+            (i for i in self.library.all_items() if i.file_stem in here and i.id > after),
+            key=lambda i: i.id,
+        )
+        looked = printed = 0
+        for item in items:
+            if not quiet():
+                break
+            if self.images.clears(item) and self.images.printed(item):
+                printed += 1
+                self._printed_again(item)
+            looked += 1
+            if looked % PRINTED_PORTION == 0:
+                self.library.set_state(PRINTED_KEY, {"version": PRINTED_VERSION, "after": item.id})
+        else:
+            self.library.set_state(PRINTED_KEY, {"version": PRINTED_VERSION, "done": True})
+            log.info("printed pictures: looked through, %d printed tonight", printed)
+            return looked, printed
+        if looked:
+            self.library.set_state(
+                PRINTED_KEY, {"version": PRINTED_VERSION, "after": items[looked - 1].id}
+            )
+        log.info("printed pictures: %d looked at, %d printed, the rest later", looked, printed)
+        return looked, printed
+
+    def _printed_again(self, item: Item) -> None:
+        """``item``'s kept picture, a printed page's scan, made again without
+        its screen, and the work to be looked at again for a clean copy."""
+        try:
+            self.images.recut(item)
+        except OSError as err:
+            log.info("printed picture of %s: %s", item.id, err)
+            return
+        self._measure_again(item)
+        for old in self.details_dir.glob(f"{item.file_stem}-*.jpg"):
+            old.unlink(missing_ok=True)  # the study's details, from the new picture
+        note = self.library.note(item.id, KIND)
+        chosen = item.sharper is not None and (item.sharper.chosen or item.sharper.stand_in)
+        if chosen or (note is not None and note.data.get("status") == "kept"):
+            return  # the owner's choice stands
+        self.library.delete_notes(KIND, item.id)
+        with self._lock:
+            self._known.pop(item.id, None)
+        log.info("printed picture of %s shown without its screen", item.id)
 
     def _measure_again(self, item: Item) -> Item:
         """The work's colours (dots, colour tags, the frame's preset) from
