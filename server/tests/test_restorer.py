@@ -381,6 +381,22 @@ def test_a_drawing_of_the_whole_photograph_is_cut_to_the_work_once(app: Any) -> 
     assert restorer.cut_kept() == 0  # cut already
 
 
+def test_a_drawing_of_a_photograph_little_wider_than_its_work_is_cut_too(app: Any) -> None:
+    """Van Gogh's "Der Bauer" (Leipzig): the card cut to the painting is
+    0.78 wide to the photograph's 0.81, and its Pro drawing 0.81."""
+    _client, service, _web, painter = app
+    own = _small(service)
+    picture = _print(1, SMALL)
+    service.restorer._keep(own, picture, painter._draw(picture), 0.03, PRO, pro=True)
+    narrow = [(0.03, 0.02), (0.95, 0.02), (0.95, 0.98), (0.03, 0.98)]  # 1.44 of 1.5
+    cut = service.library.update(own.id, cut=Cut(work=narrow, aspect=1.5))
+    assert cut is not None
+    assert service.restorer.cut_kept() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.width / stored.sharper.height < 1.47
+
+
 def test_a_printed_screens_grain_is_not_laid_under_the_drawing() -> None:
     """A scan of a postcard: its screen, too fine to be found, is not
     brought back over the drawing by the plain enlargement under it
