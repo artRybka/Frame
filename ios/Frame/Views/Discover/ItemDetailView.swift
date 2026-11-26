@@ -40,6 +40,8 @@ struct ItemDetailView: View {
     /// 0 when it is not, as the server told it once the card opened or a
     /// copy was picked; nil, the tile's word for it until then.
     @State private var lowKnown: Int?
+    /// The server's `restoreSide` (`sharpen`): offered under 1800 px.
+    @State private var restoreKnown: Int?
     /// "Popraw kadr" on the whole screen (also a tap on "Pełny kadr").
     @State private var correctingCut = false
     /// The cut asked of the server (the print's edge: some seconds).
@@ -447,6 +449,7 @@ struct ItemDetailView: View {
         withAnimation(.easeInOut(duration: 0.4)) { item = updated }
         pictureSize = updated.sharper.map { ($0.width, $0.height) }
         lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
+        restoreKnown = nil  // the copy's own side counts now
         let id = itemID
         if model.player?.current?.item?.id == id, !model.isGuest {
             model.notices.info(
@@ -476,7 +479,7 @@ struct ItemDetailView: View {
     /// whose picture is small for the frame and not drawn again yet.
     private func canRestore(_ item: Item) -> Bool {
         item.kind == .artwork && item.look == nil && !restoring
-            && item.sharper?.isRestored != true && (lowSide ?? 0) > 0
+            && item.sharper?.isRestored != true && restoreSide > 0
     }
 
     /// "Restaurator Pro" in the menu (Mateusz 2026-11-26): Google's model
@@ -484,7 +487,7 @@ struct ItemDetailView: View {
     /// person's day allows (the server says no past it).
     private func canRestorePro(_ item: Item) -> Bool {
         item.kind == .artwork && item.look == nil && !proWaiting(item) && item.sharper?.isPro != true
-            && ((lowSide ?? 0) > 0 || item.sharper?.isRestored == true)
+            && (restoreSide > 0 || item.sharper?.isRestored == true)
             && model.me?.proLeft != 0
     }
 
@@ -1056,6 +1059,7 @@ struct ItemDetailView: View {
                 pictureSize = (width, height)
             }
             if let low = view.lowSide { lowKnown = low }
+            if let side = view.restoreSide { restoreKnown = side }
             if let held = view.heldBy, !held.isEmpty, item?.heldBy?.isEmpty != false {
                 withAnimation(.easeOut(duration: 0.3)) { item?.heldBy = held }
                 if let key = view.heldAt, !key.isEmpty { item?.heldAt = key }
@@ -2156,6 +2160,15 @@ struct ItemDetailView: View {
     /// picture), said „600 px” of Wyspiański's „Macierzyństwo” shown from
     /// a copy of 1920 × 2548 (Mateusz 2026-11-15); the card asks the server
     /// only of a work with no copy (`sharpen`), so the copy's size counts.
+    /// Under 1800 px, the restorer is offered (the mark stays under 1600).
+    private var restoreSide: Int {
+        if let copy = item?.sharper, !copy.isRestored, restoreKnown == nil {
+            let side = max(copy.width, copy.height)
+            return side < LowRes.restoreLimit ? side : 0
+        }
+        return restoreKnown ?? lowSide ?? 0
+    }
+
     private var lowSide: Int? {
         if let lowKnown { return lowKnown }
         let tile = ItemPeeks.tiles[itemID]?.summary

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.402
+
+- Restauracja: model dostaje całe zdjęcie, bez zmniejszania (wynik dalej
+  2K), i jest w menu dla zdjęć poniżej 1800 px.
+
 ## 1.145.401
 
 - Galeria: gdy temat dzieła jest dużo szerszy niż ekran, kadr pełnego
