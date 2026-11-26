@@ -80,6 +80,9 @@ struct ItemDetailView: View {
     /// się dopiero gdy opis jest już gotowy”).
     @State private var polishHeard: String?
     @State private var polishSettled: String?
+    /// The note came while the card was typing (`CuratorWriting`): it is
+    /// typed in before it is shown as text, and the study waits for it.
+    @State private var typingNote: String?
     /// The Polish title, written ahead of the texts: on the card while
     /// "O dziele" is still being translated.
     @State private var earlyTitle: String?
@@ -864,6 +867,9 @@ struct ItemDetailView: View {
         let busy = waiting && text == nil
         let title = busy ? nonEmpty(view.title) ?? earlyTitle : nil
         guard text != polish || busy != polishWaiting || title != earlyTitle else { return }
+        // The card was typing (no text of its own): the note is typed in.
+        let typed = item.map { $0.isOwnWork || $0.description.isEmpty } ?? false
+        if animated, typed, polishWaiting, polish == nil, text != nil { typingNote = itemID }
         withAnimation(animated ? .easeInOut(duration: 0.6) : nil) {
             polish = text
             polishWaiting = busy
@@ -1111,12 +1117,18 @@ struct ItemDetailView: View {
         let text = shownPolish?.full ?? (own ? "" : item.description)
         // Nothing of its own to show: the curator is writing, from the card's
         // first frame until the server says otherwise.
-        let writing = text.isEmpty && !showOriginal
-            && (polishWaiting || (polish == nil && polishHeard != itemID && item.kind == .artwork))
+        let typing = typingNote == itemID && !showOriginal
+        let writing = typing || (text.isEmpty && !showOriginal
+            && (polishWaiting || (polish == nil && polishHeard != itemID && item.kind == .artwork)))
         if !text.isEmpty || polish != nil || writing || polishWaiting {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("O dziele")
-                if !text.isEmpty {
+                if writing {
+                    CuratorWriting(words: typedWords(item), note: typing ? text : nil) {
+                        withAnimation(.easeInOut(duration: 0.3)) { typingNote = nil }
+                    }
+                    .transition(.opacity)
+                } else if !text.isEmpty {
                     // Not Text: it cut long notes short with "…".
                     ReadingText(text: text)
                 } else if showOriginal {
@@ -1124,10 +1136,7 @@ struct ItemDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                 }
-                if writing {
-                    CuratorWriting()
-                        .transition(.opacity)
-                } else if polishWaiting {
+                if polishWaiting, !writing {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
                         Text(bound: "Piszę po polsku…")
@@ -1135,7 +1144,7 @@ struct ItemDetailView: View {
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                 }
-                if let polish { polishOrigin(polish, original: own ? "" : item.description) }
+                if let polish, !writing { polishOrigin(polish, original: own ? "" : item.description) }
             }
             .id("about")
         }
@@ -1164,7 +1173,25 @@ struct ItemDetailView: View {
     /// The curator's note is on the card, or none is coming: only then is a
     /// study offered.
     private var noteSettled: Bool {
-        polish != nil || (polishSettled == itemID && !polishWaiting)
+        typingNote != itemID && (polish != nil || (polishSettled == itemID && !polishWaiting))
+    }
+
+    /// What the card types while the note is written: what the model saw,
+    /// the colours and the facts, taken in turn.
+    private func typedWords(_ item: Item) -> [String] {
+        let seen = keywords(item)
+        let colours = item.colorTags.map { ColorTag.name($0).lowercased() }
+        let facts = [
+            nonEmpty(labels?.classification), nonEmpty(item.dateText), nonEmpty(labels?.culture),
+            nonEmpty(item.museumShown), nonEmpty(item.artist),
+        ].compactMap { $0 }
+        var words: [String] = []
+        for index in 0 ..< max(seen.count, colours.count, facts.count) {
+            for list in [seen, colours, facts] where index < list.count {
+                if !words.contains(list[index]) { words.append(list[index]) }
+            }
+        }
+        return words
     }
 
     /// "Otwórz studium" under the frame buttons; held: "Przygotuj od nowa".
