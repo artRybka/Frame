@@ -515,10 +515,13 @@ struct CopyTag: View {
 /// "Kreatywny restaurator" under "Zdjęcie dzieła": AI's sparkles and the
 /// name, in the amber of the low resolution's tag it takes the place of.
 struct RestoredTag: View {
+    /// By "Restaurator Pro" (Google's model), not the server's own.
+    var pro = false
+
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: LowRes.restoredSymbol).font(.system(size: 9, weight: .semibold))
-            Text(bound: LowRes.restoredName)
+            Text(bound: pro ? LowRes.proName : LowRes.restoredName)
                 .font(.system(size: 9.5, weight: .bold))
                 .tracking(0.6)
                 .textCase(.uppercase)
@@ -531,7 +534,7 @@ struct RestoredTag: View {
                 .strokeBorder(LowRes.tint.opacity(0.5), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Restauracja dzieła: szczegóły dorysował model AI")
+        .accessibilityLabel(pro ? "Restaurator Pro: szczegóły dorysował model Google" : "Restauracja dzieła: szczegóły dorysował model AI")
     }
 }
 

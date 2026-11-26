@@ -87,7 +87,7 @@ actor DemoBackend: FrameBackend {
         reviewCount: 2, monthlyLimitUsd: 100, spentUsd: 11.14,
         keywordsProgress: .init(done: 0, waiting: 0, refused: 0, batchItems: 0, batchDone: 0),
         plTextProgress: nil, error: nil,
-        geminiKeySet: true, geminiKeyTail: "wxyz", falKeySet: false, drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
+        geminiKeySet: true, geminiKeyTail: "wxyz", drawn: true, drawnUsd: 0.15, drawnBatchUsd: 0.075,
         drawnWaiting: 12, drawnInBatch: 20, geminiError: nil,
         geminiMonthlyLimitUsd: 5, geminiSpentUsd: 1.35, geminiSpentByKind: ["sheet": 1.35],
         periodDay: 1, periodStart: "2026-11-01", periodEnd: "2026-11-30",
@@ -737,17 +737,27 @@ actor DemoBackend: FrameBackend {
         return try update(itemID) { $0.sharper = Self.restoredCopy($0) }
     }
 
+    func restorePro(itemID: String) async throws -> ProOrder {
+        try await Task.sleep(for: .seconds(1))
+        _ = try update(itemID) { item in
+            var copy = Self.restoredCopy(item)
+            copy.pro = true
+            copy.museum = "Restaurator Pro"
+            item.sharper = copy
+        }
+        return ProOrder(sent: true, left: nil)
+    }
+
     func restorer() async throws -> RestorerState {
         RestorerState(
-            enabled: true, items: 7, usd: 0.21, waiting: 0,
-            restored: items.filter { $0.sharper?.isRestored == true }.count
+            enabled: true, items: 7, usd: 0, waiting: 0,
+            restored: items.filter { $0.sharper?.isRestored == true }.count, pro: true
         )
     }
 
     func restorer(playlistID: Int) async throws -> RestorerState {
         var state = try await restorer()
         state.items = 4
-        state.usd = 0.12
         return state
     }
 
@@ -2598,18 +2608,6 @@ actor DemoBackend: FrameBackend {
         aiValue.geminiKeySet = false
         aiValue.geminiKeyTail = nil
         aiValue.drawnWaiting = 0
-        return aiValue
-    }
-
-    func saveFalKey(_ key: String) async throws -> AiSettings {
-        aiValue.falKeySet = true
-        aiValue.falKeyTail = String(key.trimmingCharacters(in: .whitespaces).suffix(4))
-        return aiValue
-    }
-
-    func deleteFalKey() async throws -> AiSettings {
-        aiValue.falKeySet = false
-        aiValue.falKeyTail = nil
         return aiValue
     }
 

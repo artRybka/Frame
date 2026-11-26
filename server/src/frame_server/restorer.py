@@ -1,48 +1,31 @@
-"""The creative restorer ("Kreatywny restaurator", Mateusz 2026-11-12): a
-work whose picture is small for the frame (``low_res.LOW_SIDE``) drawn again
-larger by Google's image model (Nano Banana 2.1) from the picture it shows.
+"""The restorer ("Restauracja dzieła"): a work whose picture is small for
+the frame (``low_res.LOW_SIDE``) drawn again larger.
 
-A trial on de Chirico's WikiArt pictures (800 px, 2026-11-12) gave some
-2000 px in the same proportions, everything where it was (within 0.2%),
-with crisp edges, brushwork and canvas: invented, not recovered (its fine
-detail agrees with the real file's as 0.4 does, a plain enlargement's as
-0.75), so the card says so ("Kreatywny restaurator" under "Zdjęcie
-dzieła") and the work's tiles carry amber sparkles in place of the low
-resolution's dots.
+Since 2026-11-26 by our own model on the server (Mateusz 08:14 UTC: "Nasz
+nowy model to główny i domyślny restaurator. Rezygnujemy z tego co daje
+fal."): ArtSR G3 (:mod:`.imaging.artsr`), four times larger, led by how the
+work looks and by its kind, free and refusing nothing. Of 32 works with a
+large original it kept nearest to them of all tried. One work from its card
+at once (a minute or two on the NAS, one at a time), many from a playlist's
+"…" or the owner's favourites one after another in the background.
 
-The drawing is kept the way a copy the owner brought is
+"Restaurator Pro" is Google's model (Nano Banana 2.1, :data:`MODEL`; Pro
+after :data:`FIRST_TRIES` that failed, :func:`model_for`) through the Batch
+API, one work at a time, ordered by anyone from its card within a daily
+limit of their own (``users.User.pro_a_day``; 2.1 chosen over Pro on the
+comparisons of 2026-11-26, 08:31 UTC: "2.1 dla Restauratora PRO"). Whoever
+ordered it is told when it is drawn ("Restauracja gotowa"). A picture the
+model would not draw (``image_recitation``) is asked for again,
+:data:`REFUSED_TRIES` times in all, then noted and never sent again.
+
+Every drawing is kept the way a copy the owner brought is
 (:meth:`Sharper.bring`): for good, in the work's own id, as his pick
-(``SharperCopy.chosen``), so the night's looks for sharper copies leave it
-be and nothing takes it for another work; "Przywróć zdjęcie muzeum" goes
-back to the museum's picture. The gatekeeper does not ask about it
-(``gatekeeper.asked_by_rules``): it is the owner's.
-
-Since 2026-11-22 the drawing is SeedVR2's on fal.ai when Konfiguracja
-holds fal's key (:mod:`.ai.fal`; Mateusz 09:14 UTC, after two rounds of
-trials: nothing moved, nothing invented, about 0.004 USD a work): the
-same detail drawn larger, refusing nothing, so the works Google would not
-draw are drawn too. Google's model stays the spare: without fal's key,
-or when fal gives no picture for a work from its card.
-
-One work at a time from its card ("…" → "Kreatywny restaurator", about
-25 s), or many at once through the Batch API: the owner's favourites
-under the threshold from Konfiguracja, or a playlist's from its "…"
-(Mateusz 2026-11-13) (half the price, within 24 hours,
-looked at every :data:`POLL` seconds). A picture the model would not draw
-(``image_recitation``: it took a known painting for one it may not copy)
-is asked for again, :data:`REFUSED_TRIES` times in all (a refusal costs
-nothing: Google answers it with an error and no bill; Mateusz 2026-11-13,
-Delacroix's "Rzeź na Chios"), then noted and never sent again. The first
-:data:`FIRST_TRIES` go to Nano Banana 2.1, the rest to the dearer Nano
-Banana Pro (:func:`model_for`; Mateusz 2026-11-16: "gdy pierwsze 2 zawiodą
-odpalajmy pro"), which takes works 2.1 refuses and keeps nearer the
-picture; a drawing 2.1 gave that cannot be used (none, or in other
-proportions) is asked of it again, then of Pro, once.
-
-The drawing comes back in the colours of the picture it was drawn from
-(:func:`recoloured`; Mateusz 2026-11-16: "Bywa że restauracja dzieła
-zmienia nieznacznie kolorystykę"): the model's detail on the museum's
-tones.
+(``SharperCopy.chosen``; ``SharperCopy.pro`` for Pro's), so the night's
+looks for sharper copies leave it be; "Przywróć zdjęcie muzeum" goes back
+to the museum's picture. It comes back in the colours of the picture it
+was drawn from (:func:`recoloured`): the model's detail on the museum's
+tones, :data:`DRAWN` of it. Each restored work goes first in the
+"Restaurator" playlist of whoever asked for it (:meth:`Restorer.file`).
 """
 
 from __future__ import annotations
@@ -55,22 +38,19 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import cv2
-import httpx
 import numpy as np
 from PIL import Image
 
-from .ai import fal
-from .ai.client import AiUnavailable
 from .ai.gemini import MODEL, PRO, Ask, NotDrawn
+from .imaging import artsr
 from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
 from .imaging.descreen import descreened
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, low_side
-from .library.models import Note
+from .library.models import Note, Playlist, PlaylistKind
 from .library.viewer import OWNER_ID
 
 if TYPE_CHECKING:
-    from .ai.fal import Upscaler
     from .ai.gemini import Painter
     from .library import ImageCache, Library
     from .sharper import Sharper
@@ -80,10 +60,14 @@ log = logging.getLogger(__name__)
 KIND = "restorer"
 #: Where the drawing is from, as the card names it.
 ORIGIN = "Kreatywny restaurator"
-#: The model's output: some 2048 px on the long side.
+ORIGIN_PRO = "Restaurator Pro"
+#: Google's output: some 2048 px on the long side; ours is brought to it.
 SIZE = "2K"
-#: A picture this long or longer gains nothing from the model's 2K.
+#: A picture this long or longer gains nothing from a drawing of 2K.
 LONGEST = 2048
+#: Our model is given the picture at most this long (four times it is
+#: twice :data:`LONGEST`): a minute or two on the NAS, not several.
+MODEL_INPUT = 1024
 #: The proportions of the drawing may differ from the picture's by this
 #: share and are then set right; by more it is not taken.
 SKEW_FIXED = 0.005
@@ -114,28 +98,35 @@ COLOURS = 3
 #: What each ``colours`` of a kept drawing kept of what was drawn: a
 #: drawing kept softer is given back its detail by the difference.
 KEPT = {1: 1.0, 2: 0.5}
-#: Works in one batch: their pictures go in the request (inline, under
-#: the API's 20 MB).
-PER_BATCH = 24
-#: Seconds between looks at the batches still waiting.
+#: Seconds between looks at Pro's batches still waiting.
 POLL = 600.0
-#: About what one drawing costs, USD (2K through the Batch API: half of
-#: the 0.06 the trial paid).
+#: About what one drawing of Pro costs, USD (2K through the Batch API).
 BATCH_USD = 0.03
-#: The same of Pro (:data:`PRO`; the trial paid 0.14 at once).
+#: The same of Google's dearer model (:data:`PRO`), after 2.1 failed.
 PRO_BATCH_USD = 0.07
-#: Seconds between looks while fal's pictures are waiting.
-FAL_POLL = 20.0
-#: The library state key of the batches waiting.
+#: The library state key of Pro's batches waiting.
 BATCHES = "restorer.batches"
-#: A picture the model will not draw is asked for this many times in all,
-#: from its card at once, through the Batch in as many batches (Mateusz
-#: 2026-11-13: "ponawiaj próbę 5 razy"): Google now and then takes the
-#: same question, and a refusal is not paid for.
+#: The works waiting for our model in the background: ``{"id", "by"}``.
+QUEUE = "restorer.queue"
+#: A picture Google's model will not draw is asked for this many times in
+#: all (Mateusz 2026-11-13: "ponawiaj próbę 5 razy"): it now and then takes
+#: the same question, and a refusal is not paid for.
 REFUSED_TRIES = 5
 #: Tries of Nano Banana 2.1 (:data:`MODEL`) before Pro (:data:`PRO`) is
 #: asked (:func:`model_for`).
 FIRST_TRIES = 2
+#: The playlist each person's restored works go into (Mateusz 2026-11-26:
+#: "w playlistach utwórzmy proszę folder „Restaurator” gdzie będą trafiać
+#: wszystkie restaurowane dzieła"), under :func:`restorer_key`.
+PLAYLIST_NAME = "Restaurator"
+PLAYLIST_KEY = "restorer_playlist"
+#: The works restored before the playlist was there, put in the owner's once.
+FILLED_KEY = "restorer_playlist_filled"
+
+
+def restorer_key(user_id: str) -> str:
+    return PLAYLIST_KEY if user_id == OWNER_ID else f"{PLAYLIST_KEY}:{user_id}"
+
 
 PROMPT = """This is a small, low-resolution digital photograph of a painting. Produce the same \
 photograph at a higher resolution: a faithful restoration and upscale, as a museum's \
@@ -158,11 +149,16 @@ class NotRestored(ValueError):
     """The work cannot be drawn again: ``code`` says why ("refused": the
     model would not draw it; "skewed": drawn in other proportions;
     "large": its picture is large enough; "not_drawn": no picture came
-    back this time; "not_art")."""
+    back this time; "restored": drawn already; "not_art")."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
+
+
+#: Told when a work ordered of Pro is over: the work, who ordered it, and
+#: whether it was drawn (False: refused for good, or drawn unusably).
+Done = Callable[[Item, str, bool], None]
 
 
 class Restorer:
@@ -173,33 +169,43 @@ class Restorer:
         sharper: Sharper,
         painter: Painter,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        upscaler: Upscaler | None = None,
+        model: artsr.ArtSR | None = None,
     ) -> None:
         self.library = library
         self.images = images
         self.sharper = sharper
         self.painter = painter
-        #: fal's SeedVR2, the model asked first when it has a key.
-        self.upscaler = upscaler
+        self.model = model or artsr.ArtSR()
+        #: How a picture looks to SigLIP 2 (``seen.SeenModel.pictures``),
+        #: which leads our model; set by the service.
+        self.look_of: Callable[[Image.Image], np.ndarray] | None = None
+        #: Told when a work ordered of Pro is over (the notification).
+        self.on_pro: Done | None = None
         self.clock = clock
         self._lock = threading.Lock()
+        #: Our model draws one picture at a time: the NAS has others to serve.
+        self._drawing = threading.Lock()
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     # -- what can be drawn -------------------------------------------------------------
 
-    def by_fal(self) -> bool:
-        """Whether the drawings are SeedVR2's (fal's key in Konfiguracja)."""
-        return self.upscaler is not None and self.upscaler.enabled()
-
     def enabled(self) -> bool:
-        """Whether anything can draw: fal's key or Google's."""
-        return self.by_fal() or self.painter.enabled()
+        """Whether our model is here (it comes with the server)."""
+        return self.model.here()
+
+    def pro_enabled(self) -> bool:
+        """Whether Restaurator Pro can draw: Google's key in Konfiguracja."""
+        return self.painter.enabled()
 
     @staticmethod
     def restored(item: Item) -> bool:
         return item.sharper is not None and item.sharper.restored
+
+    @staticmethod
+    def restored_pro(item: Item) -> bool:
+        return item.sharper is not None and item.sharper.restored and item.sharper.pro
 
     def side(self, item: Item) -> int | None:
         """The long side of the picture the work shows, when known."""
@@ -215,9 +221,7 @@ class Restorer:
 
     def refused(self) -> set[str]:
         """The works Google's model would not draw :data:`REFUSED_TRIES`
-        times; none when SeedVR2 draws, which refuses nothing."""
-        if self.by_fal():
-            return set()
+        times (Pro is not asked for them again)."""
         return {
             item_id
             for item_id, note in self.library.notes(KIND).items()
@@ -225,21 +229,29 @@ class Restorer:
         }
 
     def _refusals(self, item_id: str) -> int:
-        """How many times the model would not draw the work so far, or drew
-        it unusably (:data:`FAILED`)."""
+        """How many times Google's model would not draw the work so far, or
+        drew it unusably (:data:`FAILED`)."""
         note = self.library.note(item_id, KIND)
         if note is None or note.data.get("status") not in ("refused", FAILED):
             return 0
         return _tries(note.data)
 
+    def _queue(self) -> list[dict[str, str]]:
+        queue = self.library.get_state(QUEUE, [])
+        return [q for q in queue if isinstance(q, dict)] if isinstance(queue, list) else []
+
     def waiting(self) -> set[str]:
+        """The works waiting: for our model in the background, or for Pro."""
+        return {q["id"] for q in self._queue()} | self.waiting_pro()
+
+    def waiting_pro(self) -> set[str]:
         return {i for batch in self._batches() for i in batch.get("ids", [])}
 
     def candidates(self, items: Iterable[Item] | None = None) -> list[Item]:
         """The works whose picture is known to be small for the frame
-        (``low_res.low_side``), not drawn yet, nor refused, nor waiting in
-        a batch: of ``items`` (a playlist's), or of the owner's favourites."""
-        skip = self.refused() | self.waiting()
+        (``low_res.low_side``), not drawn yet nor waiting: of ``items`` (a
+        playlist's), or of the owner's favourites."""
+        skip = self.waiting()
         if items is None:
             found_ids = sorted(self.library.favorites(OWNER_ID))
             items = (i for i in map(self.library.get, found_ids) if i is not None)
@@ -254,22 +266,21 @@ class Restorer:
         return found
 
     def estimate(self, items: Iterable[Item] | None = None) -> tuple[int, float]:
-        found = self.candidates(items)
-        if self.by_fal():
-            return len(found), round(len(found) * fal.TYPICAL_USD, 3)
-        usd = sum(
-            BATCH_USD if model_for(self._refusals(i.id)) == MODEL else PRO_BATCH_USD for i in found
-        )
-        return len(found), round(usd, 2)
+        """How many works our model would draw: for nothing."""
+        return len(self.candidates(items)), 0.0
 
     def counts(self) -> tuple[int, int]:
-        """Works waiting in batches, and works drawn again."""
+        """Works waiting, and works drawn again."""
         drawn = sum(1 for i in self.library.all_items() if self.restored(i))
         return len(self.waiting()), drawn
 
     # -- one work ---------------------------------------------------------------------
 
     def _picture(self, item: Item) -> Image.Image:
+        if self.restored(item):
+            # Drawn already (ours, ordered again of Pro): drawn again from
+            # the museum's picture, never from the drawing.
+            return descreened(self.images.before_drawn(item, urgent=True).convert("RGB"))
         if item.cleaned_shown() is not None:
             # A work shown cleaned (``Item.cleaned``) is drawn from the
             # picture as it came: the drawing is cleaned after, the same.
@@ -282,58 +293,54 @@ class Restorer:
             # they were a net over the whole work (``imaging.descreen``).
             return descreened(img.convert("RGB"))
 
-    def restore(self, item: Item) -> Item:
-        """``item`` drawn again now (some 25 s), kept in place of its
-        picture. Raises :class:`NotRestored`, and the painter's errors
-        (no key, no credit, the model unavailable)."""
+    def restore(self, item: Item, by: str = OWNER_ID) -> Item:
+        """``item`` drawn again now by our model (a minute or two on the
+        NAS), kept in place of its picture and put in ``by``'s
+        "Restaurator". Raises :class:`NotRestored`."""
         stored = self.library.get(item.id) or item
         self.check(stored)
-        if self.restored(stored):  # drawn from the museum's picture, not the drawing
-            stored = self.sharper.keep_own(stored)
+        if self.restored(stored):
+            raise NotRestored("restored", "drawn again already")
         picture = self._picture(stored)
-        if self.by_fal():
-            assert self.upscaler is not None
-            try:
-                drawn, usd = self.upscaler.upscale(KIND, picture, LONGEST)
-                return self._keep(stored, picture, drawn, usd, fal.MODEL)
-            except (fal.NotUpscaled, AiUnavailable, httpx.HTTPError) as err:
-                if not self.painter.enabled():
-                    if isinstance(err, AiUnavailable):
-                        raise
-                    raise NotRestored("not_drawn", str(err)) from err
-                log.info("restorer: %s not drawn by SeedVR2, Google's then: %s", stored.id, err)
-        tries = 0
-        while True:
-            model = model_for(tries)
-            tries += 1
-            try:
-                drawn, usd = self.painter.paint(KIND, PROMPT, [picture], size=SIZE, model=model)
-                return self._keep(stored, picture, drawn, usd, model)
-            except NotDrawn as err:
-                if not refusal(err):
-                    if model == PRO:
-                        raise NotRestored("not_drawn", str(err)) from err
-                    log.info("restorer: %s not drawn by %s: %s", stored.id, model, err)
-                    continue
-                log.info(
-                    "restorer: %s refused by %s (%d of %d)", stored.id, model, tries, REFUSED_TRIES
-                )
-                if tries >= REFUSED_TRIES:
-                    self._note(
-                        stored.id,
-                        "refused",
-                        why=str(err)[:300],
-                        code=err.code,
-                        tries=tries,
-                        model=model,
-                    )
-                    raise NotRestored("refused", str(err)) from err
-            except NotRestored:  # drawn in other proportions
-                if model == PRO:
-                    raise
+        drawn = self.draw(stored, picture)
+        with self._lock:
+            now = self.library.get(item.id) or stored
+            if self.restored(now):  # Pro's came meanwhile
+                return now
+            return self._keep(now, picture, drawn, 0.0, artsr.NAME, by=by)
+
+    def draw(self, item: Item, picture: Image.Image) -> Image.Image:
+        """Our model's drawing of ``picture``, :data:`LONGEST` long."""
+        given = picture
+        if max(given.size) > MODEL_INPUT:
+            k = MODEL_INPUT / max(given.size)
+            given = given.resize(
+                (max(1, round(given.width * k)), max(1, round(given.height * k))),
+                Image.Resampling.LANCZOS,
+            )
+        with self._drawing:
+            look = self._look(picture)
+            drawn = self.model.larger(given, look, artsr.kind_of(item))
+        k = LONGEST / max(drawn.size)
+        return drawn.resize(
+            (round(drawn.width * k), round(drawn.height * k)), Image.Resampling.LANCZOS
+        )
+
+    def _look(self, picture: Image.Image) -> np.ndarray:
+        if self.look_of is None:
+            raise NotRestored("not_drawn", "how the work looks is not known here")
+        return np.asarray(self.look_of(picture), dtype=np.float32).reshape(-1)
 
     def _keep(
-        self, item: Item, picture: Image.Image, drawn: Image.Image, usd: float, model: str = MODEL
+        self,
+        item: Item,
+        picture: Image.Image,
+        drawn: Image.Image,
+        usd: float,
+        model: str,
+        *,
+        by: str = OWNER_ID,
+        pro: bool = False,
     ) -> Item:
         try:
             fitted = recoloured(picture, fit(picture.size, drawn))
@@ -342,7 +349,8 @@ class Restorer:
             raise
         buf = io.BytesIO()
         fitted.save(buf, "JPEG", quality=95)
-        updated = self.sharper.bring(item, buf.getvalue(), ORIGIN, restored=True)
+        origin = ORIGIN_PRO if pro else ORIGIN
+        updated = self.sharper.bring(item, buf.getvalue(), origin, restored=True, pro=pro)
         self._note(
             item.id,
             "done",
@@ -351,14 +359,12 @@ class Restorer:
             own=list(picture.size),
             colours=COLOURS,
             model=model,
+            pro=pro,
+            by=by,
         )
+        self.file(item.id, by)
         log.info(
-            "restorer: %s %s → %s by %s (%.3f USD)",
-            item.id,
-            picture.size,
-            fitted.size,
-            model,
-            usd,
+            "restorer: %s %s → %s by %s (%.3f USD)", item.id, picture.size, fitted.size, model, usd
         )
         return updated
 
@@ -372,6 +378,39 @@ class Restorer:
                 data={"status": status, "at": self.clock().isoformat(), **data},
             )
         )
+
+    # -- "Restaurator" in Playlisty ---------------------------------------------------
+
+    def playlist(self, user: str) -> Playlist | None:
+        """``user``'s "Restaurator", when made."""
+        playlist_id = self.library.get_state(restorer_key(user), None)
+        found = self.library.playlist(playlist_id) if playlist_id is not None else None
+        return found if found is not None and found.owner == user else None
+
+    def file(self, item_id: str, user: str = OWNER_ID) -> None:
+        """The work in ``user``'s "Restaurator" (made when first needed,
+        and again if they deleted it), as added last: shown first."""
+        playlist = self.playlist(user) or Playlist(
+            name=PLAYLIST_NAME, kind=PlaylistKind.MANUAL, owner=user
+        )
+        ids = [*(i for i in playlist.item_ids if i != item_id), item_id]
+        saved = self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
+        self.library.set_state(restorer_key(user), saved.id)
+
+    def file_kept(self) -> int:
+        """The works restored before "Restaurator" was there put in the
+        owner's, in the order they were drawn, once; how many."""
+        if self.library.get_state(FILLED_KEY, False):
+            return 0
+        notes = self.library.notes(KIND)
+        kept = sorted(
+            (i for i in self.library.all_items() if self.restored(i)),
+            key=lambda i: str(notes[i.id].data.get("at", "")) if i.id in notes else "",
+        )
+        for item in kept:
+            self.file(item.id, OWNER_ID)
+        self.library.set_state(FILLED_KEY, True)
+        return len(kept)
 
     # -- the drawings kept before their colours were taken back -----------------------
 
@@ -407,7 +446,9 @@ class Restorer:
                 if stored is None or stored.sharper is None or stored.sharper.url != url:
                     continue  # drawn again or put back meanwhile
                 try:
-                    self.sharper.bring(stored, buf.getvalue(), ORIGIN, restored=True)
+                    self.sharper.bring(
+                        stored, buf.getvalue(), stored.sharper.museum or ORIGIN, restored=True
+                    )
                 except ValueError as err:
                     log.info("restorer: %s not recoloured: %s", item.id, err)
                     continue
@@ -419,198 +460,171 @@ class Restorer:
             log.info("restorer: %s recoloured", item.id)
         return done
 
-    # -- the favourites through the Batch API -----------------------------------------
+    # -- many at once, by our model in the background ---------------------------------
+
+    def order_favourites(self, by: str = OWNER_ID) -> int:
+        """The favourites under the threshold drawn in the background; how many."""
+        return self.order(None, by)
+
+    def order(self, items: Iterable[Item] | None = None, by: str = OWNER_ID) -> int:
+        """The works under the threshold (of ``items``, a playlist's; else
+        the owner's favourites) drawn by our model one after another in the
+        background; how many were added."""
+        with self._lock:
+            found = self.candidates(items)
+            queue = self._queue()
+            queue.extend({"id": i.id, "by": by} for i in found)
+            self.library.set_state(QUEUE, queue)
+        if found:
+            log.info("restorer: %d works waiting for our model", len(found))
+            self._wake.set()
+        return len(found)
+
+    def drain(self) -> int:
+        """The works waiting for our model drawn, one at a time, until none
+        is left or the server stops; how many."""
+        drawn = 0
+        while not self._stop.is_set():
+            queue = self._queue()
+            if not queue:
+                break
+            first = queue[0]
+            item = self.library.get(first["id"])
+            try:
+                if item is not None and not self.restored(item):
+                    self.restore(item, first.get("by") or OWNER_ID)
+                    drawn += 1
+            except Exception as err:  # its picture refused now: left
+                log.info("restorer: %s not drawn: %s", first["id"], err)
+            with self._lock:
+                left = [q for q in self._queue() if q["id"] != first["id"]]
+                self.library.set_state(QUEUE, left)
+        return drawn
+
+    # -- Restaurator Pro, one work through Google's Batch API -------------------------
 
     def _batches(self) -> list[dict[str, Any]]:
         batches = self.library.get_state(BATCHES, [])
         return batches if isinstance(batches, list) else []
 
-    def order_favourites(self) -> int:
-        """The favourites under the threshold sent in batches; how many."""
-        return self.order()
+    def order_pro(self, item: Item, by: str = OWNER_ID) -> bool:
+        """``item`` sent to Google's model through the Batch API for ``by``
+        (within a day, half the price); False when it waits already.
+        Raises :class:`NotRestored` (drawn by Pro already, refused for
+        good, not a museum work) and the painter's errors (no key, no
+        credit)."""
+        stored = self.library.get(item.id) or item
+        self.check(stored)
+        if self.restored_pro(stored):
+            raise NotRestored("restored", "drawn by Restaurator Pro already")
+        if stored.id in self.refused():
+            raise NotRestored("refused", "the model would not draw it")
+        if stored.id in self.waiting_pro():
+            return False
+        self._send_pro([stored], {stored.id: by})
+        return True
 
-    def order(self, items: Iterable[Item] | None = None) -> int:
-        """The works under the threshold (of ``items``, a playlist's; else
-        the owner's favourites) sent in batches; how many."""
+    def _send_pro(self, items: list[Item], by: dict[str, str]) -> int:
+        """``items`` sent in a batch of the model their tries lead to."""
+        sent = 0
         with self._lock:
-            found = self.candidates(items)
-            if self.by_fal():
-                return self._order_fal(found)
             batches = self._batches()
-            sent = 0
             by_model: dict[str, list[Item]] = {}
-            for item in found:
+            for item in items:
                 by_model.setdefault(model_for(self._refusals(item.id)), []).append(item)
-            chunks = [(m, c) for m, its in by_model.items() for c in _chunks(its, PER_BATCH)]
-            for model, chunk in chunks:
-                pictures: dict[str, Image.Image] = {}  # by the work's id
-                for item in chunk:
-                    try:
-                        self.check(item)
-                        pictures[item.id] = self._picture(item)
-                    except (NotRestored, OSError, ValueError) as err:
-                        log.info("restorer: %s left out: %s", item.id, err)
-                    except Exception as err:  # a download refused: next time
-                        log.info("restorer: %s not had: %s", item.id, err)
-                if not pictures:
-                    continue
+            for model, chunk in by_model.items():
+                pictures = {i.id: self._picture(i) for i in chunk}
                 asks = [Ask(i, PROMPT, [p], SIZE) for i, p in pictures.items()]
                 name = self.painter.batch(KIND, asks, model=model)
                 batches.append(
                     {
                         "name": name,
                         "model": model,
+                        "pro": True,
                         "ids": list(pictures),
+                        "by": {i: by.get(i, OWNER_ID) for i in pictures},
                         "sizes": {k: list(v.size) for k, v in pictures.items()},
                         "at": self.clock().isoformat(),
                     }
                 )
                 self.library.set_state(BATCHES, batches)
                 sent += len(pictures)
-                log.info("restorer: batch %s of %s with %d works", name, model, len(pictures))
+                log.info("restorer: Pro's batch %s of %s, %d works", name, model, len(pictures))
         if sent:
             self._wake.set()
         return sent
 
-    def _order_fal(self, found: list[Item]) -> int:
-        """``found`` sent to fal's queue, one picture each, kept as one
-        "batch" whose requests :meth:`poll` looks after."""
-        assert self.upscaler is not None
-        batches = self._batches()
-        requests: dict[str, str] = {}
-        sizes: dict[str, list[int]] = {}
-        for item in found:
-            try:
-                self.check(item)
-                picture = self._picture(item)
-                asked = self.upscaler.submit(picture, LONGEST)
-            except AiUnavailable:
-                raise  # no key, no credit, the month's limit: the rest waits too
-            except (NotRestored, OSError, ValueError, fal.NotUpscaled) as err:
-                log.info("restorer: %s left out: %s", item.id, err)
-                continue
-            except Exception as err:  # a download refused: next time
-                log.info("restorer: %s not had: %s", item.id, err)
-                continue
-            requests[item.id] = asked.request_id
-            sizes[item.id] = list(picture.size)
-        if requests:
-            batches.append(
-                {
-                    "name": f"fal:{self.clock().isoformat()}",
-                    "model": fal.MODEL,
-                    "ids": list(requests),
-                    "requests": requests,
-                    "sizes": sizes,
-                    "at": self.clock().isoformat(),
-                }
-            )
-            self.library.set_state(BATCHES, batches)
-            log.info("restorer: %d works sent to SeedVR2", len(requests))
-            self._wake.set()
-        return len(requests)
-
-    def _poll_fal(self, batch: dict[str, Any]) -> tuple[int, dict[str, Any] | None]:
-        """The pictures of a fal batch that are ready kept; how many, and
-        the batch with those still waiting (None when none is)."""
-        assert self.upscaler is not None
-        requests: dict[str, str] = dict(batch.get("requests") or {})
-        drawn = 0
-        for item_id, request_id in list(requests.items()):
-            status = self.upscaler.state(request_id)
-            if status in ("IN_QUEUE", "IN_PROGRESS"):
-                continue
-            del requests[item_id]
-            if status != "COMPLETED":
-                log.info("restorer: %s lost by fal (%s)", item_id, status)
-                continue
-            item = self.library.get(item_id)
-            if item is None or self.restored(item):
-                continue
-            if item.sharper is not None and item.sharper.chosen:
-                continue  # the owner picked another copy meanwhile
-            try:
-                answer = self.upscaler.result(KIND, request_id)
-                picture = self._picture(item)
-            except fal.NotUpscaled as err:
-                log.info("restorer: %s not drawn by SeedVR2: %s", item_id, err)
-                self._note(item_id, FAILED, why=str(err)[:300], tries=1, model=fal.MODEL)
-                continue
-            except Exception as err:
-                log.info("restorer: %s not had again: %s", item_id, err)
-                continue
-            size = batch.get("sizes", {}).get(item_id)
-            if size and tuple(size) != picture.size:
-                continue  # its picture changed meanwhile: drawn from another
-            try:
-                self._keep(item, picture, answer[0], answer[1], fal.MODEL)
-            except (NotRestored, ValueError) as err:
-                log.info("restorer: %s not kept: %s", item_id, err)
-                continue
-            drawn += 1
-        if not requests:
-            return drawn, None
-        return drawn, {**batch, "requests": requests, "ids": list(requests)}
-
     def poll(self) -> int:
-        """The batches done taken in; how many works were drawn. The works
-        the model would not draw yet fewer than :data:`REFUSED_TRIES` times
-        are sent again in a new batch."""
+        """Pro's batches done taken in; how many works were drawn. The works
+        refused fewer than :data:`REFUSED_TRIES` times are sent again."""
         drawn = 0
-        again: list[str] = []
+        again: dict[str, str] = {}
+        over: list[tuple[str, str, bool]] = []
         with self._lock:
             batches = self._batches()
             left = []
             for batch in batches:
-                if batch.get("model") == fal.MODEL:
-                    if not self.by_fal():
-                        left.append(batch)  # its key forgotten: kept for when it is back
-                        continue
-                    try:
-                        took, waiting = self._poll_fal(batch)
-                    except (AiUnavailable, httpx.HTTPError) as err:
-                        log.info("restorer: fal not asked now: %s", err)
-                        left.append(batch)
-                        continue
-                    drawn += took
-                    if waiting is not None:
-                        left.append(waiting)
+                if not batch.get("pro"):
+                    # fal's or a favourites' batch of Google's from before
+                    # 2026-11-26: those works go to our model instead.
+                    self._requeue(batch)
                     continue
                 try:
                     model = str(batch.get("model") or MODEL)
                     answers = self.painter.batched(KIND, str(batch["name"]), model=model)
-                except NotDrawn as err:  # lost: its works may be sent again
+                except NotDrawn as err:  # lost: sent again
                     log.info("restorer: batch %s lost: %s", batch["name"], err)
+                    again.update({i: _by(batch, i) for i in batch.get("ids", [])})
                     continue
                 if answers is None:
                     left.append(batch)
                     continue
-                drawn += self._take(batch, answers, again)
+                drawn += self._take(batch, answers, again, over)
             if left != batches:
                 self.library.set_state(BATCHES, left)
         if again:
             items = [i for i in map(self.library.get, again) if i is not None]
             try:
-                self.order(items)
-            except Exception as err:  # the next "Odnów" sends them
-                log.info("restorer: refused works not sent again: %s", err)
+                self._send_pro(items, again)
+            except Exception as err:
+                log.info("restorer: works not sent to Pro again: %s", err)
+                over.extend((i.id, again[i.id], False) for i in items)
+        for item_id, by, ok in over:
+            self._told(item_id, by, ok)
         return drawn
+
+    def _requeue(self, batch: dict[str, Any]) -> None:
+        queue = self._queue()
+        known = {q["id"] for q in queue}
+        queue.extend({"id": i, "by": OWNER_ID} for i in batch.get("ids", []) if i not in known)
+        self.library.set_state(QUEUE, queue)
+
+    def _told(self, item_id: str, by: str, ok: bool) -> None:
+        item = self.library.get(item_id)
+        if item is None or self.on_pro is None:
+            return
+        try:
+            self.on_pro(item, by, ok)
+        except Exception:
+            log.exception("restorer: %s not told", item_id)
 
     def _take(
         self,
         batch: dict[str, Any],
         answers: dict[str, tuple[Image.Image, float] | NotDrawn],
-        again: list[str],
+        again: dict[str, str],
+        over: list[tuple[str, str, bool]],
     ) -> int:
         """The batch's drawings kept; the works refused fewer than
         :data:`REFUSED_TRIES` times, or drawn unusably by 2.1, go into
-        ``again`` (to Pro after :data:`FIRST_TRIES`)."""
+        ``again`` (to Pro after :data:`FIRST_TRIES`); ``over``: who to tell."""
         model = str(batch.get("model") or MODEL)
         drawn = 0
         for item_id, answer in answers.items():
             item = self.library.get(item_id)
             if item is None:
                 continue
+            by = _by(batch, item_id)
             if isinstance(answer, NotDrawn):
                 if refusal(answer):
                     tries = self._refusals(item.id) + 1
@@ -623,14 +637,16 @@ class Restorer:
                         model=model,
                     )
                     if tries < REFUSED_TRIES:
-                        again.append(item.id)
+                        again[item.id] = by
+                    else:
+                        over.append((item.id, by, False))
                 else:
                     log.info("restorer: %s not drawn by %s: %s", item.id, model, answer)
-                    self._failed(item.id, model, str(answer), again)
+                    self._failed(item.id, model, str(answer), again, over, by)
                 continue
-            if self.restored(item):
-                continue  # drawn from its card meanwhile
-            if item.sharper is not None and item.sharper.chosen:
+            if self.restored_pro(item):
+                continue  # drawn by Pro meanwhile
+            if item.sharper is not None and item.sharper.chosen and not self.restored(item):
                 continue  # the owner picked another copy meanwhile
             size = batch.get("sizes", {}).get(item.id)
             try:
@@ -641,23 +657,33 @@ class Restorer:
             if size and tuple(size) != picture.size:
                 continue  # its picture changed meanwhile: drawn from another
             try:
-                self._keep(item, picture, answer[0], answer[1], model)
+                self._keep(item, picture, answer[0], answer[1], model, by=by, pro=True)
             except (NotRestored, ValueError) as err:
                 log.info("restorer: %s not kept: %s", item.id, err)
-                self._failed(item.id, model, str(err), again)
+                self._failed(item.id, model, str(err), again, over, by)
                 continue
             drawn += 1
+            over.append((item.id, by, True))
         return drawn
 
-    def _failed(self, item_id: str, model: str, why: str, again: list[str]) -> None:
+    def _failed(
+        self,
+        item_id: str,
+        model: str,
+        why: str,
+        again: dict[str, str],
+        over: list[tuple[str, str, bool]],
+        by: str,
+    ) -> None:
         """A drawing of the Batch that cannot be used (none, or in other
         proportions): one of 2.1 counts as a try and is asked again (of
-        Pro after :data:`FIRST_TRIES`); one of Pro waits for the owner."""
+        Pro after :data:`FIRST_TRIES`); one of Pro is the end."""
         if model == PRO:
+            over.append((item_id, by, False))
             return
         tries = self._refusals(item_id) + 1
         self._note(item_id, FAILED, why=why[:300], tries=tries, model=model)
-        again.append(item_id)
+        again[item_id] = by
 
     # -- the background ---------------------------------------------------------------
 
@@ -671,20 +697,32 @@ class Restorer:
         self._wake.set()
 
     def _run(self) -> None:
-        try:
-            self.recolour_kept()
-        except Exception:
-            log.exception("restorer: drawings not recoloured")
+        for step in (self.file_kept, self.recolour_kept):
+            try:
+                step()
+            except Exception:
+                log.exception("restorer: %s not done", step.__name__)
         while not self._stop.is_set():
-            batches = self._batches()
-            if batches and self.enabled():
+            if self._batches() and (
+                self.pro_enabled() or any(not b.get("pro") for b in self._batches())
+            ):
                 try:
                     self.poll()
                 except Exception:
                     log.exception("restorer: batches not looked at")
-            soon = any(b.get("model") == fal.MODEL for b in self._batches())
-            self._wake.wait(FAL_POLL if soon else POLL)
+            if self.enabled():
+                try:
+                    self.drain()
+                except Exception:
+                    log.exception("restorer: the works waiting not drawn")
+            self._wake.wait(POLL)
             self._wake.clear()
+
+
+def _by(batch: dict[str, Any], item_id: str) -> str:
+    """Who ordered ``item_id`` of the batch (the owner before it was noted)."""
+    by = batch.get("by")
+    return str(by.get(item_id) or OWNER_ID) if isinstance(by, dict) else OWNER_ID
 
 
 #: Google's words for a picture its model will not draw again, whatever is
@@ -819,4 +857,4 @@ def _chunks(items: list[Item], n: int) -> Iterator[list[Item]]:
         yield items[at : at + n]
 
 
-__all__ = ["LOW_SIDE", "NotRestored", "Restorer", "fit", "recoloured", "refusal"]
+__all__ = ["LOW_SIDE", "NotRestored", "Restorer", "fit", "recoloured", "refusal", "restorer_key"]

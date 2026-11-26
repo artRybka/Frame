@@ -185,8 +185,8 @@ struct PlaylistDetailView: View {
                         Button("Odnów") { Task { await restore(asked) } }
                         Button("Anuluj", role: .cancel) {}
                     } message: { asked in
-                        Text(
-                            "Model graficzny Google przerysuje dzieła tej playlisty w niskiej rozdzielczości do ok. 2000 px. Około \(Money.usd(asked.usd)) w pakietach Google (połowa zwykłej ceny), w ciągu doby. Zmianę cofa „Przywróć zdjęcie muzeum” w „Szukaj lepszej kopii” na karcie."
+                        Text(bound:
+                            "Model na serwerze przerysuje dzieła tej playlisty w niskiej rozdzielczości do ok. 2000 px, po jednym, bez opłat. Odnowione trafią do playlisty Restaurator. Zmianę cofa „Przywróć zdjęcie muzeum” w „Szukaj lepszej kopii” na karcie."
                         )
                     }
                     .confirmationDialog("Usunąć playlistę?", isPresented: $confirmDelete, titleVisibility: .visible) {
@@ -610,10 +610,9 @@ struct PlaylistDetailView: View {
         }
     }
 
-    /// "Kreatywny restaurator" in the "…" menu, for the owner (Mateusz
-    /// 2026-11-13): the playlist's works under 1600 px drawn again by
-    /// Google's image model, in its batches (half the price, within a day),
-    /// as the favourites are from Konfiguracja → Gemini.
+    /// "Restauracja dzieł" in the "…" menu, for the owner (Mateusz
+    /// 2026-11-13): the playlist's works under 1600 px drawn again by the
+    /// server's own model, one after another (since 2026-11-26).
     private func restorerButton(_ state: RestorerState) -> some View {
         Button {
             askingRestore = true
@@ -629,10 +628,10 @@ struct PlaylistDetailView: View {
     }
 
     private func restorerLine(_ state: RestorerState) -> String {
-        if !state.enabled { return "Brak klucza Gemini" }
-        if restoring { return "Wysyłam do Google…" }
+        if !state.enabled { return "Niedostępna na tym serwerze" }
+        if restoring { return "Dodaję do kolejki…" }
         if state.items > 0 { return "\(Names.works(state.items)) w niskiej rozdzielczości" }
-        if state.waiting > 0 { return "Czeka w pakietach Google" }
+        if state.waiting > 0 { return "Czeka w kolejce" }
         return "Nie ma czego odnawiać"
     }
 

@@ -3,6 +3,7 @@ invitation, what each may do and what each has of their own."""
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -517,3 +518,33 @@ def test_own_works_play_as_a_playlist_never_listed(tmp_path: Path) -> None:
         assert own["playlist"]["own_works"] is True
         member = _join(client)
         assert client.post("/api/own/play", headers=member).status_code == 403
+
+
+def test_each_person_has_restaurator_pro_works_a_day(tmp_path: Path) -> None:
+    """Konfiguracja → Domownicy, like the studies (Mateusz 2026-11-26:
+    "limity konserwacji PRO do wykonania podobnie jak limity studium")."""
+    app = _app(tmp_path)
+    with TestClient(app) as client:
+        member = _join(client)
+        guest = _join(client, "Ania", role="guest")
+        people = client.get("/api/users", headers=OWNER).json()
+        limits = {u["name"]: u["pro_limit"] for u in people["users"]}
+        assert limits == {"Właściciel": None, "Paulina": 3, "Ania": 1}
+        assert client.get("/api/me", headers=guest).json()["pro_left"] == 1
+        assert client.get("/api/me", headers=OWNER).json()["pro_left"] is None
+        ania = next(u["id"] for u in people["users"] if u["name"] == "Ania")
+        changed = client.put(f"/api/users/{ania}/access", json={"pro_limit": 0}, headers=OWNER)
+        assert changed.status_code == 200, changed.text
+        assert client.get("/api/me", headers=guest).json()["pro_left"] == 0
+        work = _add(app.state.service, 1)
+        refused = client.post(f"/api/library/items/{work.id}/restore/pro", headers=guest)
+        assert refused.status_code == 429
+        assert refused.json()["detail"] == "Na dziś to już 0 dzieł Restauratora Pro. Kolejne jutro."
+        # Given back when never drawn.
+        svc = app.state.service
+        paulina = svc.users.user(client.get("/api/me", headers=member).json()["id"])
+        today = date.today()
+        svc.users.ordered_pro(paulina, today)
+        assert svc.users.pro_left(paulina, today) == 2
+        svc.users.unordered_pro(paulina.id, today)
+        assert svc.users.pro_left(paulina, today) == 3

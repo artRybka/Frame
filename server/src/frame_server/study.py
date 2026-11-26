@@ -148,8 +148,8 @@ class Study:
         #: Which works may have a study (``study_gate``); without it only the
         #: rules are asked.
         self.gate: StudyGate | None = None
-        #: The creative restorer, drawing a small picture larger before its
-        #: study (Mateusz 2026-11-13); None without Google's key.
+        #: The restorer, drawing a small picture larger before its study
+        #: (Mateusz 2026-11-13; our own model since 2026-11-26).
         self.restorer: Restorer | None = None
         #: Works ordered for later whose picture is drawn first.
         self._restoring: set[str] = set()
@@ -282,9 +282,9 @@ class Study:
         jakości, to i tak pozwalaj na Studium, ale w pierwszym jego etapie
         wykonaj kreatywnego restauratora")."""
         restorer = self.restorer
-        if restorer is None or not restorer.painter.enabled() or low_side(item) <= 0:
+        if restorer is None or not restorer.enabled() or low_side(item) <= 0:
             return False
-        if restorer.restored(item) or item.id in restorer.refused():
+        if restorer.restored(item):
             return False
         try:
             restorer.check(item)

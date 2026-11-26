@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, date, datetime, timedelta, tzinfo
 from pathlib import Path
 
+import numpy as np
 from PIL import Image
 
 from . import notifications
@@ -22,7 +23,6 @@ from .ai.curator import Curator
 from .ai.daily import View
 from .ai.details import MendJob
 from .ai.extras import ExtrasJob
-from .ai.fal import Upscaler
 from .ai.gatekeeper import Gatekeeper
 from .ai.gemini import Painter
 from .ai.journey import Journeys
@@ -425,14 +425,12 @@ class FrameService:
         # A study is ready once its sketch is drawn too (Mateusz 2026-11-15).
         self.study.sketch_coming = lambda item: self.drawn.coming(item, STUDY_KIND)
         self.study.sketches = self.drawn.draws
-        # Small pictures of works drawn again larger ("Kreatywny restaurator"),
-        # kept as the owner's pick: by SeedVR2 on fal.ai when Konfiguracja
-        # has its key (Mateusz 2026-11-22), else by Google's model. fal's
-        # pictures count in the image models' month.
-        self.upscaler = Upscaler(self.ai_config, self.painter.spending, self.painter.budget_left)
-        self.restorer = Restorer(
-            self.library, self.images, self.sharper, self.painter, upscaler=self.upscaler
-        )
+        # Small pictures of works drawn again larger ("Restauracja dzieła"),
+        # kept as the owner's pick: by our own model on the server (Mateusz
+        # 2026-11-26), or by Google's through the Batch API when someone
+        # orders "Restaurator Pro" (told to them when drawn).
+        self.restorer = Restorer(self.library, self.images, self.sharper, self.painter)
+        self.restorer.on_pro = self._restored_pro
         # How a work was painted, when a technical study of it was found.
         self.stages = PaintingStages(self.library, self.claude, self.web_facts, self.ai_config)
         # How the works look, as numbers made on the server by SigLIP 2 in
@@ -441,6 +439,8 @@ class FrameService:
         # by a photograph, and the works that look alike ("G1").
         self.seen = Seen(self.library, self.images, settings.data_dir / "seen")
         self.seen.cared = self.cared.ranks
+        # Our restorer's model is led by how the work looks (SigLIP 2's numbers).
+        self.restorer.look_of = self._look_of_picture
         self.looks = Looks(self.library, self.images, self.seen, settings.data_dir / "looks")
         self.looks.english = self._english
         # Szukaj's words for how works look, the groups narrowing them, and
@@ -502,6 +502,31 @@ class FrameService:
         self.night: NightQueue | None = None
 
         self._tasks: set[asyncio.Task[object]] = set()
+
+    def _look_of_picture(self, picture: Image.Image) -> np.ndarray:
+        """How ``picture`` looks to SigLIP 2, which leads our restorer's
+        model: the picture drawn from itself, its model fetched when not
+        here yet."""
+        model = self.seen.model
+        model.fetch()
+        return model.pictures([picture])[0]
+
+    def _restored_pro(self, item: Item, by: str, ok: bool) -> None:
+        """A work ordered of Restaurator Pro is drawn (or will not be):
+        told to whoever ordered it; one never drawn is not counted in their
+        day's limit."""
+        title = notifications.item_title(self, item)
+        if not ok:
+            self.users.unordered_pro(by, date.today())
+        self.notifier.notify(
+            "restored",
+            "Restauracja gotowa" if ok else "Restauracja nie wyszła",
+            notifications.restored_body(title, ok),
+            route="playlists" if ok else None,
+            collapse=f"restored-{item.id}"[:64],
+            picture=item.id,
+            user=by,
+        )
 
     def _study_step(self, item: Item, status: str, error: str) -> None:
         """A study's step to its Live Activities, "Studium gotowe" at the

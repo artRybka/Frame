@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.388
+
+- Restauracja dzieł własnym modelem na serwerze, bez opłat i bez odmów:
+  przerysowuje małe zdjęcie cztery razy większe, prowadzony tym, jak dzieło
+  wygląda, i jego rodzajem (obraz, grafika, rysunek). Z karty od razu
+  (minuta lub dwie), z playlisty po kolei w tle. fal.ai usunięte.
+- Restaurator Pro w menu „…” dzieła: model Google (Nano Banana 2.1) przez
+  Batch, w ciągu doby, z powiadomieniem „Restauracja gotowa”. Dzienny limit
+  dla domownika (3) i gościa (1) w Konfiguracja → Domownicy.
+- Playlista „Restaurator”: wszystkie odnowione dzieła danej osoby, z
+  iskierkami w rogu kafelka.
+
 ## 1.145.387
 
 - Miejsce na serwerze: strona nie znika już po sekundzie w pusty ekran

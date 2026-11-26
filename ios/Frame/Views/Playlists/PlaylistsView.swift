@@ -705,6 +705,11 @@ struct PlaylistCard: View {
                     if playlist.isSentHistory {
                         GlassBadge(systemImage: Self.sentHistoryIcon)
                             .padding(9)
+                    } else if playlist.isRestorer {
+                        // "Restaurator": the restorer's sparkles in the same
+                        // glass (Mateusz 2026-11-26).
+                        GlassBadge(systemImage: LowRes.restoredSymbol)
+                            .padding(9)
                     }
                 }
                 .shadow(color: .black.opacity(0.12), radius: 10, y: 6)

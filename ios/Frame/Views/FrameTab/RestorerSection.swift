@@ -1,12 +1,11 @@
 import SwiftUI
 
-/// Konfiguracja → Gemini → "Kreatywny restaurator" (Mateusz 2026-11-12):
+/// Konfiguracja → Gemini → "Restauracja dzieł" (Mateusz 2026-11-12):
 /// works whose picture is small for the frame (under 1600 px, `LowRes`)
-/// drawn again larger by Google's image model (Nano Banana 2.1, Pro when it fails twice). Since
-/// 2026-11-13 they are ordered from a playlist's "…" (Ulubione's too:
-/// "to także przenieś pod "..." w playliście ulubione"), one work from its
-/// card's "…"; here only what waits in Google's batches and what was drawn.
-/// The key is Gemini's, in Klucze i certyfikaty.
+/// drawn again larger, by the server's own model since 2026-11-26 (free),
+/// or by Google's as "Restaurator Pro" (Nano Banana 2.1 through its Batch,
+/// within each person's day). Ordered from a playlist's "…" or a work's
+/// card; here only what waits and what was drawn.
 struct RestorerSection: View {
     @Environment(AppModel.self) private var model
     @State private var state: RestorerState?
@@ -32,24 +31,24 @@ struct RestorerSection: View {
 
     @ViewBuilder
     private func content(_ state: RestorerState) -> some View {
-        if !state.enabled {
-            Label("Brak klucza Gemini. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
+        if state.pro == false {
+            Label("Restaurator Pro potrzebuje klucza Gemini. Dodasz go w Kluczach i certyfikatach.", systemImage: "key")
                 .font(.caption)
                 .foregroundStyle(Theme.warn)
             Divider()
         }
-        Text(
-            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px, w barwach oryginału. Szczegóły są dorysowane, dlatego takie dzieła mają bursztynowe iskierki. Zamawiasz w menu „…” playlisty albo dzieła."
+        Text(bound:
+            "Przerysowuje małe zdjęcia dzieł do ok. 2000 px, w barwach oryginału, własnym modelem na serwerze, bez opłat. Restaurator Pro rysuje modelem Google, w ciągu doby. Szczegóły są dorysowane, dlatego takie dzieła mają iskierki. Zamawiasz w menu „…” playlisty albo dzieła. Odnowione trafiają do playlisty Restaurator."
         )
         .font(.caption)
         .foregroundStyle(Theme.inkSoft)
         .fixedSize(horizontal: false, vertical: true)
         if state.waiting > 0 {
-            row("W pakietach Google", Names.pictures(state.waiting))
+            row("W kolejce", Names.pictures(state.waiting))
         }
         row("Odnowione", Names.pictures(state.restored), symbol: LowRes.restoredSymbol)
         if let settings = model.aiSettings, let days = settings.costDays, let rows = settings.geminiCosts {
-            row("Ostatnie \(days) dni", AiSection.usd(rows.first { $0.key == "restorer" }?.daysUsd ?? 0))
+            row("Restaurator Pro, \(days) dni", AiSection.usd(rows.first { $0.key == "restorer" }?.daysUsd ?? 0))
         }
     }
 
