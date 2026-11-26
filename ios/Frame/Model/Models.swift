@@ -139,12 +139,12 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// The display-size original: the sharper copy's under its own address
     /// (the one before stays in the caches under the plain one).
     var originalRef: ImageRef {
-        // Without the photograph's stamp: the card learns it while it shows
-        // that very original (`ItemDetailView.sharpen`), and would ask for
-        // it again; the one kept from before goes in `pictureSeen`.
-        let version = Cleaned.version(
-            Cut.version(picture: sharper?.itemId ?? "", cut: cutVersion), cleaned: cleanedVersion
-        )
+        // With the photograph's stamp: a printed page's scan kept from
+        // before is made again without its screen as the card opens, and
+        // the card learns the new stamp (`ItemDetailView.sharpen`; Mateusz
+        // 2026-11-26: „na żądanie – czyli po wejściu w kartę dzieła”). An
+        // original that came as another photograph is asked for once more.
+        let version = pictureVersion
         return version.isEmpty ? .image(id) : .original(id, version: version)
     }
 

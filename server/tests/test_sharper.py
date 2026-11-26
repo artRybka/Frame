@@ -991,3 +991,30 @@ def test_printed_pictures_kept_before_are_cleared_once_at_night(frame: Any) -> N
         assert screen(img.convert("RGB")) == []
     assert service.sharper.status(own) is None  # to be looked at again
     assert service.sharper.printed_at_night(lambda: True) == (0, 0)  # once
+
+
+def test_a_printed_picture_kept_before_is_cleared_when_its_card_opens(frame: Any) -> None:
+    """Mateusz 2026-11-26: „na żądanie – czyli po wejściu w kartę dzieła”."""
+    service, _, answer = frame
+    own = _own(service)
+    path = service.images.image_path(own)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _printed_picture((3000, 2000)).save(path, quality=92)  # kept as it came, before
+    service.library.save_note(
+        Note(
+            item_id=own.id,
+            kind="sharper",
+            model="",
+            prompt_version=version(own),
+            data={"status": "fine", "at": "2026-11-01T00:00:00+00:00", "copy": ""},
+        )
+    )
+    answer([])
+    assert service.images.uncleared(own)
+    assert service.sharper.soon(own).result(30) == "none"  # looked for a clean copy
+    with Image.open(path) as img:
+        assert screen(img.convert("RGB")) == []
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.picture_stamp  # the app asks for it again
+    assert not service.images.uncleared(stored)
+    assert service.sharper.printed_at_night(lambda: True) == (1, 0)  # cleared already
