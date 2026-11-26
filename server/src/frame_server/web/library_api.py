@@ -850,7 +850,12 @@ async def _kept_work(svc: FrameService, item_id: str) -> Item:
     if stored is None:
         raise HTTPException(404, "only a work in the library is cut")
     own = stored.kind == ItemKind.OWN and stored.source == "upload"  # "Dodaj własne dzieło"
-    if not svc.crops.wanted(stored) and not own:
+    # A restored work is cut by hand on its drawing (Mateusz 2026-11-26:
+    # "W przypadku dzieł po restauracji nadal chciałbym mieć opcję
+    # kadrowania"); the model never cuts one.
+    drawn = stored.sharper is not None and stored.sharper.restored
+    undrawn = stored.model_copy(update={"sharper": None}) if drawn else stored
+    if not svc.crops.wanted(undrawn) and not own:
         raise HTTPException(422, "only a museum work's photograph is cut")
     return stored
 

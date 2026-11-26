@@ -8,6 +8,7 @@
 - Dotknięcie powiadomienia o Restauracji PRO otwiera kartę dzieła.
 - Odnowione dzieło ma na karcie i w siatce kształt swojego rysunku:
   bez ostrych narożników i bez pasków po bokach.
+- Odnowione dzieło można znów wykadrować („Popraw kadr” w menu „…”).
 
 ## 1.145.396
 
