@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.403
+
+- Próba restauracji na iPhonie: w menu „…” karty (tylko właściciel)
+  „Zmierz restaurację na iPhonie” pokazuje czas i temperaturę telefonu.
+
 ## 1.145.402
 
 - Restauracja: model dostaje całe zdjęcie, bez zmniejszania (wynik dalej
