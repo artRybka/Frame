@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.145.391
+
+- Starsze notki „Kurator”, pisane jeszcze w pięciu dawnych stylach, można
+  przepisać w nowy sposób: Konfiguracja → Zadania → Polskie opisy →
+  „Przepisz 500 losowych”. Partia idzie przez Batch (ok. 3,60 USD za 500)
+  i wraca w ciągu kilku godzin; dotychczasowa notka zostaje, dopóki nie
+  przyjdzie nowa.
+
+## 1.145.390
+
+- Znacznik Restauratora Pro: przy tytule na karcie dzieła same złote
+  iskierki, mieniące się przy przechylaniu telefonu; na kafelkach złote,
+  nieruchome.
+
 ## 1.145.389
 
 - Notki „Kurator” przy dziełach brzmią swobodniej i mniej szablonowo. Każda

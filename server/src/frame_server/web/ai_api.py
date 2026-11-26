@@ -275,6 +275,11 @@ class TextReviewView(BaseModel):
     note_usd: float = 0.0
     general_usd: float = 0.0
     restyle_usd: float = 0.0
+    #: Notes in the five old styles, written anew at a tap ("Przepisz
+    #: losowe"), and how many one tap takes and about what they cost.
+    old_form: int = 0
+    rewrite_batch: int = 0
+    rewrite_usd: float = 0.0
 
 
 class KeyUpdate(BaseModel):
@@ -383,6 +388,23 @@ async def stop_on_demand(key: str, svc: Svc) -> AiView:
     """The run stops after the works it is asking about."""
     if not svc.on_demand.stop(key):
         raise HTTPException(404, "To zadanie teraz nie działa.")
+    return await run_in_threadpool(_view, svc)
+
+
+@router.post("/text-review/rewrite", response_model=AiView)
+async def rewrite_old_notes(svc: Svc) -> AiView:
+    """The owner's tap: 500 notes in the old styles, drawn at random, written
+    anew through the Batch API (Mateusz 2026-11-26)."""
+    if not svc.ai_config.api_key:
+        raise HTTPException(409, "Brak klucza API Anthropic.")
+    try:
+        svc.claude.check_budget()
+    except AiUnavailable as err:
+        raise HTTPException(409, "Osiągnięty miesięczny limit Claude.") from err
+    asked = await run_in_threadpool(svc.text_review.rewrite)
+    if not asked:
+        busy = svc.text_review.view()["running"]
+        raise HTTPException(409, "Trwa poprzednia partia." if busy else "Nie ma starszych notek.")
     return await run_in_threadpool(_view, svc)
 
 

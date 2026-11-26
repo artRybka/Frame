@@ -1768,6 +1768,22 @@ final class AppModel {
         return true
     }
 
+    /// The curator's notes in the old styles: a random 500 written anew
+    /// through Claude's Batch (Mateusz 2026-11-26).
+    func rewriteOldNotes() async {
+        do {
+            aiSettings = try await backend.rewriteOldNotes()
+        } catch let BackendError.http(409, body) {
+            let said = (try? JSONDecoder().decode([String: String].self, from: Data(body.utf8)))?["detail"]
+            notices.fail("Nie zamówiono", said)
+            return
+        } catch {
+            show(error)
+            return
+        }
+        notices.done("Zamówione", "Nowe notki w ciągu kilku godzin.")
+    }
+
     /// A task's change on its page in Zadania.
     func saveTask(key: String, _ update: TaskUpdate) async {
         do {

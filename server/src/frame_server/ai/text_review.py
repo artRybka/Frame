@@ -12,12 +12,18 @@ Two steps, each its own switch, both through the Batch API:
   written anew by Sonnet, each in the next of the five.
 
 A text whose new answer did not come, or came unusable, stays as it was.
+
+Since 2026-11-26 the notes written in one of the five styles, before the
+ideas and forms (``pl_text.Form``), are written anew at the owner's tap
+too, :data:`REWRITE` drawn at random at a time (Mateusz: "przywróć
+przycisk. Ale jako losowe partie po 500"); never by the month's rest.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import random
 import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -47,6 +53,8 @@ CHECK_USAGE = Usage(input_tokens=700, cache_read_input_tokens=0, output_tokens=1
 #: its picture, so fewer go together.
 CHECKS_PER_BATCH = 2000
 NOTES_PER_BATCH = 500
+#: The notes written anew at one tap, drawn at random from the old ones.
+REWRITE = 500
 #: Of the translations checked, about how many turn out not to be about the
 #: work and get a note (a guess, for what the month's rest reckons).
 CHECK_NOTE_SHARE = 0.2
@@ -116,12 +124,18 @@ class TextReview(NightOrder):
         translations without Haiku's word on their museum text
         ("unchecked"), those found not to be about the work and still
         without their note ("general"), the notes written before the five
-        styles ("unstyled"), and the rest of the translations ("fine")."""
-        out: dict[str, list[str]] = {"unchecked": [], "general": [], "unstyled": [], "fine": []}
+        styles ("unstyled"), those in one of the five styles, before the forms
+        ("old_form"), and the rest of the translations ("fine")."""
+        out: dict[str, list[str]] = {
+            "unchecked": [], "general": [], "unstyled": [], "old_form": [], "fine": []
+        }  # fmt: skip
         for item_id, note in self._texts().items():
             if self._written(note) == "note":
-                if not note.data.get("style"):
+                style = str(note.data.get("style") or "")
+                if not style:
                     out["unstyled"].append(item_id)
+                elif "/" not in style:
+                    out["old_form"].append(item_id)
                 continue
             about = note.data.get("about_work")
             out["unchecked" if about is None else "general" if about is False else "fine"].append(
@@ -143,9 +157,9 @@ class TextReview(NightOrder):
         state = self._state()
         busy = self._busy(state)
         texts = self.by_step()
-        unchecked, general, unstyled = (
+        unchecked, general, unstyled, old_form = (
             [i for i in texts[name] if i not in busy]
-            for name in ("unchecked", "general", "unstyled")
+            for name in ("unchecked", "general", "unstyled", "old_form")
         )
         orders = state.get("orders", [])
         queue = state.get("queue") or {}
@@ -159,6 +173,8 @@ class TextReview(NightOrder):
             "unchecked": len(unchecked),
             "general": len(general),
             "unstyled": len(unstyled),
+            "old_form": len(old_form),
+            "rewrite_batch": min(REWRITE, len(old_form)),
             "running": bool(orders or any(queue.values())),
             "checking": doing("check"),
             "writing": doing("note"),
@@ -170,6 +186,7 @@ class TextReview(NightOrder):
             "note_usd": round(note_usd(), 4),
             "general_usd": round(len(general) * note_usd(), 4),
             "restyle_usd": round(len(unstyled) * note_usd(), 4),
+            "rewrite_usd": round(min(REWRITE, len(old_form)) * note_usd(), 4),
         }
 
     # -- the orders ------------------------------------------------------------
@@ -186,6 +203,24 @@ class TextReview(NightOrder):
         styles (``restyle``) queued for the thread to send. How many; 0 when
         an order is under way or nothing waits."""
         return self._queue(check, restyle)[0]
+
+    def rewrite(self, count: int = REWRITE) -> int:
+        """The owner's tap: ``count`` notes in the five old styles, drawn at
+        random, queued to be written anew in the new forms. How many; 0 when
+        an order is under way or none is left."""
+        with self._lock:
+            state = self._state()
+            if state.get("orders") or any((state.get("queue") or {}).values()):
+                return 0
+            old = self.by_step()["old_form"]
+            drawn = random.sample(old, min(count, len(old)))
+            if not drawn:
+                return 0
+            state["queue"] = {"check": [], "note": drawn}
+            self._save(state)
+        log.info("text review: %d of %d old notes queued to be written anew", len(drawn), len(old))
+        self._wake.set()
+        return len(drawn)
 
     def order(
         self, usd: float, first: Callable[[list[str]], list[str]] = lambda ids: ids

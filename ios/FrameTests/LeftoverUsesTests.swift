@@ -143,4 +143,22 @@ final class LeftoverUsesTests: XCTestCase {
         XCTAssertEqual(after.run?.running, false)
         XCTAssertEqual(after.run.map(OnDemandRow.lastNote)?.contains("zatrzymane"), true)
     }
+
+    /// Mateusz 2026-11-26: "przywróć przycisk. Ale jako losowe partie po 500".
+    func testTheOldNotesDecodeAndTheDemoTakesFiveHundred() async throws {
+        let json = """
+        {"old_form": 6793, "rewrite_batch": 500, "rewrite_usd": 3.6, "running": false,
+         "writing": 0, "written": 12, "translations": 1495, "unchecked": 2}
+        """
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let review = try decoder.decode(TextReview.self, from: Data(json.utf8))
+        XCTAssertEqual(review.oldForm, 6793)
+        XCTAssertEqual(review.rewriteBatch, 500)
+        let got = try await DemoBackend().rewriteOldNotes()
+        let after = try XCTUnwrap(got.textReview)
+        XCTAssertTrue(after.running)
+        XCTAssertEqual(after.writing, 500)
+        XCTAssertEqual(after.oldForm, 6293)
+    }
 }

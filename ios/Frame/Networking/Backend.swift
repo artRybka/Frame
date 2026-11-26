@@ -426,6 +426,9 @@ protocol FrameBackend: Sendable {
     /// The server checks the key with Anthropic before keeping it.
     func saveAiKey(_ key: String) async throws -> AiSettings
     func deleteAiKey() async throws -> AiSettings
+    /// The curator's notes in the old styles, a random 500 written anew
+    /// (409: no key, the month's limit, an order under way, none left).
+    func rewriteOldNotes() async throws -> AiSettings
     /// Google's key for the image model; the server checks it with Google
     /// before keeping it.
     func saveGeminiKey(_ key: String) async throws -> AiSettings
