@@ -223,6 +223,37 @@ final class GalleryProbeTests: XCTestCase {
         shot("15-stale-fourth")
     }
 
+    /// A swipe to the left on a work: Galeria goes off that way and
+    /// Odkrywaj comes in after it (Mateusz 2026-11-26 00:16). A swipe up
+    /// first, and one to the right after it, which do not.
+    @MainActor
+    func testTheSwipeOutToDiscover() throws {
+        try? FileManager.default.createDirectory(atPath: Self.folder, withIntermediateDirectories: true)
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-demo", "YES", "-screen", "gallery",
+            "-galleryLog", "\(Self.folder)/gallery-out.log", "-galleryTrace", "YES",
+        ]
+        app.launch()
+        mark(app, "out: launched")
+        sleep(9)
+        let window = app.windows.firstMatch
+        func at(_ x: CGFloat, _ y: CGFloat) -> XCUICoordinate {
+            window.coordinate(withNormalizedOffset: CGVector(dx: x, dy: y))
+        }
+        at(0.5, 0.78).press(forDuration: 0.05, thenDragTo: at(0.5, 0.35), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        at(0.2, 0.5).press(forDuration: 0.05, thenDragTo: at(0.8, 0.5), withVelocity: .fast, thenHoldForDuration: 0)
+        sleep(2)
+        mark(app, "out: swiped up, then to the right: still Galeria")
+        shot("16-before-the-swipe-out")
+        mark(app, "out: swipe to the left begins")
+        at(0.85, 0.5).press(forDuration: 0.05, thenDragTo: at(0.25, 0.52), withVelocity: .slow, thenHoldForDuration: 0.3)
+        sleep(3)
+        mark(app, "out: swiped to the left: Odkrywaj")
+        shot("17-discover-by-the-swipe")
+    }
+
     private func shot(_ name: String) {
         let png = XCUIScreen.main.screenshot().pngRepresentation
         FileManager.default.createFile(atPath: "\(Self.folder)/gallery-probe-\(name).png", contents: png)

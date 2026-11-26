@@ -108,7 +108,8 @@ struct RootView: View {
             // guest never touches the frame: no "Ramka" (2026-11-19).
             // The order Mateusz chose 2026-11-23 15:15.
             Tab("Galeria", systemImage: "rectangle.portrait.on.rectangle.portrait.angled", value: Screen.gallery) {
-                GalleryView()
+                // A swipe to the left on a work there: Odkrywaj.
+                GalleryView { tab = .discover }
             }
             Tab("Odkrywaj", systemImage: "square.grid.2x2", value: Screen.discover) { DiscoverView() }
             Tab("Playlisty", systemImage: "rectangle.stack", value: Screen.playlists) { PlaylistsView() }

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.145.385
+
+- Galeria: narożniki wciskanego ekranu są w każdej klatce współśrodkowe
+  z narożnikami ekranu telefonu. Wcześniej promień rósł od zera razem
+  z wciśnięciem (za mały, zgodny dopiero na końcu), a w drodze do całego
+  dzieła malał równo z drogą (za duży, gdy okno było już daleko od krawędzi
+  ekranu). Teraz wynika z odległości okna od krawędzi ekranu.
+- Galeria: przeciągnięcie palcem w lewo na pełnym ekranie zamyka Galerię
+  i przechodzi do „Odkrywaj”: obraz Galerii odjeżdża w lewo, „Odkrywaj”
+  wjeżdża z prawej.
+
 ## 1.145.384
 
 - Galeria: w drodze z pełnego ekranu do całego dzieła narożniki zaokrąglają
