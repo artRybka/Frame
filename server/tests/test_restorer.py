@@ -609,7 +609,7 @@ def test_a_drawing_kept_before_is_put_in_the_pictures_colours(app: Any, monkeypa
     own = _small(service, favorite=True)
     model = service.restorer.model
     model.tint = (1.1, 0.95, 0.8)  # a warmer, darker drawing
-    monkeypatch.setattr(module, "recoloured", lambda picture, drawn: drawn)  # as before
+    monkeypatch.setattr(module, "recoloured", lambda picture, drawn, *_: drawn)  # as before
     assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
     monkeypatch.undo()
     note = service.library.note(own.id, "restorer")
@@ -646,6 +646,27 @@ def test_part_of_what_the_model_drew_finer_than_the_picture_is_kept() -> None:
     kept = np.asarray(recoloured(picture, Image.fromarray(drawn)), dtype=np.float32)
     ratio = float((kept - plain).std()) / float((drawn - plain).std())
     assert 0.55 < ratio < 0.85
+
+
+def test_pros_drawing_keeps_all_its_detail_and_takes_only_the_colours(
+    app: Any, monkeypatch: Any
+) -> None:
+    """Restaurator Pro: no plain enlargement under Google's drawing, only
+    the picture's colours (Mateusz 2026-11-26 16:09 UTC)."""
+    from frame_server import restorer as module
+
+    _client, service, _web, painter = app
+    own = _small(service)
+    picture = _print(1, SMALL)
+    seen: list[float] = []
+
+    def spy(p: Image.Image, d: Image.Image, share: float = module.DRAWN) -> Image.Image:
+        seen.append(share)
+        return recoloured(p, d, share)
+
+    monkeypatch.setattr(module, "recoloured", spy)
+    service.restorer._keep(own, picture, painter._draw(picture), 0.03, PRO, pro=True)
+    assert seen == [1.0]
 
 
 def test_a_drawing_a_few_pixels_off_its_picture_is_laid_on_it_first() -> None:

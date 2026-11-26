@@ -93,6 +93,10 @@ GRAIN_SIGMA = 1.0
 #: half the change and a contour drawn thinner, the texture still there,
 #: but the work "trochę za miękki" (19:40): seven tenths.
 DRAWN = 0.7
+#: The same of Restaurator Pro's drawing: all of it, only its colours put
+#: back (Mateusz 2026-11-26 16:09 UTC: „przy Gemini dałbym sobie spokój z
+#: podkładem 30% oryginału chyba ze dla korekty i dostosowania koloru”).
+DRAWN_PRO = 1.0
 #: The drawing and its picture are laid on each other this small (its
 #: longer side) before the colours and the plain enlargement are put over;
 #: they must then match at least so well (correlation of their tones),
@@ -358,7 +362,8 @@ class Restorer:
         pro: bool = False,
     ) -> Item:
         try:
-            fitted = recoloured(picture, fit(picture.size, drawn))
+            share = DRAWN_PRO if pro else DRAWN
+            fitted = recoloured(picture, fit(picture.size, drawn), share)
         except NotRestored as err:
             self._note(item.id, "skewed", why=str(err), usd=usd, model=model)
             raise
