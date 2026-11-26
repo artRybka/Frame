@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.392
+
+- Karta dzieła, które nie ma jeszcze opisu, od razu pokazuje, że kurator
+  pisze notkę: w „O dziele” piszą się blade linijki. Przycisk „Przygotuj
+  studium dzieła” pojawia się dopiero, gdy notka jest gotowa.
+
 ## 1.145.391
 
 - Starsze notki „Kurator”, pisane jeszcze w pięciu dawnych stylach, można

@@ -73,6 +73,13 @@ struct ItemDetailView: View {
     /// first frame, so nothing is swapped.
     @State private var polish: PolishText?
     @State private var polishWaiting = false
+    /// The work the server last answered for about its Polish texts, and
+    /// whether that wait is over: until then "O dziele" of a work with no
+    /// text of its own shows the curator writing, and "Przygotuj studium
+    /// dzieła" waits for the note (Mateusz 2026-11-26: „guzik … musi pojawić
+    /// się dopiero gdy opis jest już gotowy”).
+    @State private var polishHeard: String?
+    @State private var polishSettled: String?
     /// The Polish title, written ahead of the texts: on the card while
     /// "O dziele" is still being translated.
     @State private var earlyTitle: String?
@@ -556,6 +563,7 @@ struct ItemDetailView: View {
             let fresh = try await model.backend.item(id: itemID)
             if holding, let view = try? await model.backend.polish(itemID: itemID, wait: 0) {
                 // Written already (it was on the frame): the card opens with it.
+                polishHeard = itemID
                 showPolish(view, animated: false)
             }
             await arrivalSettled()
@@ -813,6 +821,18 @@ struct ItemDetailView: View {
     /// the texts are waited for after it.
     private func loadPolish() async {
         showOriginal = false
+        // At once whether a note is being written: the card says so from the
+        // start, not after the first long wait.
+        if polish == nil, let view = try? await model.backend.polish(itemID: itemID, wait: 0) {
+            guard !Task.isCancelled else { return }
+            polishHeard = itemID
+            showPolish(view)
+            if view.status != "waiting" {
+                polishSettled = itemID
+                return
+            }
+        }
+        defer { if !Task.isCancelled { polishSettled = itemID } }
         var waits = 0
         while waits < 4 {
             let early = polish == nil && earlyTitle == nil
@@ -821,6 +841,7 @@ struct ItemDetailView: View {
             ),
                 !Task.isCancelled
             else { break }
+            polishHeard = itemID
             showPolish(view)
             if view.status != "waiting" { break }
             // A round that brought the title is not one of the waits.
@@ -1088,7 +1109,11 @@ struct ItemDetailView: View {
     private func about(_ item: Item) -> some View {
         let own = item.isOwnWork
         let text = shownPolish?.full ?? (own ? "" : item.description)
-        if !text.isEmpty || polish != nil || polishWaiting {
+        // Nothing of its own to show: the curator is writing, from the card's
+        // first frame until the server says otherwise.
+        let writing = text.isEmpty && !showOriginal
+            && (polishWaiting || (polish == nil && polishHeard != itemID && item.kind == .artwork))
+        if !text.isEmpty || polish != nil || writing || polishWaiting {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("O dziele")
                 if !text.isEmpty {
@@ -1099,10 +1124,13 @@ struct ItemDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                 }
-                if polishWaiting {
+                if writing {
+                    CuratorWriting()
+                        .transition(.opacity)
+                } else if polishWaiting {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Piszę po polsku…")
+                        Text(bound: "Piszę po polsku…")
                     }
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
@@ -1133,6 +1161,12 @@ struct ItemDetailView: View {
     /// frame buttons instead of under "O dziele".
     private var studyReady: Bool { studyState?.status == "ready" }
 
+    /// The curator's note is on the card, or none is coming: only then is a
+    /// study offered.
+    private var noteSettled: Bool {
+        polish != nil || (polishSettled == itemID && !polishWaiting)
+    }
+
     /// "Otwórz studium" under the frame buttons; held: "Przygotuj od nowa".
     private func openStudyButton(_ item: Item) -> some View {
         Button {
@@ -1157,7 +1191,9 @@ struct ItemDetailView: View {
     /// 2026-11-04); ordered so, held again it is made now.
     @ViewBuilder
     private func studySection(_ item: Item) -> some View {
-        if let state = studyState, state.status != "off", state.status != "ready" {
+        if let state = studyState, state.status != "off", state.status != "ready",
+            state.isPending || state.isLater || state.status == "failed" || noteSettled
+        {
             VStack(alignment: .leading, spacing: 8) {
                 if state.isPending {
                     Button {} label: {
