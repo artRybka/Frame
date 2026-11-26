@@ -7,7 +7,7 @@ import io
 import numpy as np
 from PIL import Image, ImageFilter
 
-from frame_server.imaging.descreen import descreened, screen
+from frame_server.imaging.descreen import cleared, descreened, screen
 
 
 def _painting(h: int = 600, w: int = 480) -> np.ndarray:
@@ -97,3 +97,39 @@ def test_the_edges_are_left_as_they_were() -> None:
     edge = np.abs(clean - before)[:6].mean()
     middle = np.abs(clean - before)[600:606].mean()
     assert edge < 1.5 * middle
+
+
+def test_a_printed_picture_is_shown_cleared_and_sharpened_back() -> None:
+    plain = Image.fromarray((_painting() * 255).astype(np.uint8))
+    assert cleared(plain) is None
+    printed = _printed(_painting(), 3.5, 45)
+    shown = cleared(printed)
+    assert shown is not None and shown.size == printed.size
+    assert _fine(shown, 3.5) < 0.6 * _fine(printed, 3.5)
+    # Sharpened above the screen: its edges stand out more than the
+    # screen taken off alone.
+    soft = descreened(printed)
+    edges = np.asarray(shown.filter(ImageFilter.FIND_EDGES), dtype=np.float32).mean()
+    assert edges > np.asarray(soft.filter(ImageFilter.FIND_EDGES), dtype=np.float32).mean()
+
+
+def test_what_is_left_of_a_print_goes_too() -> None:
+    """Lines a scanner left over a printed screen stand lower than the
+    screen; once the picture is known to be printed they go as well."""
+    printed = np.asarray(_printed(_painting(), 3.5, 45), dtype=np.float32)
+    y = np.arange(printed.shape[0], dtype=np.float32)[:, None, None]
+    lined = Image.fromarray(
+        np.clip(printed + 6 * np.sin(2 * np.pi * y / 5), 0, 255).astype(np.uint8)
+    )
+    clean = np.asarray(descreened(lined).convert("L"), dtype=np.float32)
+    rows = clean.mean(axis=1)
+    rows -= np.convolve(rows, np.ones(15) / 15, mode="same")
+    assert float(np.abs(rows[20:-20]).mean()) < 1.0
+
+
+def test_even_lines_one_way_are_no_screen() -> None:
+    """A drawing's even hatching (lines all one way) is no printer's dots."""
+    base = (_painting() * 255).astype(np.float32)
+    x = np.arange(base.shape[1])[None, :, None]
+    hatched = Image.fromarray(np.where(x % 5 == 0, base * 0.7, base).astype(np.uint8))
+    assert screen(hatched) == []

@@ -408,6 +408,7 @@ struct CopyRow: View {
                 tags.append(.init(text: "Mniej niż ramka (2560)", tone: .plain))
             }
             if copy.hasTiles, let tag = noteTag("tiles") { tags.append(tag) }
+            if copy.notes.contains("printed"), let tag = noteTag("printed") { tags.append(tag) }
             if copy.chosen { tags.append(.init(text: "Wybrana przez Ciebie", tone: .plain)) }
             return tags
         }
@@ -454,6 +455,7 @@ struct CopyRow: View {
         case "unseen": CopyTag.Tag(text: "Nie udało się porównać", tone: .bad)
         case "larger": CopyTag.Tag(text: "Większe zdjęcie muzeum", tone: .good)
         case "tiles": CopyTag.Tag(text: "Kafle przy powiększeniu", tone: .good)
+        case "printed": CopyTag.Tag(text: "Raster druku", tone: .warn)
         default: nil
         }
     }

@@ -26,6 +26,7 @@ from PIL import Image
 from ..fsutil import dir_bytes, own_files
 from ..imaging.cut import framed, same_picture, warp
 from ..imaging.cut_off import cut_off
+from ..imaging.descreen import cleared, screen
 from ..imaging.layout import load_image
 from ..imaging.margins import trim_margins
 from ..imaging.mount import inside_mount
@@ -155,6 +156,8 @@ URGENT_HOLDER_WAIT = 120.0
 #: (:func:`~frame_server.imaging.margins.trim_margins`), a white wall or a
 #: snowy field at a photo's edges is the photo.
 OWN_SOURCES = ("upload", "icloud", "cli", "frame")
+#: How many answers of :meth:`ImageCache.printed` are kept.
+PRINTED_KEPT = 4000
 #: Sources whose readers say how large a work's picture is. For a work of
 #: any other the size kept is its thumbnail's (``Importer._analysed``): the
 #: picture's proportions, and no word on how large the original is (the
@@ -618,6 +621,9 @@ class ImageCache:
         #: address: the last few, so its buttons switch back and forth
         #: without asking the museum each time.
         self._before_drawn: dict[str, Image.Image] = {}
+        #: Whether a kept picture is printed (:meth:`printed`), by its path:
+        #: the file's time and the answer.
+        self._printed: dict[str, tuple[int, bool]] = {}
         #: Thumbnails' long sides (:meth:`_thumb_side`): (file's stamp, side).
         self._thumb_sides: dict[str, tuple[int, int]] = {}
         self._gates: dict[str, HostGate] = {}
@@ -836,13 +842,28 @@ class ImageCache:
             return unvarnished(img, cleaned.strength)
         return deyellow(img, opaque=cleaned.made == "opaque", long=max(img.size))
 
+    @staticmethod
+    def clears(item: Item) -> bool:
+        """Whether a printed screen is taken off ``item``'s picture as it is
+        kept (:func:`~frame_server.imaging.descreen.cleared`): a museum's
+        photograph or a copy's, not a photograph of the owner's own (a
+        canvas's weave stood as a screen there) nor the restorer's drawing
+        (drawn from a picture taken off its screen already)."""
+        if item.source in OWN_SOURCES or item.own is not None:
+            return False
+        return item.sharper is None or not item.sharper.restored
+
     def _shown(self, item: Item, img: Image.Image, side: int) -> Image.Image | None:
-        """The museum's photograph ``img`` as the work shows it: cut down to
-        the work and cleaned, no larger than an original is kept (the sums
-        are not done on what is thrown away). None: as it came."""
+        """The museum's photograph ``img`` as the work shows it: taken off a
+        printed page's screen (a scan of an album's reproduction, Mateusz
+        2026-11-26), cut down to the work and cleaned, no larger than an
+        original is kept (the sums are not done on what is thrown away).
+        None: as it came."""
+        clear = cleared(img) if self.clears(item) else None
         quad = self._quad(item, img.size)
-        if quad is None and item.cleaned_shown() is None:
+        if quad is None and item.cleaned_shown() is None and clear is None:
             return None
+        img = clear or img
         shown = warp(img, quad, ratio=self._ratio(item)) if quad is not None else img.convert("RGB")
         if side == IMAGE_MAX:
             size = kept_size(*shown.size)
@@ -912,6 +933,33 @@ class ImageCache:
                 thumb.unlink(missing_ok=True)
             (self.tiles / thumb.name).unlink(missing_ok=True)
         return here
+
+    def printed(self, item: Item) -> bool:
+        """Whether the picture ``item`` shows is a scan of a printed page (a
+        screen in it, ``imaging.descreen``): read in the photograph as it
+        came, kept beside one shown without it. Known by the file's time,
+        so asked again only after it changed."""
+        full, path = self.full_path(item), self.image_path(item)
+        source = full if full.is_file() else path
+        try:
+            stamp = source.stat().st_mtime_ns
+        except OSError:
+            return False
+        key = str(source)
+        with self._guard:
+            known = self._printed.get(key)
+        if known is not None and known[0] == stamp:
+            return known[1]
+        try:
+            img = load_image(source)
+        except OSError:
+            return False
+        found = bool(screen(img))
+        with self._guard:
+            self._printed[key] = (stamp, found)
+            while len(self._printed) > PRINTED_KEPT:
+                del self._printed[next(iter(self._printed))]
+        return found
 
     def museum_photo(self, item: Item, urgent: bool = False) -> Path:
         """The museum's photograph of the work, whole ("Pełny kadr"; what

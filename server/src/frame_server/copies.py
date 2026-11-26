@@ -32,6 +32,7 @@ import numpy as np
 from PIL import Image
 from pydantic import BaseModel, Field
 
+from .imaging.descreen import screen
 from .imaging.layout import load_image
 from .library import Item, ItemKind
 from .library.aic import aic_large_size
@@ -99,7 +100,9 @@ class CopyView(BaseModel):
     "colours", "fragment", "page", "whole-work" (the work's picture is a
     detail of the copy: only to look at, never chosen), "turned", "grey",
     "reproduction", "other" (another picture: the same title,
-    another work), "unseen" (its thumbnail could not be had).
+    another work), "unseen" (its thumbnail could not be had), "printed"
+    (a scan of a printed page, its screen of dots in it: worse than a
+    clean copy, ``Quality.printed``; on the current picture too).
     ``role``: "current" (the picture shown now), "own" (the work's own
     picture, while a copy stands in for it), "larger" (the work's own
     picture in a larger file than the one kept here, from its own source:
@@ -210,7 +213,7 @@ class Copies:
             Quality.sized(current.width, current.height, current.bits)
             if current.width and current.height
             else Quality(0, current.bits)
-        )
+        )._replace(printed="printed" in current.notes)
         if (larger := self.larger(stored, quality)) is not None:
             emit(CopyLine(kind="copy", copy=larger))
         seen = {stored.id, *([stored.sharper.item_id] if stored.sharper else [])}
@@ -413,6 +416,9 @@ class Copies:
         view = self._current(item)
         if self.tiled(view.item_id):
             view.notes = [*view.notes, "tiles"]
+        if self.images.printed(item):
+            # Shown without its dots, but a clean copy is better still.
+            view.notes = [*view.notes, "printed"]
         return view
 
     def _current(self, item: Item) -> CopyView:
@@ -564,7 +570,9 @@ class Copies:
             except (httpx.HTTPError, OSError) as err:
                 log.info("copy %s of %s: %s", copy.id, item.id, err)
             else:
-                quality = Quality.of_image(img)
+                quality = Quality.of_image(img)._replace(printed=bool(screen(img)))
+                if quality.printed:
+                    notes.append("printed")  # a printed page's scan: its dots show
                 view.width, view.height = img.size
                 view.bits = quality.bits
                 view.measured = True
