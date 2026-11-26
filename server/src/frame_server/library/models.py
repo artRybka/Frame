@@ -510,6 +510,10 @@ class Item(BaseModel):
     #: A sharper copy of the picture from another source, shown in place of
     #: the work's own.
     sharper: SharperCopy | None = None
+    #: Sent to "Restauracja PRO" and waiting for its drawing: filled in for
+    #: the app's card (``GET /library/items/{id}``), never kept (Mateusz
+    #: 2026-11-26: the plain restoring goes, the PRO entry spins).
+    restoring_pro: bool = False
     #: The work cut out of its museum photograph (:class:`Cut`): what the
     #: frame, the thumbnails and the studies show; None when nothing was
     #: decided yet.
@@ -869,6 +873,12 @@ class ItemSummary(BaseModel):
                     summary.width = round(math.sqrt(area * ratio))
                     summary.height = round(math.sqrt(area / ratio))
         if item.sharper is not None:
+            if shown is None and item.sharper.width > 0 and item.sharper.height > 0:
+                # The tile's shape is the copy's: a drawing of the work cut
+                # out is narrower than the museum's photograph (Mateusz
+                # 2026-11-26: bars beside a restored work after the whole
+                # screen).
+                summary.width, summary.height = item.sharper.width, item.sharper.height
             summary.picture = item.sharper.item_id
             summary.restored = item.sharper.restored
             summary.restored_pro = item.sharper.restored and item.sharper.pro

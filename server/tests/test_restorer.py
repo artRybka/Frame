@@ -294,6 +294,10 @@ def test_restaurator_pro_through_the_batch(app: Any) -> None:
     # Ordered once: not again while it waits.
     assert client.post(f"/api/library/items/{own.id}/restore/pro").json()["sent"] is False
     assert service.restorer.waiting() == {own.id}
+    # The card knows it waits (its PRO entry spins, the plain one goes).
+    assert client.get(f"/api/library/items/{own.id}").json()["restoring_pro"] is True
+    stored = service.library.get(own.id)
+    assert stored is not None and not stored.restoring_pro  # never kept
 
     assert service.restorer.poll() == 0  # not done yet
     painter.done.add("batches/1")
@@ -303,6 +307,7 @@ def test_restaurator_pro_through_the_batch(app: Any) -> None:
     assert stored.sharper.restored and stored.sharper.pro
     assert stored.sharper.museum == "Restauracja PRO"
     assert told == [(own.id, OWNER_ID, True)]
+    assert client.get(f"/api/library/items/{own.id}").json()["restoring_pro"] is False
     assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
     # Drawn by Pro: not again.
     again = client.post(f"/api/library/items/{own.id}/restore/pro")
@@ -703,3 +708,51 @@ def test_a_drawing_of_another_picture_is_kept_as_drawn() -> None:
     picture = Image.fromarray(rng.integers(0, 255, (120, 100, 3), dtype=np.uint8))
     other = Image.fromarray(rng.integers(0, 255, (480, 400, 3), dtype=np.uint8))
     assert np.array_equal(np.asarray(recoloured(picture, other)), np.asarray(other))
+
+
+def test_pros_notification_opens_the_works_card(app: Any) -> None:
+    """Tapped, "Restauracja gotowa" opens the work's own card (Mateusz
+    2026-11-26: "kliknięcie na powiadomienie powinno przenieść na kartę tego
+    dzieła"), and so does the one saying it was not drawn."""
+    _client, service, _web, _painter = app
+    own = _small(service)
+    routes: list[str | None] = []
+    service.notifier.notify = lambda *a, **kw: routes.append(kw.get("route"))
+    service._restored_pro(own, OWNER_ID, True)
+    service._restored_pro(own, OWNER_ID, False)
+    assert routes == [f"work/{own.id}", f"work/{own.id}"]
+
+
+def test_a_restored_works_tile_takes_its_drawings_shape(app: Any) -> None:
+    """A drawing of the work cut out of the museum's photograph is not that
+    photograph's shape: the tile (and the whole screen growing out of it)
+    takes the drawing's, not bars beside it (Mateusz 2026-11-26)."""
+    from frame_server.library.models import SharperCopy
+
+    _client, service, _web, _painter = app
+    own = _small(service)
+    drawn = SharperCopy(
+        url="", item_id=f"owned:{own.id}", source="owned", width=1560, height=2000, restored=True
+    )
+    restored = service.library.update(own.id, sharper=drawn)
+    assert restored is not None
+    summary = ItemSummary.of(restored)
+    assert (summary.width, summary.height) == (1560, 2000)
+
+
+def test_the_owner_cuts_a_restored_work_on_its_drawing(app: Any) -> None:
+    """ "Popraw kadr" on a restored work (Mateusz 2026-11-26: "W przypadku
+    dzieł po restauracji nadal chciałbym mieć opcję kadrowania"): the
+    corners are the drawing's, and the work is shown cut so."""
+    client, service, _web, _painter = app
+    own = _small(service)
+    drawn = client.post(f"/api/library/items/{own.id}/restore").json()
+    corners = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    resp = client.put(f"/api/library/items/{own.id}/cut", json={"corners": corners})
+    assert resp.status_code == 200, resp.text
+    cut = resp.json()["cut"]
+    assert cut["picture"] == drawn["sharper"]["item_id"] and cut["by"] == "owner"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.cut_shown() is not None
+    with Image.open(service.images.image_path(stored)) as img:
+        assert img.width < drawn["sharper"]["width"]  # cut down to the corners

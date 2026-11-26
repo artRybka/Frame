@@ -250,7 +250,18 @@ class Crops:
         2026-11-23). ``frame``: the
         outer edge of the frame or passe-partout as he set it (the card's
         "W ramie"); alone, the work's pictures stay as they are.
-        ``no_frame``: nothing around the work is a frame ("Bez ramy")."""
+        ``no_frame``: nothing around the work is a frame ("Bez ramy").
+
+        A restored work is cut on its drawing: a cut set on the museum's
+        photograph before (its corners, its frame) is not this picture's
+        and is not carried over (Mateusz 2026-11-26)."""
+        if (
+            item.sharper is not None
+            and item.sharper.restored
+            and item.cut is not None
+            and item.cut.picture != item.picture_key()
+        ):
+            item = item.model_copy(update={"cut": None})
         alone = (frame is not None or no_frame) and corners is None and paper is None
         if alone and item.cut is not None and item.cut.shown() is not None and not self.stale(item):
             if no_frame or frame is None:

@@ -232,7 +232,14 @@ struct CutEditor: View {
     /// ramy" opens on the frame's corners).
     init(item: Item, starting: Part = .work, update: @escaping (CutUpdate) async -> Bool) {
         let aspect: Double
-        if let cut = item.cut, cut.aspect > 0 {
+        // The cut of the picture shown: a restored work's drawing is not the
+        // museum's photograph a cut was set on before (Mateusz 2026-11-26).
+        let current = item.cut.flatMap { $0.picture == (item.sharper?.itemId ?? "") ? $0 : nil }
+        if let cut = current, cut.aspect > 0 {
+            aspect = cut.aspect
+        } else if let copy = item.sharper, copy.isRestored, copy.width > 0, copy.height > 0 {
+            aspect = Double(copy.width) / Double(copy.height)
+        } else if let cut = item.cut, cut.aspect > 0 {
             aspect = cut.aspect
         } else if let w = item.width, let h = item.height, w > 0, h > 0 {
             aspect = Double(w) / Double(h)
@@ -249,7 +256,7 @@ struct CutEditor: View {
             // "Do wykadrowania", Mateusz 2026-11-20: „daj opcję zarówno
             // dodania kadru dzieła jak i ramy”).
             aspect: aspect, corners: item.cutShown, framing: true,
-            frame: sheet ? item.cut?.work : item.cut?.surround, sheet: sheet, starting: starting
+            frame: sheet ? current?.work : current?.surround, sheet: sheet, starting: starting
         ) { work, moved, frame, bare in
             await update(CutUpdate(corners: moved ? work : nil, frame: bare ? nil : frame, noFrame: bare))
         }
