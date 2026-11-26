@@ -663,6 +663,10 @@ struct HalftoneDot: View {
 enum ByteSize {
     static func mb(_ mb: Int) -> String {
         guard mb >= 1000 else { return "\(mb) MB" }
+        if mb >= 1_000_000 {
+            let tb = Double(mb) / 1_000_000
+            return tb.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL"))) + " TB"
+        }
         let gb = Double(mb) / 1000
         return gb.formatted(.number.precision(.fractionLength(0 ... 1)).locale(Locale(identifier: "pl_PL"))) + " GB"
     }

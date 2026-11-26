@@ -52,6 +52,8 @@ USAGE_KEY = "storage_usage"
 MEASURE_MAX_AGE = 26 * 3600.0
 #: How long a count of the catalogue is good for, in seconds.
 COUNT_MAX_AGE = 60.0
+#: How old a count may be to carry the disk's measure forward by.
+SHOWN_COUNT_AGE = 600.0
 #: The frame's long side: an original at least this large shows it whole.
 FRAME_SIDE = 2560
 
@@ -111,8 +113,8 @@ class CatalogueCounts(BaseModel):
 class StorageUpdate(BaseModel):
     """Either limit or both; the default value goes back to frame.env."""
 
-    catalogue_mb: int | None = Field(default=None, ge=100, le=1_000_000)
-    originals_mb: int | None = Field(default=None, ge=100, le=1_000_000)
+    catalogue_mb: int | None = Field(default=None, ge=100, le=10_000_000)
+    originals_mb: int | None = Field(default=None, ge=100, le=10_000_000)
 
 
 class StorageStore:
@@ -202,7 +204,9 @@ class StorageStore:
         usage = self._usage
         if usage is None:  # never measured
             return self.usage()
-        counts = self.counts()
+        # A count a few minutes old is near enough for an estimate: counting
+        # walks every work and the originals' folder (seconds on a busy NAS).
+        counts = self.counts(max_age=SHOWN_COUNT_AGE)
         catalogue = _scaled(usage.catalogue_bytes, usage.pictures, counts.pictures + counts.own)
         originals = _scaled(usage.originals_bytes, usage.originals_count, counts.originals)
         if (catalogue, originals) == (usage.catalogue_bytes, usage.originals_bytes):

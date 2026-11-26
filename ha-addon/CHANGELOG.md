@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.145.387
+
+- Miejsce na serwerze: strona nie znika już po sekundzie w pusty ekran
+  z kółkiem. Gdy otwierała się nad Konfiguracją, przerwane wczytywanie
+  Konfiguracji czyściło pokazane liczby; teraz zostają, dopóki nie przyjdą
+  nowe. Serwer liczy przybliżony rozmiar z licznika sprzed najwyżej 10 min.
+
+## 1.145.386
+
+- Miejsce na serwerze: oryginały dzieł mogą zająć także 500 GB, 1 TB,
+  1,5 TB i 2 TB (serwer przyjmuje limity do 10 TB).
+
 ## 1.145.385
 
 - Galeria: narożniki wciskanego ekranu są w każdej klatce współśrodkowe
