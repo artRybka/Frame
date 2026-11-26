@@ -6,6 +6,8 @@
   dotknięciu. Póki dzieło czeka na PRO, w menu „…” nie ma zwykłej
   Restauracji, a pozycja PRO jest wyszarzona, z kółkiem.
 - Dotknięcie powiadomienia o Restauracji PRO otwiera kartę dzieła.
+- Odnowione dzieło ma na karcie i w siatce kształt swojego rysunku:
+  bez ostrych narożników i bez pasków po bokach.
 
 ## 1.145.395
 

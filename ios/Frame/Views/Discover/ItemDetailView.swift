@@ -1888,6 +1888,12 @@ struct ItemDetailView: View {
             return Double(now.image.size.width / now.image.size.height)  // cut on the phone, the server's coming
         }
         if let size = pictureSize, size.0 > 0, size.1 > 0 { return Double(size.0) / Double(size.1) }
+        // The copy shown (a restored drawing of the work cut out is not the
+        // museum photograph's shape: its corners sharp, bars beside it,
+        // Mateusz 2026-11-26).
+        if let copy = item.sharper, copy.width > 0, copy.height > 0 {
+            return Double(copy.width) / Double(copy.height)
+        }
         if let w = item.width, let h = item.height, w > 0, h > 0 { return Double(w) / Double(h) }
         return ItemPeeks.tiles[item.id]?.summary.aspectRatio ?? 4 / 3
     }

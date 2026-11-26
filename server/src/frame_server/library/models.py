@@ -873,6 +873,12 @@ class ItemSummary(BaseModel):
                     summary.width = round(math.sqrt(area * ratio))
                     summary.height = round(math.sqrt(area / ratio))
         if item.sharper is not None:
+            if shown is None and item.sharper.width > 0 and item.sharper.height > 0:
+                # The tile's shape is the copy's: a drawing of the work cut
+                # out is narrower than the museum's photograph (Mateusz
+                # 2026-11-26: bars beside a restored work after the whole
+                # screen).
+                summary.width, summary.height = item.sharper.width, item.sharper.height
             summary.picture = item.sharper.item_id
             summary.restored = item.sharper.restored
             summary.restored_pro = item.sharper.restored and item.sharper.pro
