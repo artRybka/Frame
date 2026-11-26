@@ -18,9 +18,12 @@ from test_ai import GOOD_KEY, FakeAnthropic, _message
 from frame_server.ai import AiConfigUpdate
 from frame_server.ai.client import HAIKU, SONNET
 from frame_server.ai.pl_text import (
+    IDEA_NUMBERS,
     KIND,
+    LENGTHS,
     MAX_BODY,
-    STYLES,
+    OPENINGS,
+    TONES,
     Context,
     PolishText,
     clean,
@@ -30,6 +33,7 @@ from frame_server.ai.pl_text import (
     request_text,
     schema,
     untranslated,
+    worn_phrases,
     written_for,
 )
 from frame_server.config import Settings
@@ -747,34 +751,64 @@ def _style(params: dict[str, Any]) -> str:
     return str(params["output_config"]["format"]["schema"]["properties"]["style"]["enum"][0])
 
 
-def test_notes_take_the_five_styles_in_turn(service: FrameService, fake: FakeAnthropic) -> None:
-    job = service.pl_text
-    item = _add(service, "met:2", description="")
-    dealt = [_style(job.params(item)) for _ in range(10)]
-    assert set(dealt[:5]) == set(STYLES) and set(dealt[5:]) == set(STYLES)
-    assert all(a != b for a, b in itertools.pairwise(dealt))  # never twice in a row
-    params = job.params(item)
-    question = params["messages"][0]["content"][1]["text"]
-    name, _ = STYLES[_style(params)]
-    assert f"STYL: {name}." in question
-    assert "OSTATNIE POCZĄTKI" not in question  # no notes yet
-
-
-def test_a_note_keeps_its_style_and_the_next_one_hears_how_it_opened(
+def test_notes_are_dealt_forms_and_an_idea_not_the_first(
     service: FrameService, fake: FakeAnthropic
 ) -> None:
-    opening = "Ciężkie chmury nad portem zasłaniają niemal całe niebo nad statkiem."
-    _answers(fake, {**NOTE_ANSWER, "full": opening, "style": "temat"})
+    """Each side of the form goes round all its values, never twice in a
+    row; the idea is never the first one (the most obvious)."""
+    job = service.pl_text
     item = _add(service, "met:2", description="")
-    service.ai.run_one(KIND, "met:2")
-    text = service.pl_text.text(item)
-    assert text is not None and text.written == "note" and text.style == "temat"
+    dealt = [_style(job.params(item)).split("/") for _ in range(14)]
+    lengths, openings, tones, ideas = zip(*dealt, strict=True)
+    assert set(openings[:7]) == set(OPENINGS) and set(openings[7:]) == set(OPENINGS)
+    assert set(lengths[:3]) == set(LENGTHS) and set(tones[:3]) == set(TONES)
+    assert {int(i) for i in ideas} == set(IDEA_NUMBERS)
+    for side in (lengths, openings, tones, ideas):
+        assert all(a != b for a, b in itertools.pairwise(side))  # never twice in a row
+    params = job.params(item)
+    note_schema = params["output_config"]["format"]["schema"]
+    assert next(iter(note_schema["properties"])) == "ideas"  # written first
+    length, opening, tone, idea = _style(params).split("/")
+    question = params["messages"][0]["content"][1]["text"]
+    assert LENGTHS[length] in question and OPENINGS[opening] in question
+    assert TONES[tone] in question and f"pomysłu nr {idea}" in question
+    assert "ZUŻYTE" not in question  # no notes yet
+    assert "Pierwsze zdanie i tak mówi" not in params["system"][0]["text"]
 
-    service.pl_text._recent = (0.0, [])  # read again
-    other = _add(service, "met:3", description="")
+
+def test_a_note_keeps_its_form_and_ideas_and_the_next_hears_worn_phrases(
+    service: FrameService, fake: FakeAnthropic
+) -> None:
+    full = "Warto spojrzeć dłużej na chmury nad portem. Ciężkie chmury wiszą nisko."
+    _answers(
+        fake,
+        {**NOTE_ANSWER, "full": full, "style": "krotka/pytanie/obok/3", "ideas": ["a", "b"]},
+    )
+    for n in range(1, 7):
+        _add(service, f"met:{n}", description="")
+        service.ai.run_one(KIND, f"met:{n}")
+    text = service.pl_text.text(service.library.get("met:1"))
+    assert text is not None and text.written == "note"
+    assert text.style == "krotka/pytanie/obok/3" and text.ideas == ["a", "b"]
+
+    service.pl_text._worn = None  # counted again
+    other = _add(service, "met:9", description="")
     question = service.pl_text.params(other)["messages"][0]["content"][1]["text"]
-    assert "OSTATNIE POCZĄTKI" in question
-    assert "„Ciężkie chmury nad portem zasłaniają niemal całe…”" in question
+    assert "ZUŻYTE" in question
+    assert "„warto spojrzeć dłużej na”" in question
+
+
+def test_worn_phrases_are_habits_not_names_or_glue() -> None:
+    texts = [
+        f"Na pierwszym planie stoi {who}. Obok niej Rembrandt van Rijn i pies."
+        for who in ("kobieta", "dziecko", "starzec", "żołnierz", "panna", "chłopiec")
+    ] + ["Zupełnie inna notka bez tych słów."] * 4
+    worn = worn_phrases(texts)
+    assert "na pierwszym planie stoi" in worn
+    assert "pierwszym planie" not in worn  # inside the one named
+    assert not any("rembrandt" in w or "rijn" in w for w in worn)  # names
+    assert "obok niej" not in worn  # glue alone
+    assert worn_phrases(texts[:3]) == []  # too few notes to be a habit
 
 
 def test_a_museum_text_not_about_the_work_gets_a_note_at_once(
@@ -782,7 +816,11 @@ def test_a_museum_text_not_about_the_work_gets_a_note_at_once(
 ) -> None:
     """Haiku finds only the artist's life in the museum's text: Sonnet writes
     a note, told the text is not about the work."""
-    _answers(fake, {**PL_ANSWER, "about_work": False}, {**NOTE_ANSWER, "style": "opis"})
+    _answers(
+        fake,
+        {**PL_ANSWER, "about_work": False},
+        {**NOTE_ANSWER, "style": "zwykla/miejsce/malarz/2"},
+    )
     item = _add(service, "met:1", description=DESCRIPTION)
     service.ai.run_one(KIND, "met:1")
 

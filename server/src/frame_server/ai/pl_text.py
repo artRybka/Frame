@@ -9,12 +9,16 @@ author's nationality with life years. The nationality is put together from
 a dictionary where the museum's bio allows it (library/nationality.py):
 models keep writing "holenderski" for "Dutch".
 
-A note looks at the work from one of five sides (:data:`STYLES`), dealt
-out in turn so that notes in a row differ (Mateusz 2026-11-14: "losować
-będziemy z 5 różnych stylów"), and is told how the latest notes open. A
-museum text that says nothing about the work itself (the artist's life, a
-series, a collection) is no description: Haiku says so while translating
-it, and Sonnet writes a note instead.
+A note is written round one of four ideas Sonnet first finds in the work
+itself (the number dealt by the server, never the first, the most obvious),
+in a form dealt out too: its length, how it opens and its tone
+(:data:`LENGTHS`, :data:`OPENINGS`, :data:`TONES`; Mateusz 2026-11-26: "żeby
+wyglądały na naprawdę pisane bez promptu"). It is told the phrases the
+latest notes wore out (:func:`worn_phrases`), counted on them anew every
+hour, so that a new habit is caught as it forms. A museum text that says
+nothing about the work itself (the artist's life, a series, a collection)
+is no description: Haiku says so while translating it, and Sonnet writes a
+note instead.
 """
 
 from __future__ import annotations
@@ -47,8 +51,9 @@ if TYPE_CHECKING:
 
 KIND = "pl_text"
 #: Changed whenever the prompts change, so older texts are written again.
-#: Not for the five styles of notes (2026-11-14): the texts written before
-#: stay (Mateusz: "te które są zostawiamy").
+#: Not for the five styles of notes (2026-11-14) nor for their forms and
+#: ideas (2026-11-26): the texts written before stay (Mateusz: "te które
+#: są zostawiamy").
 PROMPT_VERSION = "pl-1"
 
 #: A description shorter than this ("Gift of ...") is no description.
@@ -68,47 +73,46 @@ WIKI_CHARS = 1200
 
 Written = Literal["translation", "note"]
 SOURCES = ("dane muzeum", "Wikidata", "Wikipedia", "obraz")
-#: How many of the latest notes' openings a note is told not to repeat.
-RECENT = 8
-#: Words of each opening.
-OPENING_WORDS = 7
-#: How long the latest openings are kept between questions (a night's
-#: batch asks hundreds at once).
-RECENT_SECONDS = 60.0
+#: How many of the latest notes the worn phrases are counted on, how many
+#: are named to a note, how many notes (and what share of them) a phrase is
+#: in to be worn, and how long the count is kept (a night's batch asks
+#: hundreds at once).
+WORN_NOTES = 300
+WORN = 15
+WORN_MIN = 5
+WORN_SHARE = 0.03
+WORN_SECONDS = 3600.0
+#: The ideas a note is written round, and the ones it may be dealt: never
+#: the first, which is the most obvious (the trial of 2026-11-26).
+IDEAS = 4
+IDEA_NUMBERS = (2, 3, 4)
 
-#: The sides a note looks at the work from, dealt out in turn (a shuffled
-#: round of all five, never the same twice in a row); tried on nine Met
-#: works first (https://claude.ai/artifact/Etdn2eQhvP4w6xPai4Jihd).
-STYLES: dict[str, tuple[str, str]] = {
-    "opis": (
-        "Opis",
-        "Opisz dzieło jako całość: co i kogo przedstawia, jak jest ułożone, jakie ma barwy i "
-        "światło, co w nim szczególne.",
-    ),
-    "wzrok": (
-        "Co widać",
-        "Prowadź wzrok po obrazie: od tego, co przyciąga najpierw, przez kolejne miejsca, do "
-        "tego, na co warto spojrzeć dłużej.",
-    ),
-    "warsztat": (
-        "Jak zrobione",
-        "Pisz o tym, jak dzieło zostało zrobione: jak położona jest farba (gładko, grubo, "
-        "widoczne pociągnięcia), rysunek i kontur, kolor i światło, faktura, którymi środkami "
-        "artysta osiąga efekt (mgła, połysk materii, głębia, ruch). W grafice: kreska, druk, "
-        "plamy koloru. Tylko to, co widać na reprodukcji; czego w tej skali nie widać, nie "
-        "zgaduj.",
-    ),
-    "temat": (
-        "Temat",
-        "Kilka zdań o temacie: co znaczy przedstawiona scena, postać albo motyw, skąd się "
-        "wziął (historia, legenda, zwyczaj, gatunek malarski, miejsce), czemu artyści go "
-        "malowali i co z tego widać w tym dziele.",
-    ),
-    "szczegol": (
-        "Szczegół",
-        "Zacznij od jednego szczegółu, który łatwo przeoczyć, i od niego przejdź do całości: "
-        "co ten szczegół mówi o dziele.",
-    ),
+#: The form of a note, dealt out on three sides at once (3 × 7 × 3); each
+#: a name kept with the note and what the question says. Told in words a
+#: note cannot copy: the five styles before them came back in the notes'
+#: own phrases ("łatwo przeoczyć", "warto spojrzeć dłużej").
+LENGTHS: dict[str, str] = {
+    "krotka": "krótka: 2–3 zdania, razem 180–320 znaków",
+    "zwykla": "zwykła: 400–600 znaków",
+    "dluzsza": "dłuższa: 700–900 znaków",
+}
+OPENINGS: dict[str, str] = {
+    "obserwacja": "pierwsze zdanie ma kilka słów: jedna rzecz, którą widać od razu",
+    "pytanie": "pierwsze zdanie to pytanie, które ten obraz stawia patrzącemu; dalsze "
+    "zdania na nie odpowiadają",
+    "miejsce": "zaczyna się w jednym konkretnym miejscu obrazu (róg, krawędź, tło, środek) "
+    "od tego, co tam jest",
+    "swiatlo": "zaczyna się od światła, pory dnia, pogody albo jednego koloru",
+    "postac": "zaczyna się od jednej postaci, zwierzęcia albo rzeczy: co robi albo jak wygląda",
+    "tytul": "zaczyna się od tytułu: co mówi, co obiecuje albo czego nie mówi o tym, co widać",
+    "temat": "zaczyna się od tematu, legendy, zwyczaju albo miejsca, które dzieło pokazuje",
+}
+TONES: dict[str, str] = {
+    "przewodnik": "rzeczowy przewodnik: konkret, bez ozdobników",
+    "obok": "ktoś, kto stoi obok przed obrazem i pokazuje go znajomemu: prosto, "
+    "bezpośrednio, może zwrócić się do czytającego",
+    "malarz": "malarz, który patrzy na robotę kolegi: co i czym tu zrobiono, tylko to, "
+    "co widać na reprodukcji",
 }
 
 #: A translation: the description in, two Polish versions of it out.
@@ -154,19 +158,26 @@ pozostałe pola i tak wypełnij."""
 NOTE_SYSTEM = f"""{_RULES}
 - Muzeum nie podaje opisu dzieła (najwyżej krótką adnotację albo ogólny tekst o artyście), \
 więc piszesz krótką notkę na podstawie danych i załączonego obrazu (to reprodukcja tego dzieła).
-- "full": notka do aplikacji, 400–900 znaków.
-- Notka patrzy na dzieło z jednej strony, wskazanej w pytaniu jako STYL. Pierwsze zdanie i tak \
-mówi, co dzieło przedstawia, ale już z tej strony. Inne strony dzieła pojawiają się najwyżej na \
-marginesie. Nie nazywaj stylu ani nie zapowiadaj, z której strony patrzysz.
+- Najpierw w "ideas" wypisz {IDEAS} krótkie pomysły (po kilka słów), co w tym konkretnym \
+dziele jest ciekawe: rzeczy widoczne na tym obrazie albo wynikające z danych, nie ogólne \
+kategorie ("kompozycja", "kolorystyka"). Każdy inny.
+- "full": notka do aplikacji, napisana wokół pomysłu o numerze podanym w pytaniu, w formie \
+z pytania (FORMA: długość, początek, ton). Pozostałe pomysły najwyżej jednym zdaniem. Ma \
+brzmieć jak tekst człowieka, który zna się na sztuce i lubi ten obraz, nie jak opis \
+katalogowy: nie wyliczaj wszystkiego, co widać, tylko to, co służy pomysłowi; zdania różnej \
+długości. Formy nie nazywaj ani nie zapowiadaj.
 - O samym dziele piszesz tylko to, co widać na obrazie albo wynika z podanych danych. Nie \
 wymyślaj dat, miejsc, okoliczności powstania, zamówień, cytatów ani interpretacji tego \
 konkretnego dzieła. Ogólna, pewna wiedza o temacie (legenda, postać, zwyczaj, gatunek malarski, \
-miejsce) jest dozwolona, gdy styl tego wymaga; jeśli nie jesteś pewien, pomiń.
-- Nie pisz o tym, czego dane nie mówią ("muzeum nie podaje…", "nie wiadomo, kim…"): po prostu \
-to pomiń. Nie kończ zdaniem, które tylko powtarza autora, epokę albo technikę z danych.
-- Nie zaczynaj od "Obraz przedstawia", "Obraz pokazuje" ani "Dzieło przedstawia", ani tak jak \
-notki wymienione w pytaniu jako OSTATNIE POCZĄTKI: inne pierwsze słowa i inna budowa pierwszego \
-zdania.
+miejsce) jest dozwolona, gdy pomysł albo początek tego wymaga; jeśli nie jesteś pewien, pomiń.
+- Nie pisz o tym, czego dane nie mówią ("muzeum nie podaje…", "nie wiadomo, kim…"), i nie \
+asekuruj się ("choć obraz tego nie wyjaśnia"): po prostu to pomiń. Nie kończ morałem ani \
+podsumowaniem ("nadaje całości…", "podkreśla…") ani zdaniem, które tylko powtarza autora, \
+epokę albo technikę. Skończ, gdy powiesz swoje.
+- Nie zaczynaj od "Obraz", "Dzieło", "Portret" czy "Pejzaż" z "przedstawia", "pokazuje" albo \
+"ukazuje". Unikaj zwrotów: "warto spojrzeć", "warto zwrócić uwagę", "łatwo przeoczyć", \
+"uwagę przyciąga", "wzrok prowadzi", "na pierwszym planie", "nadaje całości", "Autorem jest", \
+ani tych, które pytanie wymienia jako ZUŻYTE.
 - "sources": źródła, z których faktycznie skorzystałeś."""
 
 _FIELDS = ("title", "frame", "full", "medium", "date", "artist_note")
@@ -177,6 +188,9 @@ def schema(written: Written) -> dict[str, Any]:
     museum's text is about the work at all (:func:`about_work`)."""
     props: dict[str, Any] = {}
     required: list[str] = []
+    if written == "note":  # first: the note is written round one of them
+        props["ideas"] = {"type": "array", "items": {"type": "string"}}
+        required.append("ideas")
     if written == "translation":
         props["about_work"] = {"type": "boolean"}
         required.append("about_work")
@@ -351,8 +365,11 @@ class PolishText(BaseModel):
     written: Written = "translation"
     #: For a note: what it was written from.
     sources: list[str] = Field(default_factory=list)
-    #: For a note: the side it looks at the work from (:data:`STYLES`).
+    #: For a note: its form, "length/opening/tone/idea" (:class:`Form`;
+    #: before 2026-11-26 one of five styles, "opis", "temat"…).
     style: str = ""
+    #: For a note: the ideas Sonnet found in the work, one written round.
+    ideas: list[str] = Field(default_factory=list)
     #: The museum's text was not about the work: a note took its place.
     general: bool = False
     #: For a translation: whether Haiku found the museum's text to be about
@@ -498,6 +515,11 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
         written=written,
         sources=sources,
         style=str(data.get("style") or "") if written == "note" else "",
+        ideas=(
+            [_plain(i, SHORT_MAX) for i in data.get("ideas") or [] if _plain(i)][:IDEAS]
+            if written == "note"
+            else []
+        ),
         general=bool(data.get("general")) and written == "note",
         about_work=(
             data["about_work"]
@@ -507,19 +529,110 @@ def clean(data: dict[str, Any], item: Item, facts: Facts | None) -> PolishText |
     )
 
 
-def opening(text: str) -> str:
-    """The first words of a note, as the next ones are told not to start."""
-    said = sentences(text)
-    words = said[0].split() if said else []
-    return " ".join(words[:OPENING_WORDS]) + ("…" if len(words) > OPENING_WORDS else "")
+@dataclass(frozen=True)
+class Form:
+    """How a note is written: its length, opening and tone, and the number
+    of the idea it is written round."""
+
+    length: str
+    opening: str
+    tone: str
+    idea: int
+
+    @property
+    def name(self) -> str:
+        """As kept with the note (``style``) and asked back in its answer."""
+        return f"{self.length}/{self.opening}/{self.tone}/{self.idea}"
 
 
-def note_question(data_text: str, style: str, recent: list[str]) -> str:
-    """A note's question: the work's data, its style and how to not start."""
-    name, how = STYLES[style]
-    lines = [data_text, "", f"STYL: {name}. {how}"]
-    if recent:
-        lines += ["", "OSTATNIE POCZĄTKI (nie zaczynaj podobnie):", *(f"„{r}”" for r in recent)]
+class _Deck:
+    """A shuffled round of all the values, never the same twice in a row."""
+
+    def __init__(self, values: tuple[Any, ...]) -> None:
+        self.values = values
+        self.left: list[Any] = []
+        self.last: Any = None
+
+    def deal(self) -> Any:
+        if not self.left:
+            deal = list(self.values)
+            random.shuffle(deal)
+            if len(deal) > 1 and deal[0] == self.last:
+                deal.append(deal.pop(0))
+            self.left = deal
+        self.last = self.left.pop(0)
+        return self.last
+
+
+_NOTE_WORD = re.compile(r"[^\W\d_]+")
+#: Words that make no phrase on their own: "w tym", "a na" are no habit.
+_GLUE = frozenset(
+    {
+        "a", "albo", "ale", "aż", "bo", "obok", "niej", "nich", "niego", "by", "co",
+        "czy", "dla", "do", "go", "i", "ich",
+        "iż", "jak", "jego", "jej", "jest", "już", "ku", "lub", "ma", "na", "nad", "nie",
+        "o", "od", "oraz", "po", "pod", "przed", "przez", "przy", "się", "są", "ta", "tak",
+        "te", "tego", "tej", "ten", "to", "tu", "tym", "u", "w", "we", "z", "za", "ze", "że",
+    }
+)  # fmt: skip
+
+
+def _phrases(text: str) -> set[str]:
+    """The note's phrases of 2 to 4 words, without names (a capital in the
+    middle of a sentence) and without those made of glue words alone."""
+    found: set[str] = set()
+    for sentence in sentences(text):
+        words = _NOTE_WORD.findall(sentence)
+        for n in (2, 3, 4):
+            for i in range(len(words) - n + 1):
+                part = words[i : i + n]
+                if any(w[0].isupper() for w in part[1 if i == 0 else 0 :]):
+                    continue
+                low = [w.casefold() for w in part]
+                if all(w in _GLUE or len(w) < 5 for w in low):
+                    continue
+                found.add(" ".join(low))
+    return found
+
+
+def worn_phrases(texts: list[str]) -> list[str]:
+    """The phrases the notes keep coming back to: in at least ``WORN_MIN``
+    of them and ``WORN_SHARE``, most worn first; a phrase inside one named
+    already (or holding it) is the same habit and is left out."""
+    counts: dict[str, int] = {}
+    for text in texts:
+        for phrase in _phrases(text):
+            counts[phrase] = counts.get(phrase, 0) + 1
+    least = max(WORN_MIN, round(WORN_SHARE * len(texts)))
+    ranked = sorted(
+        (p for p, c in counts.items() if c >= least),
+        key=lambda p: (-counts[p], -len(p.split()), p),
+    )
+    chosen: list[str] = []
+    for phrase in ranked:
+        padded = f" {phrase} "
+        if any(padded in f" {c} " or f" {c} " in padded for c in chosen):
+            continue
+        chosen.append(phrase)
+        if len(chosen) >= WORN:
+            break
+    return chosen
+
+
+def note_question(data_text: str, form: Form, worn: list[str]) -> str:
+    """A note's question: the work's data, its form and the worn phrases."""
+    lines = [
+        data_text,
+        "",
+        "FORMA:",
+        f"- długość: {LENGTHS[form.length]}",
+        f"- początek: {OPENINGS[form.opening]}",
+        f"- ton: {TONES[form.tone]}",
+        "",
+        f'Napisz notkę wokół pomysłu nr {form.idea} z "ideas".',
+    ]
+    if worn:
+        lines += ["", "ZUŻYTE (nie używaj ani ich odmian):", ", ".join(f"„{w}”" for w in worn)]
     return "\n".join(lines)
 
 
@@ -549,11 +662,15 @@ class PlTextJob(NoteJob):
         self._heads: dict[str, str] = {}
         #: Titles written ahead of their texts.
         self._titles: dict[str, str] = {}
-        #: The styles still to deal out in this round, and the last one dealt.
-        self._styles: list[str] = []
-        self._last_style = ""
-        #: The latest notes' openings, and when they were read.
-        self._recent: tuple[float, list[str]] = (0.0, [])
+        #: The forms of notes, each side dealt in its own round.
+        self._decks = (
+            _Deck(tuple(LENGTHS)),
+            _Deck(tuple(OPENINGS)),
+            _Deck(tuple(TONES)),
+            _Deck(IDEA_NUMBERS),
+        )
+        #: The latest notes' worn phrases, and when they were counted.
+        self._worn: tuple[float, list[str]] | None = None
 
     @property
     def http(self) -> httpx.Client:
@@ -656,57 +773,44 @@ class PlTextJob(NoteJob):
         return self.note_params(item, general=bool(description(item)) and not is_own(item))
 
     def note_params(self, item: Item, general: bool = False) -> dict[str, Any]:
-        """Sonnet's note, in the next style; the style is asked back in the
+        """Sonnet's note, in the next form; the form is asked back in the
         answer (one value allowed), so that a night's batch keeps it too."""
-        style = self.next_style()
+        form = self.next_form()
         data_text = request_text(item, self.context(item, note=True), general=general)
         note_schema = schema("note")
-        note_schema["properties"]["style"] = {"type": "string", "enum": [style]}
+        note_schema["properties"]["style"] = {"type": "string", "enum": [form.name]}
         note_schema["required"].append("style")
         return request(
             model=SONNET,
             system=NOTE_SYSTEM,
             content=[
                 image_block(self.images, item),
-                {"type": "text", "text": note_question(data_text, style, self.recent())},
+                {"type": "text", "text": note_question(data_text, form, self.worn())},
             ],
             schema=note_schema,
             max_tokens=6000,
         )
 
-    def next_style(self) -> str:
-        """The next of a shuffled round of all styles, never the last one again."""
+    def next_form(self) -> Form:
+        """The next form: each side the next of its own shuffled round."""
         with self._lock:
-            if not self._styles:
-                deal = list(STYLES)
-                random.shuffle(deal)
-                if deal[0] == self._last_style:
-                    deal.append(deal.pop(0))
-                self._styles = deal
-            self._last_style = self._styles.pop(0)
-            return self._last_style
+            length, opening, tone, idea = (deck.deal() for deck in self._decks)
+        return Form(length, opening, tone, idea)
 
-    def recent(self) -> list[str]:
-        """How the latest notes open (read again after a minute)."""
+    def worn(self) -> list[str]:
+        """The phrases the latest notes wore out (counted again after an hour)."""
         with self._lock:
-            at, found = self._recent
-            if time.monotonic() - at < RECENT_SECONDS:
-                return list(found)
+            if self._worn is not None and time.monotonic() - self._worn[0] < WORN_SECONDS:
+                return list(self._worn[1])
         notes = [
             n
             for n in self.library.notes(KIND).values()
             if n.data.get("written") == "note" and n.data.get("full")
         ]
         notes.sort(key=lambda n: n.created_at, reverse=True)
-        found = []
-        for note in notes:
-            said = opening(str(note.data["full"]))
-            if said and said not in found:
-                found.append(said)
-            if len(found) >= RECENT:
-                break
+        found = worn_phrases([str(n.data["full"]) for n in notes[:WORN_NOTES]])
         with self._lock:
-            self._recent = (time.monotonic(), found)
+            self._worn = (time.monotonic(), found)
         return list(found)
 
     def revise(
