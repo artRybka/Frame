@@ -25,8 +25,8 @@ struct ItemToolbar: ToolbarContent {
     /// "Restaurator Pro" (Mateusz 2026-11-26): Google's model through its
     /// Batch, within this person's day; told when drawn.
     var restorePro: (() -> Void)? = nil
-    /// Waiting for "Restauracja PRO": its entry shown spinning, not to be
-    /// tapped, and the plain one gone (Mateusz 2026-11-26).
+    /// Waiting for "Restauracja PRO": its entry dimmed, not to be tapped,
+    /// and the plain one gone (Mateusz 2026-11-26).
     var proWaiting = false
     /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
     /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
@@ -175,8 +175,9 @@ struct ItemToolbar: ToolbarContent {
                             Text(bound: LowRes.proName)
                             Text(bound: "Zamówiona, zwykle gotowa w ciągu kilku godzin")
                         } icon: {
-                            Image(systemName: "progress.indicator")
-                                .symbolEffect(.rotate, options: .repeat(.continuous))
+                            // A menu's icons stand still: no wheel, the
+                            // entry dimmed (Mateusz 2026-11-26).
+                            LowRes.proMenuImage
                         }
                     }
                     .disabled(true)
