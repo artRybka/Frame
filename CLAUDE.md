@@ -156,7 +156,12 @@ are one cut: Galeria asks for both by the picture's version
 (`GalleryView.thumb(of:)`, `Item.originalRef`) and drops its stock when a
 work is cut down (`taken`); a page looked at never changes its picture
 (`GalleryPage`'s `Recut`), and two pictures of different shapes are never
-laid out as one (`arrived`).
+laid out as one (`arrived`). The point a work is cut about
+(`SubjectFocus`, `subject: true`): of a subject much wider than the screen
+it is the part Vision's attention map is heaviest in (`telling`), not the
+middle of its box (Mateusz 2026-11-26). The simulator on CI gives one and
+the same map for every picture: what Vision finds in a work is asked of
+the runner's own Mac (a Swift script run with `swift`), never of a test.
 `.confirmationDialog` goes on the button (or menu, or card) that asks, never
 on a page or section: on iOS 26 it is a popover pointing at that view.
 Polish line breaking (no "i", "w" left at a line's end, `Design/Typography.swift`):

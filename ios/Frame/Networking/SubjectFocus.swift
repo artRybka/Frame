@@ -322,7 +322,12 @@ actor SubjectFocus {
             return UnitPoint(x: box.midX, y: box.midY)
         }
         if let figure = figures.filter({ $0.height >= figureLeast }).max(by: { $0.area < $1.area }) {
-            return UnitPoint(x: figure.midX, y: figure.minY + figure.height * headInFigure)
+            let head = UnitPoint(x: figure.midX, y: figure.minY + figure.height * headInFigure)
+            // Lying down, wider than the screen: its head is not over its
+            // middle, and the eye's map says where it is.
+            let (share, sideways) = seen(of: shape)
+            if let heat, sideways, figure.width > share { return telling(heat, shape: shape, from: head) }
+            return head
         }
         // The heaviest single place, by how sure Vision is and how much of
         // the picture it takes (the square root: a big field is no subject

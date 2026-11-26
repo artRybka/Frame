@@ -212,4 +212,19 @@ final class SubjectFocusTests: XCTestCase {
         let whole = SubjectFocus.subject(faces: [large, far], figures: [], salient: [], shape: 0.5)
         XCTAssertEqual(whole.x, large.union(far).midX, accuracy: 0.001)
     }
+
+    /// A figure lying down, wider than the screen, with no face found: its
+    /// head is where the eye goes, not over the middle of its box.
+    func testLyingFiguresHeadIsWhereTheEyeGoes() {
+        let figure = CGRect(x: 0.1, y: 0.35, width: 0.8, height: 0.35)
+        let lying = heat(
+            wide: 40, tall: 20, body: CGRect(x: 4, y: 7, width: 32, height: 7), hot: CGRect(x: 29, y: 6, width: 5, height: 4)
+        )
+        let point = SubjectFocus.subject(faces: [], figures: [figure], salient: [], heat: lying, shape: 1.8)
+        XCTAssertGreaterThan(point.x, 0.7)
+        // Standing, one screen holds it: its head, as before.
+        let standing = CGRect(x: 0.45, y: 0.1, width: 0.2, height: 0.8)
+        let upright = SubjectFocus.subject(faces: [], figures: [standing], salient: [], heat: lying, shape: 1.8)
+        XCTAssertEqual(upright.x, standing.midX, accuracy: 0.001)
+    }
 }
