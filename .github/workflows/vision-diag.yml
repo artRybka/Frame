@@ -1,0 +1,15 @@
+name: vision-diag
+
+# A diagnosis for one question (what Vision finds in works much wider than
+# the screen): taken out again before the branch is released.
+on:
+  push:
+    branches: [claude/project-thread-dhtd0h]
+    paths: ["scratch/vision-diag/**", ".github/workflows/vision-diag.yml"]
+
+jobs:
+  look:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift scratch/vision-diag/diag.swift scratch/vision-diag/*.jpg
