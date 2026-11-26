@@ -44,7 +44,7 @@ from PIL import Image, ImageFilter
 from .ai.gemini import MODEL, PRO, Ask, NotDrawn
 from .imaging import artsr
 from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
-from .imaging.cut import cut_aspect, same_picture, warp
+from .imaging.cut import cut_aspect, warp
 from .imaging.descreen import descreened
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, low_side
@@ -93,6 +93,10 @@ GRAIN_SIGMA = 1.0
 #: half the change and a contour drawn thinner, the texture still there,
 #: but the work "trochę za miękki" (19:40): seven tenths.
 DRAWN = 0.7
+#: The same of Restaurator Pro's drawing: all of it, only its colours put
+#: back (Mateusz 2026-11-26 16:09 UTC: „przy Gemini dałbym sobie spokój z
+#: podkładem 30% oryginału chyba ze dla korekty i dostosowania koloru”).
+DRAWN_PRO = 1.0
 #: The drawing and its picture are laid on each other this small (its
 #: longer side) before the colours and the plain enlargement are put over;
 #: they must then match at least so well (correlation of their tones),
@@ -358,7 +362,8 @@ class Restorer:
         pro: bool = False,
     ) -> Item:
         try:
-            fitted = recoloured(picture, fit(picture.size, drawn))
+            share = DRAWN_PRO if pro else DRAWN
+            fitted = recoloured(picture, fit(picture.size, drawn), share)
         except NotRestored as err:
             self._note(item.id, "skewed", why=str(err), usd=usd, model=model)
             raise
@@ -497,7 +502,7 @@ class Restorer:
             if quad is None or cut.picture == item.picture_key():
                 continue  # whole, or cut on the drawing itself
             work = cut_aspect(quad, cut.aspect)
-            if work <= 0 or abs(work - cut.aspect) <= 0.06 * cut.aspect:
+            if work <= 0 or abs(work - cut.aspect) <= 0.01 * cut.aspect:
                 continue  # the work is the photograph's shape: which it is, unknown
             url = sharper.url
             try:
@@ -506,8 +511,9 @@ class Restorer:
                 log.info("restorer: %s not had to be cut: %s", item.id, err)
                 missed += 1
                 continue
-            if not same_picture(cut.aspect, drawing.size):
-                continue  # drawn of the work already
+            shape = drawing.width / drawing.height
+            if abs(shape - cut.aspect) * 3 > abs(shape - work):
+                continue  # drawn of the work already (nearer its shape)
             fitted = warp(drawing, quad)
             buf = io.BytesIO()
             fitted.save(buf, "JPEG", quality=95)
