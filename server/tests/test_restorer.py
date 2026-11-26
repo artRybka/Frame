@@ -738,3 +738,21 @@ def test_a_restored_works_tile_takes_its_drawings_shape(app: Any) -> None:
     assert restored is not None
     summary = ItemSummary.of(restored)
     assert (summary.width, summary.height) == (1560, 2000)
+
+
+def test_the_owner_cuts_a_restored_work_on_its_drawing(app: Any) -> None:
+    """ "Popraw kadr" on a restored work (Mateusz 2026-11-26: "W przypadku
+    dzieł po restauracji nadal chciałbym mieć opcję kadrowania"): the
+    corners are the drawing's, and the work is shown cut so."""
+    client, service, _web, _painter = app
+    own = _small(service)
+    drawn = client.post(f"/api/library/items/{own.id}/restore").json()
+    corners = [[0.1, 0.1], [0.9, 0.1], [0.9, 0.9], [0.1, 0.9]]
+    resp = client.put(f"/api/library/items/{own.id}/cut", json={"corners": corners})
+    assert resp.status_code == 200, resp.text
+    cut = resp.json()["cut"]
+    assert cut["picture"] == drawn["sharper"]["item_id"] and cut["by"] == "owner"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.cut_shown() is not None
+    with Image.open(service.images.image_path(stored)) as img:
+        assert img.width < drawn["sharper"]["width"]  # cut down to the corners

@@ -913,7 +913,12 @@ struct ItemDetailView: View {
         if item.isOwnWork { return true }  // his own photograph of it
         return item.kind == .artwork && item.look == nil && !item.isFragment
             && !["upload", "icloud", "cli", "frame"].contains(item.source)
-            && item.sharper?.isRestored != true
+    }
+
+    /// The phone's model cuts it by itself: never a restored work's drawing,
+    /// which he cuts by hand ("Popraw kadr", Mateusz 2026-11-26).
+    static func cutsByItself(_ item: Item) -> Bool {
+        canCut(item) && item.sharper?.isRestored != true
     }
 
     /// The card opened: a museum's work not looked at yet is looked at (a
@@ -921,7 +926,7 @@ struct ItemDetailView: View {
     /// (`MuseumCrop`, Mateusz 2026-11-20) when the server says so, and cut
     /// down to the work; the card takes the cut picture as it comes.
     private func checkCut() async {
-        guard let id = fresh, id == itemID, let item, item.kind == .artwork, Self.canCut(item) else { return }
+        guard let id = fresh, id == itemID, let item, item.kind == .artwork, Self.cutsByItself(item) else { return }
         guard model.isOwner, !item.isOwnWork, !Task.isCancelled else { return }
         // The picture the card shows, not the museum's photograph asked
         // for again: one download, and no queue behind it on the server.

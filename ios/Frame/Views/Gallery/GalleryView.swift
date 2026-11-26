@@ -1275,7 +1275,7 @@ struct GalleryView: View {
 
     /// The work as it is once cut, nil when nothing was cut.
     private func cutDown(_ item: Item) async -> Item? {
-        guard item.kind == .artwork, ItemDetailView.canCut(item) else { return nil }
+        guard item.kind == .artwork, ItemDetailView.cutsByItself(item) else { return nil }
         guard model.isOwner, !item.isOwnWork,
               let found = try? await MuseumCrop.look(itemID: item.id, backend: model.backend),
               found.cut
