@@ -27,6 +27,8 @@ class MeView(BaseModel):
     device_id: str | None = None
     #: Studies this person may still order today (None: no limit).
     studies_left: int | None = None
+    #: Works of Restaurator Pro this person may still order today (None: no limit).
+    pro_left: int | None = None
     #: Whether the server can have people (it has a token of its own).
     people: bool = True
 
@@ -58,6 +60,8 @@ class PersonView(BaseModel):
     favorites: int = 0
     #: Studies a day they may order (None: the owner, no limit).
     study_limit: int | None = None
+    #: Works a day of Restaurator Pro (None: the owner, no limit).
+    pro_limit: int | None = None
 
 
 class InviteView(BaseModel):
@@ -102,10 +106,12 @@ class PeopleSettings(BaseModel):
 
 
 class Access(BaseModel):
-    """A person made a member or a guest, and their studies a day."""
+    """A person made a member or a guest, their studies and Restaurator
+    Pro's works a day."""
 
     role: Role | None = None
     study_limit: int | None = Field(None, ge=0, le=100)
+    pro_limit: int | None = Field(None, ge=0, le=100)
 
 
 def _invite_view(i: Invite) -> InviteView:
@@ -120,6 +126,7 @@ def _me(svc: FrameService, user: User, request: Request) -> MeView:
         role=user.role,
         device_id=device.id if device is not None else None,
         studies_left=svc.users.studies_left(user, date.today()),
+        pro_left=svc.users.pro_left(user, date.today()),
         people=svc.users.enabled,
     )
 
@@ -144,6 +151,7 @@ def _people(svc: FrameService) -> PeopleView:
                 playlists=sum(p.owner == u.id for p in playlists),
                 favorites=len(hearts.get(u.id, ())),
                 study_limit=None if u.is_owner else u.studies_a_day(),
+                pro_limit=None if u.is_owner else u.pro_a_day(),
             )
             for u in users.users()
         ],
@@ -218,7 +226,7 @@ def put_settings(body: PeopleSettings, svc: Svc, _: Owner) -> PeopleView:
 def set_access(user_id: str, body: Access, svc: Svc, _: Owner) -> PeopleView:
     """Konfiguracja → Domownicy: member or guest, and studies a day."""
     try:
-        found = svc.users.set_access(user_id, body.role, body.study_limit)
+        found = svc.users.set_access(user_id, body.role, body.study_limit, body.pro_limit)
     except ValueError as err:
         raise HTTPException(422, str(err)) from err
     if found is None:

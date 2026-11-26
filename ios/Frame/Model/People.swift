@@ -17,6 +17,9 @@ struct Me: Codable, Hashable, Sendable {
     var studiesLeft: Int?
     /// Whether the server can have people (it has a token of its own).
     var people: Bool
+    /// Works of "Restaurator Pro" this person may still order today (nil:
+    /// no limit, or a server before 1.146).
+    var proLeft: Int? = nil
 
     /// Anything but a member or a guest is the owner (an older server).
     var isOwner: Bool { role != "member" && role != "guest" }
@@ -52,6 +55,8 @@ struct Person: Codable, Hashable, Identifiable, Sendable {
     var favorites: Int
     /// Studies a day they may order (nil: the owner, or an older server).
     var studyLimit: Int?
+    /// Works a day of "Restaurator Pro" (nil: the owner, or an older server).
+    var proLimit: Int? = nil
 
     var isOwner: Bool { role != "member" && role != "guest" }
     var isGuest: Bool { role == "guest" }
@@ -95,11 +100,13 @@ struct PeopleSettings: Encodable, Sendable {
     var studyLimit: Int
 }
 
-/// Konfiguracja → Domownicy: a person made a member or a guest, and the
-/// studies a day they may order (server 1.145.271).
+/// Konfiguracja → Domownicy: a person made a member or a guest, the
+/// studies a day they may order (server 1.145.271) and the works a day of
+/// "Restaurator Pro" (Mateusz 2026-11-26).
 struct PersonAccess: Encodable, Sendable {
     var role: String?
     var studyLimit: Int?
+    var proLimit: Int? = nil
 }
 
 /// What an invitation's link carries: the code, where the server is and

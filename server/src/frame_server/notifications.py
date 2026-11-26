@@ -77,6 +77,7 @@ KINDS: dict[str, tuple[str, str]] = {
     "server_update": ("Nowa wersja serwera", "Gotowa do instalacji w aplikacji."),
     "daily": ("Studium dnia", "Nowe studium dzieła w Odkrywaj, codziennie o 8:30."),
     "study": ("Studium gotowe", "Gdy skończy się pisać zamówione studium dzieła."),
+    "restored": ("Restauracja gotowa", "Gdy Restaurator Pro skończy zamówione dzieło."),
     "week_artist": ("Artysta tygodnia", "W poniedziałek o 9:00."),
     "birthday": ("Rocznica urodzin", "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),
     "firmware": ("Nowy firmware ramki", "Gdy Samsung zaktualizuje oprogramowanie ekranu."),
@@ -578,12 +579,21 @@ class Notifier:
         collapse: str | None = None,
         expires: datetime | None = None,
         picture: str | None = None,
+        user: str | None = None,
     ) -> None:
-        """Send in the background, from the event loop or any thread."""
+        """Send in the background, from the event loop or any thread
+        (``user``: only to that person's phones)."""
         if not self.wanted(kind):
             return
         coro = self.send(
-            kind, title, body, route=route, collapse=collapse, expires=expires, picture=picture
+            kind,
+            title,
+            body,
+            route=route,
+            collapse=collapse,
+            expires=expires,
+            picture=picture,
+            user=user,
         )
         self._spawn(coro)
 
@@ -1017,6 +1027,21 @@ class Notifier:
 
 def _ready_body(title: str) -> str:
     return f"„{title}”: można czytać." if title else "Można czytać."
+
+
+def restored_body(title: str, ok: bool) -> str:
+    """What Restaurator Pro's notification says of the work it drew (or not)."""
+    if ok:
+        return (
+            f"„{title}” w nowej jakości, w playliście Restaurator."
+            if title
+            else ("Dzieło w nowej jakości, w playliście Restaurator.")
+        )
+    return (
+        f"Restaurator Pro nie narysował „{title}”."
+        if title
+        else ("Restaurator Pro nie narysował dzieła.")
+    )
 
 
 # -- the clock ----------------------------------------------------------------

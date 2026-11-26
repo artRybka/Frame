@@ -244,6 +244,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             year: year, colors: colors, width: shape?.0 ?? width, height: shape?.1 ?? height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
             pictureStamp: pictureStamp, subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
+            restoredPro: sharper?.isPro == true ? true : nil,
             cropped: isCropped ? true : nil, cut: cutVersion,
             cleaned: cleanedShown?.kind, cleanedAt: cleanedShown == nil ? nil : cleanedVersion, own: own
         )
@@ -404,9 +405,13 @@ struct SharperCopy: Codable, Hashable, Sendable {
     /// Drawn again larger by the image model ("Kreatywny restaurator"):
     /// detail invented, not the museum's photograph.
     var restored: Bool? = nil
+    /// Drawn by "Restaurator Pro", Google's model (Mateusz 2026-11-26), not
+    /// by the server's own.
+    var pro: Bool? = nil
 
     var isChosen: Bool { chosen == true }
     var isRestored: Bool { restored == true }
+    var isPro: Bool { restored == true && pro == true }
 }
 
 /// The work in its museum photograph, without what is around it (a
@@ -765,6 +770,8 @@ struct ItemSummary: Codable, Identifiable, Hashable, Sendable {
     /// Its picture was drawn again by the image model ("Kreatywny
     /// restaurator"): amber sparkles in place of the low resolution's dots.
     var restored: Bool? = nil
+    /// Drawn by "Restaurator Pro": its own mark (`LowRes.proSymbol`).
+    var restoredPro: Bool? = nil
     /// Its picture is cut out of the museum's photograph: the crop's mark
     /// after the date. Nil from a server before 1.146.
     var cropped: Bool? = nil
@@ -822,6 +829,7 @@ struct PictureMarks: Equatable, Sendable {
     /// `Item.pictureStamp`: another photograph of its own since.
     var stamp: String
     var restored: Bool
+    var restoredPro: Bool
     var cropped: Bool
     var cut: String?
     var cleaned: String?
@@ -832,6 +840,7 @@ struct PictureMarks: Equatable, Sendable {
         picture = summary.picture ?? ""
         stamp = summary.pictureStamp ?? ""
         restored = summary.restored == true
+        restoredPro = summary.restoredPro == true
         cropped = summary.isCropped
         cut = summary.cut
         cleaned = summary.cleaned
@@ -849,6 +858,7 @@ struct PictureMarks: Equatable, Sendable {
         tile.picture = picture
         tile.pictureStamp = stamp.isEmpty ? nil : stamp
         tile.restored = restored ? true : nil
+        tile.restoredPro = restoredPro ? true : nil
         tile.cropped = cropped ? true : nil
         tile.cut = cut
         tile.cleaned = cleaned
@@ -1160,8 +1170,14 @@ struct PlaylistSummary: Codable, Identifiable, Hashable, Sendable {
     static let sentName = "Historia przesłanych"
     /// This person's "Historia przesłanych".
     var isSentHistory: Bool { isMine && name == Self.sentName }
-    /// Not among the cards while nothing was sent (Mateusz 2026-11-25).
-    var isHiddenCard: Bool { isSentHistory && itemCount == 0 }
+    /// The works restored for this person (server: restorer.PLAYLIST_NAME;
+    /// Mateusz 2026-11-26: "folder „Restaurator” gdzie będą trafiać
+    /// wszystkie restaurowane dzieła").
+    static let restorerName = "Restaurator"
+    var isRestorer: Bool { isMine && kind == .manual && name == Self.restorerName }
+    /// Not among the cards while nothing was sent (Mateusz 2026-11-25), or
+    /// nothing restored.
+    var isHiddenCard: Bool { (isSentHistory || isRestorer) && itemCount == 0 }
 }
 
 struct PlaylistDetail: Codable, Sendable {
@@ -2056,11 +2072,6 @@ struct AiSettings: Codable, Hashable, Sendable {
     /// characters. Nil from servers before the drawn sheets.
     var geminiKeySet: Bool? = nil
     var geminiKeyTail: String? = nil
-    /// fal.ai's key for SeedVR2, the creative restorer's model (Mateusz
-    /// 2026-11-22): whether the server has one, its last characters. Nil
-    /// from servers before it.
-    var falKeySet: Bool? = nil
-    var falKeyTail: String? = nil
     /// "Arkusze kompozycji z modelu graficznego"; nil from older servers.
     var drawn: Bool? = nil
     /// About what one drawn sheet costs at once, and through Google's Batch.
@@ -2395,15 +2406,25 @@ struct TailnetKey: Codable, Hashable, Sendable {
     var address: String?
 }
 
-/// Konfiguracja → "Kreatywny restaurator": the favourites under 1600 px the
-/// image model would draw again (`items`, about `usd` in Google's batches),
-/// those waiting in batches, and the works drawn so far.
+/// Konfiguracja → "Restauracja dzieła": the favourites under 1600 px the
+/// server's own model would draw again (`items`, for nothing since
+/// 2026-11-26: `usd` 0), those waiting, and the works drawn so far.
 struct RestorerState: Codable, Hashable, Sendable {
     var enabled: Bool
     var items: Int
     var usd: Double
     var waiting: Int
     var restored: Int
+    /// "Restaurator Pro" can draw (Google's key in Konfiguracja); nil from
+    /// a server before it.
+    var pro: Bool? = nil
+}
+
+/// A work ordered of "Restaurator Pro" (server `ProOrder`): sent now (false:
+/// it waits already), and how many more may be ordered today (nil: no limit).
+struct ProOrder: Codable, Hashable, Sendable {
+    var sent: Bool
+    var left: Int?
 }
 
 struct PanelConfigUpdate: Encodable, Sendable {

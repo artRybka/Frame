@@ -217,12 +217,6 @@ final class DrawnSheetTests: XCTestCase {
         let gone = try await demo.deleteGeminiKey()
         XCTAssertEqual(gone.geminiKeySet, false)
         XCTAssertNil(gone.geminiKeyTail)
-        // fal.ai's key for the restorer, the same way (Mateusz 2026-11-22).
-        let fal = try await demo.saveFalKey(" fal-id:secret-abcd ")
-        XCTAssertEqual(fal.falKeySet, true)
-        XCTAssertEqual(fal.falKeyTail, "abcd")
-        let falGone = try await demo.deleteFalKey()
-        XCTAssertEqual(falGone.falKeySet, false)
         // The switch goes to the server by its own name.
         let sent = try LiveBackend.encoder().encode(AiSettingsUpdate(drawn: false))
         XCTAssertEqual(String(data: sent, encoding: .utf8), #"{"drawn":false}"#)

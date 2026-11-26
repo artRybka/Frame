@@ -33,8 +33,6 @@ struct AiSection: View {
     @State private var savingKey = false
     @State private var geminiKey = ""
     @State private var savingGeminiKey = false
-    @State private var falKey = ""
-    @State private var savingFalKey = false
     /// CI and Mac screenshots: `-review YES` opens „Do sprawdzenia".
     @State private var showReview = UserDefaults.standard.bool(forKey: "review")
 
@@ -111,12 +109,6 @@ struct AiSection: View {
                 SectionHeader(title: "Google (Gemini)", subtitle: "Klucz API modelu graficznego")
                 Card {
                     geminiKeyFields
-                }
-            }
-            if settings.falKeySet != nil {
-                SectionHeader(title: "fal.ai", subtitle: "Klucz API restauratora dzieł (SeedVR2)")
-                Card {
-                    falKeyFields
                 }
             }
         }
@@ -264,49 +256,6 @@ struct AiSection: View {
         if settings.geminiKeySet == true {
             Button("Usuń klucz", role: .destructive) {
                 Task { await model.deleteGeminiKey() }
-            }
-            .font(.subheadline)
-        }
-    }
-
-    /// fal.ai's key: the creative restorer draws with SeedVR2 there
-    /// (Mateusz 2026-11-22), Google's model only without it.
-    @ViewBuilder
-    private var falKeyFields: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(bound: "Klucz API fal.ai").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.ink)
-                Spacer()
-                if settings.falKeySet == true, let tail = settings.falKeyTail {
-                    Label("…\(tail)", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.monospaced())
-                        .foregroundStyle(Theme.good)
-                }
-            }
-            SecureField(settings.falKeySet == true ? "zapisany · wpisz nowy, by zmienić" : "id:secret", text: $falKey)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Text(bound: "Z fal.ai → Dashboard → Keys. Restaurator dzieł rysuje wtedy modelem SeedVR2, ok. 0,5 centa za dzieło; bez klucza robi to Gemini.")
-                .font(.caption)
-                .foregroundStyle(Theme.inkSoft)
-        }
-        Button {
-            Task {
-                savingFalKey = true
-                if await model.saveFalKey(falKey) { falKey = "" }
-                savingFalKey = false
-            }
-        } label: {
-            HStack {
-                Text(bound: "Zapisz i sprawdź")
-                if savingFalKey { ProgressView() }
-            }
-        }
-        .fontWeight(.semibold)
-        .disabled(falKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || savingFalKey)
-        if settings.falKeySet == true {
-            Button("Usuń klucz", role: .destructive) {
-                Task { await model.deleteFalKey() }
             }
             .font(.subheadline)
         }

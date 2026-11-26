@@ -1846,34 +1846,6 @@ final class AppModel {
         notices.done("Usunięto klucz")
     }
 
-    /// True when the server checked the key with fal.ai and kept it.
-    func saveFalKey(_ key: String) async -> Bool {
-        do {
-            aiSettings = try await backend.saveFalKey(key)
-        } catch BackendError.http(400, _) {
-            notices.fail("fal.ai nie przyjął klucza", "Sprawdź, czy skopiowano go w całości.")
-            return false
-        } catch BackendError.http(502, _) {
-            notices.fail("fal.ai teraz nie odpowiada", "Spróbuj za chwilę.")
-            return false
-        } catch {
-            show(error)
-            return false
-        }
-        notices.done("Klucz zapisany")
-        return true
-    }
-
-    func deleteFalKey() async {
-        do {
-            aiSettings = try await backend.deleteFalKey()
-        } catch {
-            show(error)
-            return
-        }
-        notices.done("Usunięto klucz")
-    }
-
     func loadSourceKeys() async {
         sourceKeys = (try? await backend.sourceKeys()) ?? []
     }
@@ -2066,7 +2038,7 @@ final class AppModel {
         if count == 0 {
             notices.info("Nie ma czego odnawiać")
         } else {
-            notices.done("Odnawiam \(Names.pictures(count))", "Potrwa do doby.")
+            notices.done("Odnawiam \(Names.pictures(count))", "Jedno po drugim, każde minutę lub dwie.")
         }
     }
 
@@ -2325,6 +2297,14 @@ final class AppModel {
         let updated = try await backend.restore(itemID: itemID)
         cardShows(updated, changed: true)
         return updated
+    }
+
+    /// "Restaurator Pro": the work sent to Google's model (within a day);
+    /// what is left of this person's day follows.
+    func restorePro(itemID: String) async throws -> ProOrder {
+        let order = try await backend.restorePro(itemID: itemID)
+        if me != nil, me?.proLeft != nil || order.left != nil { me?.proLeft = order.left }
+        return order
     }
 
     /// The work as its card has it now (`changed`: the card just changed

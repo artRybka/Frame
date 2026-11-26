@@ -45,6 +45,7 @@ struct ItemDetailView: View {
     /// The cut asked of the server (the print's edge: some seconds).
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
+    @State private var orderingPro = false
     /// A work of his own: "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu".
     @State private var editingOwn = false
     @State private var retakingOwn = false
@@ -283,6 +284,7 @@ struct ItemDetailView: View {
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
                     findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
                     restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
+                    restorePro: canRestorePro(item) ? { Task { await orderPro() } } : nil,
                     correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
                     undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
                     recover: recoveryKind != nil && !cleaning
@@ -441,12 +443,50 @@ struct ItemDetailView: View {
             && item.sharper?.isRestored != true && (lowSide ?? 0) > 0
     }
 
-    /// "Kreatywny restaurator": the image model draws the picture again
-    /// larger (half a minute); the card fades to it as to a picked copy.
+    /// "Restaurator Pro" in the menu (Mateusz 2026-11-26): Google's model
+    /// for a small picture, or one the server's own model drew, while this
+    /// person's day allows (the server says no past it).
+    private func canRestorePro(_ item: Item) -> Bool {
+        item.kind == .artwork && item.look == nil && !orderingPro && item.sharper?.isPro != true
+            && ((lowSide ?? 0) > 0 || item.sharper?.isRestored == true)
+            && model.me?.proLeft != 0
+    }
+
+    /// "Restaurator Pro": sent to Google's Batch; a notification says when
+    /// it is drawn (it then goes into "Restaurator").
+    private func orderPro() async {
+        orderingPro = true
+        defer { orderingPro = false }
+        do {
+            let order = try await model.restorePro(itemID: itemID)
+            let left = order.left.map { " Na dziś zostało: \($0)." } ?? ""
+            model.notices.info(
+                order.sent ? "Zamówione u Restauratora Pro" : "Już czeka u Restauratora Pro",
+                "Damy znać, gdy będzie gotowe, zwykle w ciągu kilku godzin.\(left)"
+            )
+        } catch let BackendError.http(status, body) where status == 429 || status == 409 {
+            model.notices.warn(LowRes.proName, Self.detail(body))
+        } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
+            model.notices.warn(LowRes.proName, "Model Google odmówił pracy, bo to dzieło chronione")
+        } catch {
+            if !error.isCancellation { model.show(error) }
+        }
+    }
+
+    /// The server's message out of its JSON answer (`{"detail": "…"}`).
+    private static func detail(_ body: String) -> String {
+        guard let data = body.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let detail = json["detail"] as? String else { return body }
+        return detail
+    }
+
+    /// "Restauracja dzieła": the server's own model draws the picture again
+    /// larger (a minute or two); the card fades to it as to a picked copy.
     private func restoreByModel() async {
         restoring = true
         defer { restoring = false }
-        model.notices.info("Restauracja dzieła trwa…", "Potrwa około pół minuty.")
+        model.notices.info("Restauracja dzieła trwa…", "Potrwa minutę lub dwie.")
         do {
             copyPicked(try await model.restore(itemID: itemID))
         } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
@@ -1784,6 +1824,7 @@ struct ItemDetailView: View {
                 zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale),
                 lowSide: lowSide,
                 restored: item.sharper?.isRestored == true,
+                restoredPro: item.sharper?.isPro == true,
                 cropped: item.isCropped,
                 cleaned: item.cleanedShown != nil
             )
@@ -2049,7 +2090,7 @@ struct ItemDetailView: View {
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.opacity)
                     if restored {
-                        RestoredTag()
+                        RestoredTag(pro: item.sharper?.isPro == true)
                     } else if item.sharper?.isChosen == true {
                         Text("wybrane przez Ciebie").font(.caption).foregroundStyle(Theme.inkSoft)
                     }
