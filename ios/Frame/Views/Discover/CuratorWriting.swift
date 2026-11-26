@@ -43,9 +43,9 @@ struct CuratorWriting: View {
         GeometryReader { box in
             let full = box.size.width * Self.lines[index]
             ZStack(alignment: .leading) {
-                Capsule().fill(Theme.hairline.opacity(0.45))
+                Capsule().fill(Theme.hairline.opacity(0.8))
                     .frame(width: full)
-                Capsule().fill(Theme.inkSoft.opacity(0.28 * fade))
+                Capsule().fill(Theme.inkSoft.opacity(0.42 * fade))
                     .frame(width: full * drawn)
             }
         }
