@@ -1014,16 +1014,24 @@ struct GalleryView: View {
         was.isUserInteractionEnabled = false
         window.addSubview(was)
         toDiscover()
-        let wide = window.bounds.width
-        root.transform = CGAffineTransform(translationX: wide, y: 0)
-        UIView.animate(
-            withDuration: 0.38, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.4, options: []
-        ) {
-            was.transform = CGAffineTransform(translationX: -wide, y: 0)
-            root.transform = .identity
-        } completion: { _ in
-            was.removeFromSuperview()
-            root.transform = .identity
+        // Once Odkrywaj is drawn under Galeria's picture, not before: the
+        // slide is the render server's and went on while the app was
+        // still making Odkrywaj, so what came in from the right was
+        // Galeria again, and Odkrywaj after it in one frame (the probe's
+        // film, where Odkrywaj is made for the first time then).
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(34))
+            let wide = window.bounds.width
+            root.transform = CGAffineTransform(translationX: wide, y: 0)
+            UIView.animate(
+                withDuration: 0.38, delay: 0, usingSpringWithDamping: 1, initialSpringVelocity: 0.4, options: []
+            ) {
+                was.transform = CGAffineTransform(translationX: -wide, y: 0)
+                root.transform = .identity
+            } completion: { _ in
+                was.removeFromSuperview()
+                root.transform = .identity
+            }
         }
     }
 
