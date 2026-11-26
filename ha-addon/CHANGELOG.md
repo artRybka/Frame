@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.390
+
+- Znacznik Restauratora Pro: przy tytule na karcie dzieła same złote
+  iskierki, mieniące się przy przechylaniu telefonu; na kafelkach złote,
+  nieruchome.
+
 ## 1.145.389
 
 - Notki „Kurator” przy dziełach brzmią swobodniej i mniej szablonowo. Każda
