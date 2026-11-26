@@ -1532,12 +1532,17 @@ final class AppModel {
         sourceRequests = try? await backend.sourceRequests()
     }
 
+    /// A failed or cancelled ask keeps what is shown: Konfiguracja's own
+    /// load is cancelled as one of its pages opens over it, and its nil
+    /// emptied "Miejsce na serwerze" just opened for as long as the page's
+    /// own ask took (Mateusz 2026-11-26: "najpierw pojawia się plansza z
+    /// danymi a po sekundzie pusty ekran z wczytywaniem").
     func loadLibraryStorage() async {
-        libraryStorage = try? await backend.libraryStorage()
+        if let storage = try? await backend.libraryStorage() { libraryStorage = storage }
     }
 
     func loadCatalogueCounts() async {
-        catalogueCounts = try? await backend.catalogueCounts()
+        if let counts = try? await backend.catalogueCounts() { catalogueCounts = counts }
     }
 
     func loadNightTasks() async {
