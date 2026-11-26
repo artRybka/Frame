@@ -661,7 +661,8 @@ struct CopyView: Codable, Hashable, Sendable, Identifiable {
     var verdict: String
     /// Why: "whole", "colours", "fragment", "page", "turned", "grey",
     /// "coloured", "colour-off", "reproduction", "other" (another work with
-    /// a like title), "unseen" (its thumbnail could not be had).
+    /// a like title), "unseen" (its thumbnail could not be had), "printed"
+    /// (a scan of a printed page: its screen of dots).
     var notes: [String]
     /// "current" (shown now), "own" (the work's own, while a copy stands
     /// in for it), "larger" (the work's own in a larger file from its own

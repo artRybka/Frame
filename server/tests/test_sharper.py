@@ -14,12 +14,13 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw, ImageOps
 
 from frame_server.config import Settings
+from frame_server.imaging.descreen import screen
 from frame_server.library import Item, ItemKind
 from frame_server.library.images import ImageCache
-from frame_server.library.models import SharperCopy
+from frame_server.library.models import Note, SharperCopy
 from frame_server.library.wording import Wording
 from frame_server.service import FrameService
-from frame_server.sharper import Quality, Tone, same_colours, titled
+from frame_server.sharper import Quality, Tone, same_colours, titled, version
 from frame_server.web.app import create_app
 
 
@@ -915,3 +916,78 @@ def test_copies_titled_as_the_work_are_compared_first(frame: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.item_id == "wmc:9"
+
+
+def test_a_printed_pages_scan_counts_against_a_copy() -> None:
+    """A scan of an album's page (its screen of dots) is worth a clean copy,
+    and beats one only when far larger (Mateusz 2026-11-26)."""
+    printed = Quality(3000, 1.5, printed=True)
+    assert printed.weak  # large, but printed: a clean copy is looked for
+    clean = Quality(3000, 1.5)
+    assert Quality(2400, 1.5).better(printed)  # clean, a little smaller
+    assert not Quality(2000, 1.5).better(printed)  # clean, but far smaller
+    assert not Quality(3200, 1.5, printed=True).better(Quality(1686, 2.1))
+    assert Quality(3600, 1.5, printed=True).better(Quality(1600, 2.1))  # twice as large
+    assert not printed.better(Quality(2000, 1.5))
+    assert not Quality(3300, 1.5).better(clean)  # neither printed: as before
+
+
+def _painted(size: tuple[int, int]) -> Image.Image:
+    from test_descreen import _painting
+
+    return Image.fromarray((_painting(size[1], size[0]) * 255).astype("uint8"))
+
+
+def _printed_picture(size: tuple[int, int]) -> Image.Image:
+    from test_descreen import _painting, _printed
+
+    return _printed(_painting(size[1], size[0]), 3.5, 45)
+
+
+def test_a_printed_picture_is_kept_without_its_dots_and_a_clean_copy_found(
+    frame: Any,
+) -> None:
+    service, web, answer = frame
+    web[OWN] = _jpeg(_printed_picture((3000, 2000)))
+    web[OWN_THUMB] = _jpeg(_painted((3000, 2000)).resize((600, 400)))
+    own = _own(service)
+    copy = _copy(9, width=2600, height=1733)
+    _offer(web, copy, _painted((3000, 2000)).resize((2600, 1733)))
+    answer([copy])
+    service.images.ensure_image(own)
+    # The museum's scan kept as it came, beside the picture shown without
+    # its screen.
+    assert service.images.full_path(own).is_file()
+    assert service.images.printed(own)
+    with Image.open(service.images.image_path(own)) as img:
+        assert screen(img.convert("RGB")) == []
+    # Large enough, but printed: the clean copy takes its place.
+    assert service.sharper.soon(own).result(30) == "found"
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.item_id == "wmc:9"
+    assert not service.images.printed(stored)
+
+
+def test_printed_pictures_kept_before_are_cleared_once_at_night(frame: Any) -> None:
+    service, _, _ = frame
+    own = _own(service)
+    path = service.images.image_path(own)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _printed_picture((3000, 2000)).save(path, quality=92)  # kept as it came, before
+    service.library.save_note(
+        Note(
+            item_id=own.id,
+            kind="sharper",
+            model="",
+            prompt_version=version(own),
+            data={"status": "fine", "at": "2026-11-01T00:00:00+00:00", "copy": ""},
+        )
+    )
+    assert service.sharper.status(own) == "fine"
+    assert service.sharper.printed_at_night(lambda: True) == (1, 1)
+    assert service.images.full_path(own).is_file()  # as it came, beside
+    with Image.open(path) as img:
+        assert screen(img.convert("RGB")) == []
+    assert service.sharper.status(own) is None  # to be looked at again
+    assert service.sharper.printed_at_night(lambda: True) == (0, 0)  # once

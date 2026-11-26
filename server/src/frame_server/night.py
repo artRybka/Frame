@@ -578,6 +578,18 @@ def tasks(service: FrameService) -> list[NightTask]:
             looked += 1
         return looked
 
+    def printed(night: Night) -> Done:
+        """Once: the kept pictures that are scans of a printed page (an
+        album's reproduction) shown without their screen of dots, and their
+        works looked at anew for a clean copy (Mateusz 2026-11-26)."""
+        looked, found = service.sharper.printed_at_night(night.quiet)
+        parts: list[object] = [
+            looked
+            and plural(looked, "obraz sprawdzony", "obrazy sprawdzone", "obrazów sprawdzonych"),
+            found and f"{found} bez rastra",
+        ]
+        return Done(found, _listed(parts, "nic nowego"))
+
     def museums(night: Night) -> int:
         """Which museums the library's works from Commons, Openverse and
         WikiArt are in, for those nobody looked up yet."""
@@ -795,6 +807,7 @@ def tasks(service: FrameService) -> list[NightTask]:
         NightTask("playlists", playlists, "Liczniki playlist", group=disc),
         NightTask("frame line", frame_line, "Kolejka ramki", group=disc),
         NightTask("sharper", sharper, "Ostrzejsze kopie", group=cat),
+        NightTask("printed", printed, "Raster druku w zdjęciach dzieł", group=cat),
         NightTask("museums", museums, "Gdzie wiszą dzieła", group=text),
         NightTask("media", media, "Technika dzieł", group=text),
         NightTask("read again", read_again, "Rodzaj i autor czytane ponownie", group=text),
