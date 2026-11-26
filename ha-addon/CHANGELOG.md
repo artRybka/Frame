@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.396
+
+- Restauracja PRO: komunikat o zamówieniu pojawia się od razu po
+  dotknięciu. Póki dzieło czeka na PRO, w menu „…” nie ma zwykłej
+  Restauracji, a pozycja PRO jest wyszarzona, z kółkiem.
+- Dotknięcie powiadomienia o Restauracji PRO otwiera kartę dzieła.
+
 ## 1.145.395
 
 - Karta dzieła, które nie ma jeszcze opisu, od razu pokazuje, że kurator

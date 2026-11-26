@@ -460,7 +460,10 @@ def hidden_items(svc: Svc) -> ItemPage:
 
 @router.get("/library/items/{item_id:item}", response_model=Item)
 async def get_item(item_id: str, svc: Svc) -> Item:
-    return svc.media.fill(svc.holders.fill(await _work(svc, item_id)))
+    item = svc.media.fill(svc.holders.fill(await _work(svc, item_id)))
+    if item.id in svc.restorer.waiting_pro():
+        item = item.model_copy(update={"restoring_pro": True})
+    return item
 
 
 class FragmentPlace(BaseModel):

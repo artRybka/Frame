@@ -148,8 +148,11 @@ struct RootView: View {
                 model.themeOpenings += 1
             case "artist" where !argument.isEmpty:
                 model.artistSearch = argument  // Szukaj opens on the artist
-            // "Restauracja gotowa": the work is in "Restaurator".
             case "playlists": tab = .playlists
+            // "Restauracja gotowa": the work's own card.
+            case "work" where !argument.isEmpty:
+                tab = .playlists
+                model.cardToOpen = argument
             case "now" where !model.isGuest: tab = .now
             case "frame", "server":
                 if !model.isGuest {

@@ -85,6 +85,9 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
     /// A sharper copy of the picture from another source, shown in place
     /// of the museum's own (the server found it when the card was opened).
     var sharper: SharperCopy? = nil
+    /// Sent to "Restauracja PRO" and waiting for its drawing (only the
+    /// card's own fetch says it; Mateusz 2026-11-26).
+    var restoringPro: Bool? = nil
     /// The work cut out of the museum's photograph (a frame, an easel, a
     /// board around it; Mateusz 2026-11-14): nil when it never was.
     var cut: Cut? = nil

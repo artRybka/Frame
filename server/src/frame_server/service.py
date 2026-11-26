@@ -522,7 +522,9 @@ class FrameService:
             "restored",
             "Restauracja gotowa" if ok else "Restauracja nie wyszła",
             notifications.restored_body(title, ok),
-            route="playlists" if ok else None,
+            # Its card (Mateusz 2026-11-26: "kliknięcie na powiadomienie
+            # powinno przenieść na kartę tego dzieła").
+            route=f"work/{item.id}",
             collapse=f"restored-{item.id}"[:64],
             picture=item.id,
             user=by,

@@ -281,6 +281,9 @@ final class AppModel {
     /// A study to open: pushed on its card when that is on top, else in a sheet.
     var studyOnCard: String?
     var studySheet: String?
+    /// A work's card to open, from a tapped notification ("Restauracja
+    /// gotowa"): pushed on Playlisty.
+    var cardToOpen: String?
     /// The cards following studies on their way, and those saying one is ready.
     @ObservationIgnored var studyCards: [String: Notice.ID] = [:]
     @ObservationIgnored var studyReadyCards: [String: Notice.ID] = [:]
