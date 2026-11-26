@@ -123,3 +123,82 @@ final class SubjectFocusTests: XCTestCase {
         XCTAssertEqual(SubjectFocus.subject(faces: [], figures: [small], salient: []), .center)
     }
 }
+
+import Vision
+
+/// What Vision says of two works whose subject is much wider than the
+/// screen (Mateusz 2026-11-26: Czapski's "Bitiuk", Stubbs's tiger): read
+/// from the run's log before the rule is changed.
+final class WideSubjectDiagnosis: XCTestCase {
+    func testWhatVisionFinds() throws {
+        for name in ["wide-cart", "wide-tiger"] {
+            guard let url = Bundle(for: Self.self).url(forResource: name, withExtension: "jpg"),
+                  let cg = UIImage(contentsOfFile: url.path)?.cgImage
+            else {
+                print("FOCUSDIAG \(name): no picture")
+                continue
+            }
+            print("FOCUSDIAG \(name): \(cg.width)x\(cg.height)")
+            let handler = VNImageRequestHandler(cgImage: cg, orientation: .up)
+            func box(_ rect: CGRect) -> String {
+                String(format: "x %.3f-%.3f y %.3f-%.3f", rect.minX, rect.maxX, 1 - rect.maxY, 1 - rect.minY)
+            }
+            let faces = VNDetectFaceRectanglesRequest()
+            do {
+                try handler.perform([faces])
+                for face in faces.results ?? [] { print("FOCUSDIAG \(name) face \(box(face.boundingBox)) sure \(face.confidence)") }
+                print("FOCUSDIAG \(name) faces: \(faces.results?.count ?? -1)")
+            } catch { print("FOCUSDIAG \(name) faces failed: \(error)") }
+            let people = VNDetectHumanRectanglesRequest()
+            people.upperBodyOnly = false
+            do {
+                try handler.perform([people])
+                for one in people.results ?? [] { print("FOCUSDIAG \(name) figure \(box(one.boundingBox)) sure \(one.confidence)") }
+                print("FOCUSDIAG \(name) figures: \(people.results?.count ?? -1)")
+            } catch { print("FOCUSDIAG \(name) figures failed: \(error)") }
+            let animals = VNRecognizeAnimalsRequest()
+            do {
+                try handler.perform([animals])
+                for one in animals.results ?? [] {
+                    print("FOCUSDIAG \(name) animal \(one.labels.map(\.identifier)) \(box(one.boundingBox)) sure \(one.confidence)")
+                }
+                print("FOCUSDIAG \(name) animals: \(animals.results?.count ?? -1)")
+            } catch { print("FOCUSDIAG \(name) animals failed: \(error)") }
+            for (kind, request) in [
+                ("attention", VNGenerateAttentionBasedSaliencyImageRequest() as VNImageBasedRequest),
+                ("objects", VNGenerateObjectnessBasedSaliencyImageRequest() as VNImageBasedRequest),
+            ] {
+                do {
+                    try handler.perform([request])
+                    guard let found = request.results?.first as? VNSaliencyImageObservation else {
+                        print("FOCUSDIAG \(name) \(kind): nothing")
+                        continue
+                    }
+                    for one in found.salientObjects ?? [] {
+                        print("FOCUSDIAG \(name) \(kind) place \(box(one.boundingBox)) sure \(one.confidence)")
+                    }
+                    let buffer = found.pixelBuffer
+                    CVPixelBufferLockBaseAddress(buffer, .readOnly)
+                    defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
+                    let wide = CVPixelBufferGetWidth(buffer), tall = CVPixelBufferGetHeight(buffer)
+                    let stride = CVPixelBufferGetBytesPerRow(buffer)
+                    guard let base = CVPixelBufferGetBaseAddress(buffer) else { continue }
+                    var columns = [Float](repeating: 0, count: wide), rows = [Float](repeating: 0, count: tall)
+                    var top: Float = 0, at = (0, 0)
+                    for y in 0 ..< tall {
+                        let row = base.advanced(by: y * stride).assumingMemoryBound(to: Float32.self)
+                        for x in 0 ..< wide {
+                            let heat = row[x]
+                            columns[x] += heat
+                            rows[y] += heat
+                            if heat > top { top = heat; at = (x, y) }
+                        }
+                    }
+                    print("FOCUSDIAG \(name) \(kind) heat \(wide)x\(tall), format \(CVPixelBufferGetPixelFormatType(buffer)), hottest \(top) at \(at)")
+                    print("FOCUSDIAG \(name) \(kind) columns " + columns.map { String(format: "%.1f", $0) }.joined(separator: " "))
+                    print("FOCUSDIAG \(name) \(kind) rows " + rows.map { String(format: "%.1f", $0) }.joined(separator: " "))
+                } catch { print("FOCUSDIAG \(name) \(kind) failed: \(error)") }
+            }
+        }
+    }
+}
