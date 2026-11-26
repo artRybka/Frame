@@ -39,11 +39,12 @@ from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .ai.gemini import MODEL, PRO, Ask, NotDrawn
 from .imaging import artsr
 from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
+from .imaging.cut import cut_aspect, same_picture, warp
 from .imaging.descreen import descreened
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, low_side
@@ -77,6 +78,14 @@ SKEW_MAX = 0.04
 #: detail; coarse enough that the drawing a pixel off the picture does not
 #: fringe its edges.
 COLOUR_SIGMA = 2.0
+#: The picture's finest grain, in its own pixels, left out of the plain
+#: enlargement laid under the drawing (:func:`recoloured`): a scan of a
+#: printed reproduction carries its screen there, too fine to be found
+#: (``imaging.descreen``) and brought back as a net over the drawing
+#: (Mateusz 2026-11-26, van Gogh's "Der Bauer" on a Leipzig postcard:
+#: „Trzeba w ramach restauracji usuwać raster wynikający ze skanu
+#: reprodukcji”). What the model drew stays as sharp.
+GRAIN_SIGMA = 1.0
 #: How much of what the model drew finer than the picture is kept
 #: (:func:`recoloured`): the rest is the picture enlarged plainly. All of
 #: it was too much made up (Mateusz 2026-11-22, Janinet's print: "Czy
@@ -122,6 +131,8 @@ PLAYLIST_NAME = "Restaurator"
 PLAYLIST_KEY = "restorer_playlist"
 #: The works restored before the playlist was there, put in the owner's once.
 FILLED_KEY = "restorer_playlist_filled"
+#: The drawings of a whole photograph cut to their work once (:meth:`Restorer.cut_kept`).
+CUT_KEY = "restorer.cut_kept"
 
 
 def restorer_key(user_id: str) -> str:
@@ -142,7 +153,10 @@ white balance, no added contrast).
 canvas texture, consistent with the paint visible here. Remove JPEG blocks, ringing and blur.
 - Do not smooth the paint into a digital illustration, do not invent fine detail that \
 contradicts the painting, do not sharpen into halos.
-- No border, frame, margin, signature or watermark that is not in the picture."""
+- No border, frame, margin, signature or watermark that is not in the picture.
+- If the photograph is of a printed reproduction (a postcard, a book's plate, a poster), the \
+printer's dot screen, its rosettes and moiré and the paper's grain are not the painting: render \
+the painting's own continuous tones and brushwork without them."""
 
 
 class NotRestored(ValueError):
@@ -279,8 +293,9 @@ class Restorer:
     def _picture(self, item: Item) -> Image.Image:
         if self.restored(item):
             # Drawn already (ours, ordered again of Pro): drawn again from
-            # the museum's picture, never from the drawing.
-            return descreened(self.images.before_drawn(item, urgent=True).convert("RGB"))
+            # the museum's picture, never from the drawing, cut as the
+            # work is shown.
+            return descreened(self.images.work_before_drawn(item, urgent=True).convert("RGB"))
         if item.cleaned_shown() is not None:
             # A work shown cleaned (``Item.cleaned``) is drawn from the
             # picture as it came: the drawing is cleaned after, the same.
@@ -458,6 +473,69 @@ class Restorer:
                 self._note(item.id, status, model=note.model if note else MODEL, **data)
             done += 1
             log.info("restorer: %s recoloured", item.id)
+        return done
+
+    # -- the drawings of a whole photograph cut to their work ---------------------------
+
+    def cut_kept(self) -> int:
+        """The drawings kept of a museum's whole photograph, while the work
+        was cut on it (Restaurator Pro ordered after our model, before
+        1.145.392), cut down to the work once: shown whole, with the frame
+        or the board around it, and framed twice in "W ramie" (Mateusz
+        2026-11-26). Nothing is drawn again or paid for. One that cannot be
+        had now is tried at the next start; how many were cut."""
+        if self.library.get_state(CUT_KEY, False):
+            return 0
+        done = missed = 0
+        for item in list(self.library.all_items()):
+            if self._stop.is_set():
+                return done
+            sharper, cut = item.sharper, item.cut
+            if not self.restored(item) or sharper is None or cut is None:
+                continue
+            quad = cut.shown()
+            if quad is None or cut.picture == item.picture_key():
+                continue  # whole, or cut on the drawing itself
+            work = cut_aspect(quad, cut.aspect)
+            if work <= 0 or abs(work - cut.aspect) <= 0.06 * cut.aspect:
+                continue  # the work is the photograph's shape: which it is, unknown
+            url = sharper.url
+            try:
+                drawing = self.images.sample(url)
+            except Exception as err:
+                log.info("restorer: %s not had to be cut: %s", item.id, err)
+                missed += 1
+                continue
+            if not same_picture(cut.aspect, drawing.size):
+                continue  # drawn of the work already
+            fitted = warp(drawing, quad)
+            buf = io.BytesIO()
+            fitted.save(buf, "JPEG", quality=95)
+            with self._lock:
+                stored = self.library.get(item.id)
+                if stored is None or stored.sharper is None or stored.sharper.url != url:
+                    continue  # drawn again or put back meanwhile
+                try:
+                    self.sharper.bring(
+                        stored,
+                        buf.getvalue(),
+                        stored.sharper.museum or ORIGIN,
+                        restored=True,
+                        pro=stored.sharper.pro,
+                    )
+                except ValueError as err:
+                    log.info("restorer: %s not cut: %s", item.id, err)
+                    missed += 1
+                    continue
+            done += 1
+            log.info(
+                "restorer: %s's drawing cut to the work, %s → %s",
+                item.id,
+                drawing.size,
+                fitted.size,
+            )
+        if not missed:
+            self.library.set_state(CUT_KEY, True)
         return done
 
     # -- many at once, by our model in the background ---------------------------------
@@ -655,7 +733,10 @@ class Restorer:
                 log.info("restorer: %s not had again: %s", item.id, err)
                 continue
             if size and tuple(size) != picture.size:
-                continue  # its picture changed meanwhile: drawn from another
+                # Its picture changed meanwhile (another copy, a new cut, or
+                # the whole photograph sent before 1.145.392): drawn anew.
+                again[item.id] = by
+                continue
             try:
                 self._keep(item, picture, answer[0], answer[1], model, by=by, pro=True)
             except (NotRestored, ValueError) as err:
@@ -697,7 +778,7 @@ class Restorer:
         self._wake.set()
 
     def _run(self) -> None:
-        for step in (self.file_kept, self.recolour_kept):
+        for step in (self.file_kept, self.recolour_kept, self.cut_kept):
             try:
                 step()
             except Exception:
@@ -781,7 +862,8 @@ def recoloured(picture: Image.Image, drawn: Image.Image, share: float = DRAWN) -
     drew, ``share`` is kept over the picture enlarged plainly."""
     size = drawn.size
     sigma = COLOUR_SIGMA * max(size) / max(picture.size)
-    own = picture.convert("RGB").resize(size, Image.Resampling.LANCZOS)
+    plain = picture.convert("RGB").filter(ImageFilter.GaussianBlur(GRAIN_SIGMA))
+    own = plain.resize(size, Image.Resampling.LANCZOS)
     museum = linear_to_oklab(u8_to_linear(np.asarray(own))).astype(np.float32)
     lab = linear_to_oklab(u8_to_linear(np.asarray(drawn.convert("RGB")))).astype(np.float32)
     laid = _laid(museum[..., 0], lab[..., 0])

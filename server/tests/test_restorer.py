@@ -21,9 +21,10 @@ from frame_server.ai.gemini import MODEL, PRO, Ask, NotDrawn
 from frame_server.config import Settings
 from frame_server.imaging import artsr
 from frame_server.library import Item, low_res
-from frame_server.library.models import ItemSummary
+from frame_server.library.models import Cut, ItemSummary
 from frame_server.library.viewer import OWNER_ID
 from frame_server.restorer import (
+    CUT_KEY,
     FIRST_TRIES,
     REFUSED_TRIES,
     NotRestored,
@@ -322,6 +323,86 @@ def test_pro_draws_a_work_ours_drew_from_the_museums_picture(app: Any) -> None:
     assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
 
 
+QUAD = [(0.1, 0.15), (0.9, 0.15), (0.9, 0.85), (0.1, 0.85)]
+
+
+def _cut(service: FrameService, item: Item) -> Item:
+    """``item`` cut on its museum's photograph (SMALL, 3:2) to a work of
+    another shape, its original made again so."""
+    cut = service.library.update(item.id, cut=Cut(work=QUAD, aspect=1.5))
+    assert cut is not None
+    service.images.recut(cut)
+    return cut
+
+
+def test_pro_after_ours_draws_the_work_as_cut(app: Any) -> None:
+    """Restaurator Pro after our model draws the museum's photograph cut as
+    the work is shown, not whole with its frame and board (Mateusz
+    2026-11-26: „Restaurator PRO nie powinien ignorować wcześniejszego
+    kadrowania”)."""
+    client, service, _web, painter = app
+    own = _cut(service, _small(service))
+    assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
+    ours = service.library.get(own.id)
+    assert ours is not None and ours.sharper is not None
+    shape = ours.sharper.width / ours.sharper.height
+    assert abs(shape - 720 / 420) < 0.05  # ours drew the work as cut
+    assert client.post(f"/api/library/items/{own.id}/restore/pro").json()["sent"]
+    asked = painter.batches["batches/1"][0].pictures[0]
+    assert abs(asked.width / asked.height - shape) < 0.05 and asked.width < SMALL[0]
+    painter.done.add("batches/1")
+    assert service.restorer.poll() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None and stored.sharper.pro
+    assert abs(stored.sharper.width / stored.sharper.height - shape) < 0.05
+
+
+def test_a_drawing_of_the_whole_photograph_is_cut_to_the_work_once(app: Any) -> None:
+    """Drawn whole before (Pro after ours, before 1.145.392): cut down to the
+    work once, still Pro's, nothing drawn again."""
+    _client, service, _web, painter = app
+    own = _small(service)
+    restorer = service.restorer
+    drawn = painter._draw(_print(1, SMALL))
+    picture = _print(1, SMALL)
+    kept = restorer._keep(own, picture, drawn, 0.03, PRO, pro=True)
+    assert kept.sharper is not None
+    assert abs(kept.sharper.width / kept.sharper.height - 1.5) < 0.01
+    _cut(service, service.library.get(own.id))
+
+    assert restorer.cut_kept() == 1
+    stored = service.library.get(own.id)
+    assert stored is not None and stored.sharper is not None
+    assert stored.sharper.restored and stored.sharper.pro
+    assert abs(stored.sharper.width / stored.sharper.height - 720 / 420) < 0.05
+    assert service.library.get_state(CUT_KEY, False)
+    assert restorer.cut_kept() == 0  # once
+    service.library.set_state(CUT_KEY, False)
+    assert restorer.cut_kept() == 0  # cut already
+
+
+def test_a_printed_screens_grain_is_not_laid_under_the_drawing() -> None:
+    """A scan of a postcard: its screen, too fine to be found, is not
+    brought back over the drawing by the plain enlargement under it
+    (Mateusz 2026-11-26: „usuwać raster wynikający ze skanu reprodukcji”)."""
+    y, x = np.mgrid[0:300, 0:240]
+    tones = 128 + 50 * np.sin(x / 11.0) * np.cos(y / 17.0)
+    screen = (
+        14
+        * np.cos(2 * np.pi * (x + y) / (2.36 * 2**0.5))
+        * np.cos(2 * np.pi * (x - y) / (2.36 * 2**0.5))
+    )
+    picture = Image.fromarray(
+        np.clip(tones + screen, 0, 255)[..., None].repeat(3, -1).astype(np.uint8)
+    )
+    clean = Image.fromarray(tones[..., None].repeat(3, -1).astype(np.uint8))
+    drawn = clean.resize((960, 1200), Image.Resampling.LANCZOS)  # the model drew it clean
+    out = np.asarray(recoloured(picture, drawn).convert("L"), dtype=np.float32)
+    plain = np.asarray(drawn.convert("L"), dtype=np.float32)
+    left = out - cv2.GaussianBlur(out, (0, 0), 3) - (plain - cv2.GaussianBlur(plain, (0, 0), 3))
+    assert float(np.abs(left).mean()) < 0.6
+
+
 def test_without_googles_key_pro_is_not_ordered(app: Any) -> None:
     client, service, _web, painter = app
     own = _small(service)
@@ -498,7 +579,9 @@ def test_the_drawing_takes_the_pictures_colours() -> None:
 
     out = recoloured(picture, model)
     assert out.size == model.size
-    assert off(model) > 8 and off(out) < 3
+    # Not quite 0: the picture's finest grain is not laid under the drawing
+    # (``GRAIN_SIGMA``), and this one's edges are a pixel sharp.
+    assert off(model) > 8 and off(out) < 3.5
 
     # The fine detail is the model's, as it drew it.
     def fine(img: Image.Image) -> np.ndarray:
