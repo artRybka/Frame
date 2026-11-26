@@ -937,10 +937,29 @@ class ImageCache:
     def printed(self, item: Item) -> bool:
         """Whether the picture ``item`` shows is a scan of a printed page (a
         screen in it, ``imaging.descreen``): read in the photograph as it
-        came, kept beside one shown without it. Known by the file's time,
-        so asked again only after it changed."""
-        full, path = self.full_path(item), self.image_path(item)
-        source = full if full.is_file() else path
+        came, kept beside one shown without it."""
+        full = self.full_path(item)
+        return self._screened(full if full.is_file() else self.image_path(item))
+
+    def uncleared(self, item: Item) -> bool:
+        """Whether ``item``'s picture kept here is a printed page's scan
+        still shown with its screen (kept before screens were taken off):
+        :meth:`recut` makes it again without."""
+        if not self.clears(item) or not self.printed(item):
+            return False
+        return self._screened(self.image_path(item))
+
+    def stamp(self, item: Item) -> str:
+        """The thumbnail's stamp (``Item.picture_stamp``) after the picture
+        was made again (:meth:`recut`), the app told by it."""
+        try:
+            return hashlib.sha1(self.thumb_path(item).read_bytes()).hexdigest()[:12]
+        except OSError:
+            return ""
+
+    def _screened(self, source: Path) -> bool:
+        """Whether the picture at ``source`` has a printed screen in it;
+        known by the file's time, so read again only after it changed."""
         try:
             stamp = source.stat().st_mtime_ns
         except OSError:

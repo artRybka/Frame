@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.399
+
+- Raster druku znika też po wejściu w kartę dzieła: zapisane wcześniej
+  zdjęcie ze skanu z albumu jest od razu czyszczone i podmieniane na
+  karcie, bez czekania na noc.
+
 ## 1.145.398
 
 - Kopie dzieł zeskanowane z albumu (z „kropkami druku”) przegrywają przy

@@ -485,7 +485,12 @@ class Sharper:
         (or to have no sharper copy) whose original is not here is looked at
         still: when its source gives no picture now, a copy stands in."""
         known = self.status(item)
-        if known is not None and not (known in ("fine", "none") and self._may_stand_in(item)):
+        uncleared = self.images.uncleared(self.library.get(item.id) or item)
+        if (
+            known is not None
+            and not (known in ("fine", "none") and self._may_stand_in(item))
+            and not uncleared
+        ):
             done: Future[Status] = Future()
             done.set_result(known)
             return done
@@ -496,7 +501,10 @@ class Sharper:
             future: Future[Status] = Future()
             self._looking[item.id] = future
         threading.Thread(
-            target=self._look_then_done, args=(item, future, known), name="sharper", daemon=True
+            target=self._look_then_done,
+            args=(item, future, known, uncleared),
+            name="sharper",
+            daemon=True,
         ).start()
         return future
 
@@ -509,10 +517,27 @@ class Sharper:
             return "looking"
 
     def _look_then_done(
-        self, item: Item, future: Future[Status], known: Status | None = None
+        self,
+        item: Item,
+        future: Future[Status],
+        known: Status | None = None,
+        uncleared: bool = False,
     ) -> None:
         status: Status = known or "none"
         try:
+            if uncleared:
+                # A printed page's scan kept from before, its card opened:
+                # shown without its screen now, not after a night (Mateusz
+                # 2026-11-26: „na żądanie – czyli po wejściu w kartę
+                # dzieła”), then looked at for a clean copy unless the
+                # owner chose.
+                self._printed_again(self.library.get(item.id) or item)
+                known = self.status(item)
+                if known is not None and not (
+                    known in ("fine", "none") and self._may_stand_in(item)
+                ):
+                    status = known
+                    return
             with self._turns:
                 status = self._look(item, known)
         except Exception:
@@ -1107,7 +1132,7 @@ class Sharper:
         for item in items:
             if not quiet():
                 break
-            if self.images.clears(item) and self.images.printed(item):
+            if self.images.uncleared(item):
                 printed += 1
                 self._printed_again(item)
             looked += 1
@@ -1132,7 +1157,13 @@ class Sharper:
         except OSError as err:
             log.info("printed picture of %s: %s", item.id, err)
             return
-        self._measure_again(item)
+        stamp = self.images.stamp(item)
+        if stamp and self.images.repictured is not None:
+            # The app asks for the picture again by its new stamp (the
+            # card opened shows it at once), its colours measured anew.
+            self.images.repictured(item, stamp)
+        else:
+            self._measure_again(item)
         for old in self.details_dir.glob(f"{item.file_stem}-*.jpg"):
             old.unlink(missing_ok=True)  # the study's details, from the new picture
         note = self.library.note(item.id, KIND)
