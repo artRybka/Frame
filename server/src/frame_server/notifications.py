@@ -77,7 +77,7 @@ KINDS: dict[str, tuple[str, str]] = {
     "server_update": ("Nowa wersja serwera", "Gotowa do instalacji w aplikacji."),
     "daily": ("Studium dnia", "Nowe studium dzieła w Odkrywaj, codziennie o 8:30."),
     "study": ("Studium gotowe", "Gdy skończy się pisać zamówione studium dzieła."),
-    "restored": ("Restauracja gotowa", "Gdy Restaurator Pro skończy zamówione dzieło."),
+    "restored": ("Restauracja gotowa", "Gdy Restauracja PRO skończy zamówione dzieło."),
     "week_artist": ("Artysta tygodnia", "W poniedziałek o 9:00."),
     "birthday": ("Rocznica urodzin", "Urodziny artystów Twoich ulubionych dzieł, o 10:00."),
     "firmware": ("Nowy firmware ramki", "Gdy Samsung zaktualizuje oprogramowanie ekranu."),
@@ -1038,9 +1038,9 @@ def restored_body(title: str, ok: bool) -> str:
             else ("Dzieło w nowej jakości, w playliście Restaurator.")
         )
     return (
-        f"Restaurator Pro nie narysował „{title}”."
+        f"Restauracja PRO nie narysowała „{title}”."
         if title
-        else ("Restaurator Pro nie narysował dzieła.")
+        else ("Restauracja PRO nie narysowała dzieła.")
     )
 
 

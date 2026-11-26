@@ -301,7 +301,7 @@ def test_restaurator_pro_through_the_batch(app: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.restored and stored.sharper.pro
-    assert stored.sharper.museum == "Restaurator Pro"
+    assert stored.sharper.museum == "Restauracja PRO"
     assert told == [(own.id, OWNER_ID, True)]
     assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
     # Drawn by Pro: not again.

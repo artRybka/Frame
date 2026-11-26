@@ -46,6 +46,11 @@ struct ItemDetailView: View {
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
     @State private var orderingPro = false
+    /// What "…" offers as it was opened, held while it is open: what the
+    /// server tells meanwhile (the colours' correction, how small the
+    /// picture is) no longer adds entries under his finger (Mateusz
+    /// 2026-11-26: „po otwarciu menu pozycje przeskakują/dodają się”).
+    @State private var menuHeld: MenuOffer?
     /// A work of his own: "Edytuj opis", "Zrób zdjęcie ponownie", "Usuń z katalogu".
     @State private var editingOwn = false
     @State private var retakingOwn = false
@@ -73,6 +78,16 @@ struct ItemDetailView: View {
     /// first frame, so nothing is swapped.
     @State private var polish: PolishText?
     @State private var polishWaiting = false
+    /// The work the server last answered for about its Polish texts, and
+    /// whether that wait is over: until then "O dziele" of a work with no
+    /// text of its own shows the curator writing, and "Przygotuj studium
+    /// dzieła" waits for the note (Mateusz 2026-11-26: „guzik … musi pojawić
+    /// się dopiero gdy opis jest już gotowy”).
+    @State private var polishHeard: String?
+    @State private var polishSettled: String?
+    /// The note came while the card was typing (`CuratorWriting`): it is
+    /// typed in before it is shown as text, and the study waits for it.
+    @State private var typingNote: String?
     /// The Polish title, written ahead of the texts: on the card while
     /// "O dziele" is still being translated.
     @State private var earlyTitle: String?
@@ -279,21 +294,22 @@ struct ItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let item {
+                let offer = menuHeld ?? menuOffer(item)
                 ItemToolbar(
                     model: model, item: item, changed: { self.item = $0 },
                     addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
-                    findingCopies: $findingCopies, pictureSide: pictureSize.map { max($0.0, $0.1) },
-                    restore: canRestore(item) ? { Task { await restoreByModel() } } : nil,
-                    restorePro: canRestorePro(item) ? { Task { await orderPro() } } : nil,
+                    findingCopies: $findingCopies, pictureSide: offer.pictureSide,
+                    restore: offer.restore ? { Task { await restoreByModel() } } : nil,
+                    restorePro: offer.pro ? { Task { await orderPro() } } : nil,
                     correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
                     undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: recoveryKind != nil && !cleaning
-                        ? { Task { await toggleCleaning() } } : nil,
-                    recoveryKind: recoveryKind ?? .varnish, cleaned: item.cleanedShown != nil,
+                    recover: offer.recover ? { Task { await toggleCleaning() } } : nil,
+                    recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
                     editOwn: ownActions(item) ? { editingOwn = true } : nil,
                     retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
                     deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
-                    deletingOwn: $deletingOwn
+                    deletingOwn: $deletingOwn,
+                    menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
                 )
             }
         }
@@ -436,6 +452,17 @@ struct ItemDetailView: View {
         }
     }
 
+    /// What "…" offers now (`menuHeld` while it is open).
+    private func menuOffer(_ item: Item) -> MenuOffer {
+        MenuOffer(
+            pictureSide: pictureSize.map { max($0.0, $0.1) },
+            restore: canRestore(item),
+            pro: canRestorePro(item),
+            recover: recoveryKind != nil && !cleaning,
+            recoveryKind: recoveryKind ?? .varnish
+        )
+    }
+
     /// "Kreatywny restaurator" in the menu: for everyone (2026-11-19), a museum work
     /// whose picture is small for the frame and not drawn again yet.
     private func canRestore(_ item: Item) -> Bool {
@@ -461,7 +488,7 @@ struct ItemDetailView: View {
             let order = try await model.restorePro(itemID: itemID)
             let left = order.left.map { " Na dziś zostało: \($0)." } ?? ""
             model.notices.info(
-                order.sent ? "Zamówione u Restauratora Pro" : "Już czeka u Restauratora Pro",
+                order.sent ? "Zamówiona Restauracja PRO" : "Już czeka na Restaurację PRO",
                 "Damy znać, gdy będzie gotowe, zwykle w ciągu kilku godzin.\(left)"
             )
         } catch let BackendError.http(status, body) where status == 429 || status == 409 {
@@ -486,7 +513,7 @@ struct ItemDetailView: View {
     private func restoreByModel() async {
         restoring = true
         defer { restoring = false }
-        model.notices.info("Restauracja dzieła trwa…", "Potrwa minutę lub dwie.")
+        model.notices.info("Restauracja trwa…", "Potrwa minutę lub dwie.")
         do {
             copyPicked(try await model.restore(itemID: itemID))
         } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
@@ -556,6 +583,7 @@ struct ItemDetailView: View {
             let fresh = try await model.backend.item(id: itemID)
             if holding, let view = try? await model.backend.polish(itemID: itemID, wait: 0) {
                 // Written already (it was on the frame): the card opens with it.
+                polishHeard = itemID
                 showPolish(view, animated: false)
             }
             await arrivalSettled()
@@ -813,6 +841,18 @@ struct ItemDetailView: View {
     /// the texts are waited for after it.
     private func loadPolish() async {
         showOriginal = false
+        // At once whether a note is being written: the card says so from the
+        // start, not after the first long wait.
+        if polish == nil, let view = try? await model.backend.polish(itemID: itemID, wait: 0) {
+            guard !Task.isCancelled else { return }
+            polishHeard = itemID
+            showPolish(view)
+            if view.status != "waiting" {
+                polishSettled = itemID
+                return
+            }
+        }
+        defer { if !Task.isCancelled { polishSettled = itemID } }
         var waits = 0
         while waits < 4 {
             let early = polish == nil && earlyTitle == nil
@@ -821,6 +861,7 @@ struct ItemDetailView: View {
             ),
                 !Task.isCancelled
             else { break }
+            polishHeard = itemID
             showPolish(view)
             if view.status != "waiting" { break }
             // A round that brought the title is not one of the waits.
@@ -843,6 +884,9 @@ struct ItemDetailView: View {
         let busy = waiting && text == nil
         let title = busy ? nonEmpty(view.title) ?? earlyTitle : nil
         guard text != polish || busy != polishWaiting || title != earlyTitle else { return }
+        // The card was typing (no text of its own): the note is typed in.
+        let typed = item.map { $0.isOwnWork || $0.description.isEmpty } ?? false
+        if animated, typed, polishWaiting, polish == nil, text != nil { typingNote = itemID }
         withAnimation(animated ? .easeInOut(duration: 0.6) : nil) {
             polish = text
             polishWaiting = busy
@@ -976,8 +1020,12 @@ struct ItemDetailView: View {
     /// picture's place on the card, as it fades in.
     private func sharpen() async {
         guard let id = described, id == itemID, item?.kind == .artwork, item?.sharper == nil else { return }
-        for attempt in 0..<4 {
-            guard let view = try? await model.backend.sharpen(itemID: id, wait: attempt == 0 ? 25 : 30),
+        // First at once: how small the picture is, for "…" (Mateusz
+        // 2026-11-26: entries came under his finger), then the long wait.
+        for attempt in 0..<5 {
+            guard let view = try? await model.backend.sharpen(
+                itemID: id, wait: attempt == 0 ? 0 : attempt == 1 ? 25 : 30
+            ),
                   !Task.isCancelled, id == itemID
             else { return }
             if let width = view.width, let height = view.height, width > 0 {
@@ -1088,10 +1136,20 @@ struct ItemDetailView: View {
     private func about(_ item: Item) -> some View {
         let own = item.isOwnWork
         let text = shownPolish?.full ?? (own ? "" : item.description)
-        if !text.isEmpty || polish != nil || polishWaiting {
+        // Nothing of its own to show: the curator is writing, from the card's
+        // first frame until the server says otherwise.
+        let typing = typingNote == itemID && !showOriginal
+        let writing = typing || (text.isEmpty && !showOriginal
+            && (polishWaiting || (polish == nil && polishHeard != itemID && item.kind == .artwork)))
+        if !text.isEmpty || polish != nil || writing || polishWaiting {
             VStack(alignment: .leading, spacing: 10) {
                 Eyebrow("O dziele")
-                if !text.isEmpty {
+                if writing {
+                    CuratorWriting(words: typedWords(item), note: typing ? text : nil) {
+                        withAnimation(.easeInOut(duration: 0.3)) { typingNote = nil }
+                    }
+                    .transition(.opacity)
+                } else if !text.isEmpty {
                     // Not Text: it cut long notes short with "…".
                     ReadingText(text: text)
                 } else if showOriginal {
@@ -1099,15 +1157,15 @@ struct ItemDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(Theme.inkSoft)
                 }
-                if polishWaiting {
+                if polishWaiting, !writing {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
-                        Text("Piszę po polsku…")
+                        Text(bound: "Piszę po polsku…")
                     }
                     .font(.footnote)
                     .foregroundStyle(Theme.inkSoft)
                 }
-                if let polish { polishOrigin(polish, original: own ? "" : item.description) }
+                if let polish, !writing { polishOrigin(polish, original: own ? "" : item.description) }
             }
             .id("about")
         }
@@ -1133,6 +1191,30 @@ struct ItemDetailView: View {
     /// frame buttons instead of under "O dziele".
     private var studyReady: Bool { studyState?.status == "ready" }
 
+    /// The curator's note is on the card, or none is coming: only then is a
+    /// study offered.
+    private var noteSettled: Bool {
+        typingNote != itemID && (polish != nil || (polishSettled == itemID && !polishWaiting))
+    }
+
+    /// What the card types while the note is written: what the model saw,
+    /// the colours and the facts, taken in turn.
+    private func typedWords(_ item: Item) -> [String] {
+        let seen = keywords(item)
+        let colours = item.colorTags.map { ColorTag.name($0).lowercased() }
+        let facts = [
+            nonEmpty(labels?.classification), nonEmpty(item.dateText), nonEmpty(labels?.culture),
+            nonEmpty(item.museumShown), nonEmpty(item.artist),
+        ].compactMap { $0 }
+        var words: [String] = []
+        for index in 0 ..< max(seen.count, colours.count, facts.count) {
+            for list in [seen, colours, facts] where index < list.count {
+                if !words.contains(list[index]) { words.append(list[index]) }
+            }
+        }
+        return words
+    }
+
     /// "Otwórz studium" under the frame buttons; held: "Przygotuj od nowa".
     private func openStudyButton(_ item: Item) -> some View {
         Button {
@@ -1157,7 +1239,9 @@ struct ItemDetailView: View {
     /// 2026-11-04); ordered so, held again it is made now.
     @ViewBuilder
     private func studySection(_ item: Item) -> some View {
-        if let state = studyState, state.status != "off", state.status != "ready" {
+        if let state = studyState, state.status != "off", state.status != "ready",
+            state.isPending || state.isLater || state.status == "failed" || noteSettled
+        {
             VStack(alignment: .leading, spacing: 8) {
                 if state.isPending {
                     Button {} label: {
@@ -1306,7 +1390,7 @@ struct ItemDetailView: View {
             return
         }
         recovery = nil
-        try? await Task.sleep(for: .milliseconds(600))
+        // At once: "…" waits for it (Mateusz 2026-11-26).
         guard !Task.isCancelled, let told = try? await model.backend.recovery(itemID: item.id, made: made),
               !Task.isCancelled, key == recoveryKey
         else { return }

@@ -130,10 +130,10 @@ async def restore_item_pro(item_id: str, svc: Svc, user: CurrentUser) -> ProOrde
         stored = svc.users.user(user.id) or user
         limit = stored.pro_a_day()
         raise HTTPException(
-            429, f"Na dziś to już {limit} {_works(limit)} Restauratora Pro. Kolejne jutro."
+            429, f"Na dziś to już {limit} {_works(limit)} w Restauracji PRO. Kolejne jutro."
         )
     if not svc.restorer.pro_enabled():
-        raise HTTPException(409, "Restaurator Pro potrzebuje klucza Google w Konfiguracji.")
+        raise HTTPException(409, "Restauracja PRO potrzebuje klucza Google w Konfiguracji.")
     if svc.library.get(item_id) is None:  # a museum work only looked at: pooled
         item = await run_in_threadpool(svc.importer.add, item.model_copy(update={"pooled": True}))
     try:

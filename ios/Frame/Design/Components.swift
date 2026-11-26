@@ -1247,14 +1247,17 @@ enum LowRes {
     /// Mateusz 2026-11-12): AI's sparkles in the same amber, in place of
     /// the dots.
     static let restoredSymbol = "sparkles"
-    static let restoredName = "Restauracja dzieła"
+    static let restoredName = "Restauracja"
     /// "Restaurator Pro" (Mateusz 2026-11-26): Google's model through its
     /// Batch, ordered within each person's day. Its mark after the title:
     /// the sparkles alone, in gold that glints as the phone turns
     /// (`ProGold`; 13:28 UTC: „znaczek iskierki tylko złote, mieniące się
     /// przy przechyleniu”).
-    static let proName = "Restaurator Pro"
-    static let proSpoken = "odnowione Restauratorem Pro"
+    static let proName = "Restauracja PRO"
+    /// Its entry in "…": the sparkles with a small plus at their corner
+    /// (`SparklesPlus.imageset`, a template; Mateusz 2026-11-26).
+    static var proMenuImage: Image { Image("SparklesPlus").renderingMode(.template) }
+    static let proSpoken = "odnowione Restauracją PRO"
     /// The marks' grey, not a warning's amber (Mateusz 2026-11-14: the
     /// low resolution's, the restorer's and the crop's marks grey).
     static let tint = Theme.inkSoft
