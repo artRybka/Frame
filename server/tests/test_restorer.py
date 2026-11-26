@@ -294,6 +294,10 @@ def test_restaurator_pro_through_the_batch(app: Any) -> None:
     # Ordered once: not again while it waits.
     assert client.post(f"/api/library/items/{own.id}/restore/pro").json()["sent"] is False
     assert service.restorer.waiting() == {own.id}
+    # The card knows it waits (its PRO entry spins, the plain one goes).
+    assert client.get(f"/api/library/items/{own.id}").json()["restoring_pro"] is True
+    stored = service.library.get(own.id)
+    assert stored is not None and not stored.restoring_pro  # never kept
 
     assert service.restorer.poll() == 0  # not done yet
     painter.done.add("batches/1")
@@ -303,6 +307,7 @@ def test_restaurator_pro_through_the_batch(app: Any) -> None:
     assert stored.sharper.restored and stored.sharper.pro
     assert stored.sharper.museum == "Restauracja PRO"
     assert told == [(own.id, OWNER_ID, True)]
+    assert client.get(f"/api/library/items/{own.id}").json()["restoring_pro"] is False
     assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
     # Drawn by Pro: not again.
     again = client.post(f"/api/library/items/{own.id}/restore/pro")
@@ -703,3 +708,16 @@ def test_a_drawing_of_another_picture_is_kept_as_drawn() -> None:
     picture = Image.fromarray(rng.integers(0, 255, (120, 100, 3), dtype=np.uint8))
     other = Image.fromarray(rng.integers(0, 255, (480, 400, 3), dtype=np.uint8))
     assert np.array_equal(np.asarray(recoloured(picture, other)), np.asarray(other))
+
+
+def test_pros_notification_opens_the_works_card(app: Any) -> None:
+    """Tapped, "Restauracja gotowa" opens the work's own card (Mateusz
+    2026-11-26: "kliknięcie na powiadomienie powinno przenieść na kartę tego
+    dzieła"), and so does the one saying it was not drawn."""
+    _client, service, _web, _painter = app
+    own = _small(service)
+    routes: list[str | None] = []
+    service.notifier.notify = lambda *a, **kw: routes.append(kw.get("route"))
+    service._restored_pro(own, OWNER_ID, True)
+    service._restored_pro(own, OWNER_ID, False)
+    assert routes == [f"work/{own.id}", f"work/{own.id}"]

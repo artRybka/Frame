@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.397
+
+- Restauracja PRO: komunikat o zamówieniu pojawia się od razu po
+  dotknięciu. Póki dzieło czeka na PRO, w menu „…” nie ma zwykłej
+  Restauracji, a pozycja PRO jest wyszarzona, z kółkiem.
+- Dotknięcie powiadomienia o Restauracji PRO otwiera kartę dzieła.
+
 ## 1.145.396
 
 - Pisanie kuratora „na maszynie” jest żwawsze: słowa wpisują się szybko,

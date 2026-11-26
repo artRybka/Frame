@@ -25,6 +25,9 @@ struct ItemToolbar: ToolbarContent {
     /// "Restaurator Pro" (Mateusz 2026-11-26): Google's model through its
     /// Batch, within this person's day; told when drawn.
     var restorePro: (() -> Void)? = nil
+    /// Waiting for "Restauracja PRO": its entry shown spinning, not to be
+    /// tapped, and the plain one gone (Mateusz 2026-11-26).
+    var proWaiting = false
     /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
     /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
     var correctCut: (() -> Void)? = nil
@@ -130,7 +133,7 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
-                if recover != nil || restore != nil || restorePro != nil { Divider() }
+                if recover != nil || restore != nil || restorePro != nil || proWaiting { Divider() }
                 if let recover {
                     Button(action: recover) {
                         Label {
@@ -151,7 +154,7 @@ struct ItemToolbar: ToolbarContent {
                     Button(action: restore) {
                         Label {
                             Text(bound: LowRes.restoredName)
-                            Text("Model AI dorysuje szczegóły")
+                            Text(bound: "Model AI dorysuje szczegóły")
                         } icon: {
                             Image(systemName: LowRes.restoredSymbol)
                         }
@@ -166,6 +169,17 @@ struct ItemToolbar: ToolbarContent {
                             LowRes.proMenuImage
                         }
                     }
+                } else if proWaiting {
+                    Button {} label: {
+                        Label {
+                            Text(bound: LowRes.proName)
+                            Text(bound: "Zamówiona, zwykle gotowa w ciągu kilku godzin")
+                        } icon: {
+                            Image(systemName: "progress.indicator")
+                                .symbolEffect(.rotate, options: .repeat(.continuous))
+                        }
+                    }
+                    .disabled(true)
                 }
                 if hasCopies { Divider() }
                 if hasCopies {
@@ -270,6 +284,7 @@ struct MenuOffer: Equatable {
     var pictureSide: Int?
     var restore: Bool
     var pro: Bool
+    var proWaiting: Bool
     var recover: Bool
     var recoveryKind: ColourRecovery.Kind
 }

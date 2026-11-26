@@ -137,6 +137,12 @@ struct PlaylistsView: View {
             }
         }
         .opensStudies(on: $path)
+        // A notification's work (`AppModel.cardToOpen`), on top of what is open.
+        .onChange(of: model.cardToOpen, initial: true) { _, id in
+            guard let id else { return }
+            model.cardToOpen = nil
+            path.append(id)
+        }
     }
 
     /// Propozycje first, then the playlists and "Kolekcja prywatna" in the

@@ -46,6 +46,9 @@ struct ItemDetailView: View {
     /// "Kreatywny restaurator" at work (half a minute).
     @State private var restoring = false
     @State private var orderingPro = false
+    /// Ordered of "Restauracja PRO" from this card (the server's
+    /// `restoringPro` comes only with the card's own fetch).
+    @State private var proOrdered = false
     /// What "…" offers as it was opened, held while it is open: what the
     /// server tells meanwhile (the colours' correction, how small the
     /// picture is) no longer adds entries under his finger (Mateusz
@@ -301,6 +304,7 @@ struct ItemDetailView: View {
                     findingCopies: $findingCopies, pictureSide: offer.pictureSide,
                     restore: offer.restore ? { Task { await restoreByModel() } } : nil,
                     restorePro: offer.pro ? { Task { await orderPro() } } : nil,
+                    proWaiting: offer.proWaiting,
                     correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
                     undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
                     recover: offer.recover ? { Task { await toggleCleaning() } } : nil,
@@ -456,8 +460,9 @@ struct ItemDetailView: View {
     private func menuOffer(_ item: Item) -> MenuOffer {
         MenuOffer(
             pictureSide: pictureSize.map { max($0.0, $0.1) },
-            restore: canRestore(item),
+            restore: canRestore(item) && !proWaiting(item),
             pro: canRestorePro(item),
+            proWaiting: proWaiting(item) && item.sharper?.isPro != true,
             recover: recoveryKind != nil && !cleaning,
             recoveryKind: recoveryKind ?? .varnish
         )
@@ -474,23 +479,31 @@ struct ItemDetailView: View {
     /// for a small picture, or one the server's own model drew, while this
     /// person's day allows (the server says no past it).
     private func canRestorePro(_ item: Item) -> Bool {
-        item.kind == .artwork && item.look == nil && !orderingPro && item.sharper?.isPro != true
+        item.kind == .artwork && item.look == nil && !proWaiting(item) && item.sharper?.isPro != true
             && ((lowSide ?? 0) > 0 || item.sharper?.isRestored == true)
             && model.me?.proLeft != 0
     }
 
-    /// "Restaurator Pro": sent to Google's Batch; a notification says when
-    /// it is drawn (it then goes into "Restaurator").
+    /// Waiting for "Restauracja PRO": the plain one is not offered, and the
+    /// PRO entry spins, not to be tapped (Mateusz 2026-11-26).
+    private func proWaiting(_ item: Item) -> Bool {
+        orderingPro || proOrdered || item.restoringPro == true
+    }
+
+    /// "Restauracja PRO": sent to Google's Batch; a notification says when
+    /// it is drawn (it then goes into "Restaurator"). Said at once on the
+    /// tap (Mateusz 2026-11-26: "Musi być zaraz po kliknięciu"), taken
+    /// back if the server says no.
     private func orderPro() async {
         orderingPro = true
         defer { orderingPro = false }
+        model.notices.info(
+            "Zamówiona Restauracja PRO",
+            "Damy znać, gdy będzie gotowe, zwykle w ciągu kilku godzin."
+        )
         do {
-            let order = try await model.restorePro(itemID: itemID)
-            let left = order.left.map { " Na dziś zostało: \($0)." } ?? ""
-            model.notices.info(
-                order.sent ? "Zamówiona Restauracja PRO" : "Już czeka na Restaurację PRO",
-                "Damy znać, gdy będzie gotowe, zwykle w ciągu kilku godzin.\(left)"
-            )
+            _ = try await model.restorePro(itemID: itemID)
+            proOrdered = true
         } catch let BackendError.http(status, body) where status == 429 || status == 409 {
             model.notices.warn(LowRes.proName, Self.detail(body))
         } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
