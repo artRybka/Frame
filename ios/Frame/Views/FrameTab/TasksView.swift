@@ -834,6 +834,14 @@ struct TaskPage: View {
             }
             .id("extras")
         }
+        if use.key == "pl_text", let review = settings.textReview,
+           review.running || review.oldForm > 0 {
+            VStack(alignment: .leading, spacing: 10) {
+                SectionHeader(title: "Starsze notki", subtitle: "Pisane jeszcze w pięciu dawnych stylach")
+                Card { OldNotesRow(review: review, keySet: settings.keySet) }
+            }
+            .id("oldnotes")
+        }
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: "Kiedy")
             Card {
@@ -1063,3 +1071,62 @@ struct TaskPage: View {
         return use.key == "studies" ? batch + " Ok. \(Money.usd(use.eachUsd)) za studium." : batch + per(use.eachUsd)
     }
 }
+
+/// The curator's notes kept in the five old styles, written anew in the
+/// new forms a random 500 at a tap, through the Batch (Mateusz 2026-11-26:
+/// "przywróć przycisk. Ale jako losowe partie po 500").
+private struct OldNotesRow: View {
+    @Environment(AppModel.self) private var model
+    let review: TextReview
+    let keySet: Bool
+    @State private var asking = false
+    @State private var sending = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(bound: Self.line(review))
+                .font(.subheadline)
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(bound: "Sonnet pisze je od nowa: pomysł z dzieła, losowa długość, początek i ton. Partia idzie przez Batch, za pół ceny, w ciągu kilku godzin.")
+                .font(.caption)
+                .foregroundStyle(Theme.inkSoft)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if !review.running, review.rewriteBatch > 0 {
+            Button {
+                asking = true
+            } label: {
+                HStack {
+                    Text(bound: "Przepisz \(AiSection.count(review.rewriteBatch)) losowych, ok. \(AiSection.usd(review.rewriteUsd))")
+                    if sending { ProgressView() }
+                }
+            }
+            .fontWeight(.semibold)
+            .disabled(!keySet || sending)
+            .confirmationDialog(
+                "Przepisać \(AiSection.count(review.rewriteBatch)) losowych notek?",
+                isPresented: $asking,
+                titleVisibility: .visible
+            ) {
+                Button("Przepisz") {
+                    Task {
+                        sending = true
+                        await model.rewriteOldNotes()
+                        sending = false
+                    }
+                }
+            } message: {
+                Text(bound: "Ok. \(AiSection.usd(review.rewriteUsd)) z limitu Claude. Dotychczasowe notki zostają, dopóki nie przyjdą nowe.")
+            }
+        }
+    }
+
+    /// "Zostało 6 793 · w pakiecie 500".
+    static func line(_ review: TextReview) -> String {
+        var parts = ["Zostało \(AiSection.count(review.oldForm))"]
+        if review.running { parts.append("w pakiecie \(AiSection.count(review.writing))") }
+        return parts.joined(separator: " · ")
+    }
+}
+

@@ -2065,6 +2065,10 @@ struct AiSettings: Codable, Hashable, Sendable {
     var keywordsProgress: Progress
     /// Nil until the server writes Polish texts.
     var plTextProgress: Progress?
+    /// The Polish texts kept, looked over at a tap: here the curator's
+    /// notes in the five old styles, rewritten 500 at a time; nil from older
+    /// servers.
+    var textReview: TextReview? = nil
     /// Why the server paused asking, if it did.
     var error: String?
     /// Google's key for the image model that draws the study sheets of the
@@ -2271,6 +2275,21 @@ struct OnDemandRun: Codable, Hashable, Sendable {
 }
 
 /// Only what is set changes.
+/// The curator's notes kept in one of the five old styles, written anew in
+/// the new forms a random 500 at a tap (Mateusz 2026-11-26: "przywróć
+/// przycisk. Ale jako losowe partie po 500"), through Claude's Batch.
+struct TextReview: Codable, Hashable, Sendable {
+    /// Notes still in the old styles; how many one tap takes, about what it costs.
+    var oldForm: Int = 0
+    var rewriteBatch: Int = 0
+    var rewriteUsd: Double = 0
+    /// An order is under way, and the notes being written in it.
+    var running: Bool = false
+    var writing: Int = 0
+    /// Notes written anew so far.
+    var written: Int = 0
+}
+
 struct AiSettingsUpdate: Encodable, Sendable {
     var plText: Bool?
     var keywordsArtworks: Bool?
