@@ -165,6 +165,10 @@ final class AppModel {
     /// Works drawn again on the phone (`restoreOnPhone`) as the server
     /// keeps them now: an open card takes it.
     private(set) var phoneRestored: [String: Item] = [:]
+    /// The drawing the phone just made of a work, whole: the full screen
+    /// open on it takes it at once (Mateusz 2026-11-27: „w trybie pełnego
+    /// podglądu tam też pokaż od razu ulepszoną grafikę”). Only the last.
+    private(set) var phoneDrawn: (id: String, image: UIImage)?
     /// Works being drawn on the phone now: each once at a time.
     @ObservationIgnored private var drawingOnPhone: Set<String> = []
     /// What the cards opened since launch show of their works' pictures
@@ -2339,7 +2343,10 @@ final class AppModel {
                 // picture as it came and corrected on the server after: it
                 // is shown once the server has it.
                 let plain = !PhonePicture.on(in: item.pictureVersion)
-                if plain { await phoneShows(item, on: false, picture: shown) }
+                if plain {
+                    phoneDrawn = (id, shown)
+                    await phoneShows(item, on: false, picture: shown)
+                }
                 do {
                     let updated = try await backend.restoreDrawn(
                         itemID: id, jpeg: made.jpeg, columns: made.columns, rows: made.rows
@@ -2350,7 +2357,10 @@ final class AppModel {
                     }
                     phoneRestored[id] = updated
                 } catch {
-                    if plain { phoneForget(id) }
+                    if plain {
+                        phoneForget(id)
+                        if phoneDrawn?.id == id { phoneDrawn = nil }
+                    }
                     throw error
                 }
             } catch {

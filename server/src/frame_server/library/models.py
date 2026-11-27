@@ -241,6 +241,17 @@ class SharperCopy(BaseModel):
     #: Drawn by "Restaurator Pro" (Google's model), not by our own
     #: (Mateusz 2026-11-26).
     pro: bool = False
+    #: Of a drawing: the long side of the picture it was drawn from (0: not
+    #: noted). Our own model's drawing is no mark of its own (Mateusz
+    #: 2026-11-27: "przestajemy oznaczać jako restaurator, zostają ze
+    #: znaczkiem niskiej jakości"): the work is marked by this side.
+    before: int = 0
+
+    @property
+    def plain(self) -> bool:
+        """Drawn by our own model (on the phone or here), not by Pro: shown
+        as the work's picture was, with no mark, list or switch of its own."""
+        return self.restored and not self.pro
 
 
 def quads_close(
@@ -880,8 +891,9 @@ class ItemSummary(BaseModel):
                 # screen).
                 summary.width, summary.height = item.sharper.width, item.sharper.height
             summary.picture = item.sharper.item_id
-            summary.restored = item.sharper.restored
-            summary.restored_pro = item.sharper.restored and item.sharper.pro
+            # Only Pro's drawing is marked as one (Mateusz 2026-11-27).
+            summary.restored = item.sharper.restored and item.sharper.pro
+            summary.restored_pro = summary.restored
         if item.kind == ItemKind.PHOTO:
             summary.title = photo_title(item)
             summary.subtitle = photo_line(item)

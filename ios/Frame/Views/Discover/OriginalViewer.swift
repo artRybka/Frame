@@ -181,6 +181,7 @@ struct OriginalViewer: View {
             await prepareColours()
         }
         .task(id: off) { await loadTreated() }
+        .onChange(of: drawnHere.map(ObjectIdentifier.init)) { takeDrawn(fading: true) }
         .onAppear {
             // CI screenshots: the work shown without all that was done.
             if model.demoMode, LaunchRoute.sheet == "untreated" { off = Set(treatments) }
@@ -446,8 +447,30 @@ struct OriginalViewer: View {
                 if !underlay { image = loaded }
             }
             if Task.isCancelled { return }
+            if takeDrawn(fading: false) { break }
         }
         failed = image == nil
+    }
+
+    /// The drawing the phone made of this work while it is open (or just
+    /// before, the server not having it yet): shown in place of its picture.
+    private var drawnHere: UIImage? {
+        guard let drawn = model.phoneDrawn, drawn.id == work.id, !work.isOwnWork else { return nil }
+        return drawn.image
+    }
+
+    /// The phone's drawing shown, when there is one; whether it was.
+    @discardableResult
+    private func takeDrawn(fading: Bool) -> Bool {
+        guard let drawn = drawnHere, !underlay else { return false }
+        if image === drawn { return true }
+        if fading {
+            withAnimation(.easeInOut(duration: 0.4)) { image = drawn }
+        } else {
+            image = drawn
+        }
+        failed = false
+        return true
     }
 
     fileprivate func setTiles(_ found: [ZoomTile]) { tiles = found }
