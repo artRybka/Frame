@@ -26,8 +26,15 @@ struct StackedPage: ViewModifier {
     /// How far up the card's sides the line goes before it is gone.
     nonisolated static let edgeRise: CGFloat = 87
 
+    /// `on`, a moment late when it comes: the page let go from the whole
+    /// work grows back on its pale ground first, and cut as a card while
+    /// it did, a pale rim showed round it on black (the film of
+    /// 2026-11-27, frames 50 to 56).
+    @State private var settled = true
+
     func body(content: Content) -> some View {
-        GeometryReader { geo in
+        let on = on && settled
+        return GeometryReader { geo in
             let screen = ScreenCorner.radius(of: geo.size)
             let corner = max(screen - Self.peek, 20)
             let cut = on ? Self.peek : 0
@@ -69,11 +76,25 @@ struct StackedPage: ViewModifier {
                 let down = Self.under(proxy)
                 return content
                     .scaleEffect(1 - 2 * Self.underInset / max(proxy.size.width, 1) * down, anchor: .top)
-                    .blur(radius: Self.blur * down)
+                    // Sharper early on its way up, not only at the top
+                    // (the second film: blurred halfway, sharp a frame
+                    // before it was the screen).
+                    .blur(radius: Self.blur * down * down)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: on)
+        .task(id: self.on) {
+            guard self.on else { settled = false; return }
+            guard !settled else { return }
+            try? await Task.sleep(for: .seconds(Self.after))
+            guard !Task.isCancelled else { return }
+            settled = true
+        }
     }
+
+    /// Seconds the card waits after the whole work is let go (its way
+    /// back takes half a second, `GalleryPage.back`).
+    static let after: Double = 0.55
 
     /// How dark the work under is.
     nonisolated static let dark: Double = 0.65
