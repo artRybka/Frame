@@ -422,6 +422,7 @@ struct Impression {
     std::array<double, 4> box;  // left, top, right, bottom
     std::array<double, 4> inked;  // the same with its lettering (`cut_caption` leaves it out)
     std::vector<std::array<double, 4>> others;  // the sheet's other inked parts, as `box`
+    double edged = 1.0;  // how much of its box's edges it lies along (`crop_model._edged`)
     std::vector<cv::Point2d> lines;  // the squares the drawing's fine lines are in (`crop_model._lines`), as `box`: u, v
     double turn = 0;
     cv::Point2d middle;
@@ -672,6 +673,28 @@ std::optional<Impression> impression(const cv::Mat& rgb, const Quad& sheet) {
     std::tie(box[0], box[2]) = cut_caption(ku, box[0], box[2], box[3] - box[1]);
     std::tie(box[1], box[3]) = cut_caption(kv, box[1], box[3], box[2] - box[0]);
     found.box = box;
+    {
+        // `crop_model._edged`: how much of its box's edges it lies along.
+        double u0 = box[0], v0 = box[1], u1 = box[2], v1 = box[3];
+        double d = std::max(3.0, PLATE_EDGE_DEPTH * std::min(u1 - u0, v1 - v0));
+        int nu = std::max(1, static_cast<int>(u1 - u0)), nv = std::max(1, static_cast<int>(v1 - v0));
+        std::vector<char> top(static_cast<size_t>(nu), 0), bottom(static_cast<size_t>(nu), 0);
+        std::vector<char> left(static_cast<size_t>(nv), 0), right(static_cast<size_t>(nv), 0);
+        for (size_t i = 0; i < ku.size(); i++) {
+            double uu = ku[i], vv = kv[i];
+            if (!(uu >= u0 && uu < u1 && vv >= v0 && vv < v1)) continue;
+            size_t across = static_cast<size_t>(std::clamp(static_cast<int>(uu - u0), 0, nu - 1));
+            size_t down = static_cast<size_t>(std::clamp(static_cast<int>(vv - v0), 0, nv - 1));
+            if (vv < v0 + d) top[across] = 1;
+            if (vv >= v1 - d) bottom[across] = 1;
+            if (uu < u0 + d) left[down] = 1;
+            if (uu >= u1 - d) right[down] = 1;
+        }
+        auto share = [](const std::vector<char>& x) {
+            return static_cast<double>(std::count(x.begin(), x.end(), 1)) / static_cast<double>(x.size());
+        };
+        found.edged = (share(top) + share(bottom) + share(left) + share(right)) / 4.0;
+    }
     found.turn = turn;
     found.middle = {cx, cy};
     {
@@ -806,7 +829,8 @@ std::optional<std::pair<Quad, Quad>> plate(const cv::Mat& rgb, const Quad& sheet
         long out = 0;
         for (const auto& p : found->lines)
             out += p.x < inked[0] - pad || p.x > inked[2] + pad || p.y < inked[1] - pad || p.y > inked[3] + pad;
-        if (static_cast<double>(out) / static_cast<double>(found->lines.size()) > PLATE_DRAWN) return std::nullopt;
+        if (static_cast<double>(out) / static_cast<double>(found->lines.size()) > PLATE_DRAWN && found->edged < PLATE_EDGED)
+            return std::nullopt;
     }
     auto cut = valid(found->on_photo(found->corners_of(inked, pad), rgb.cols, rgb.rows));
     if (!cut) return std::nullopt;

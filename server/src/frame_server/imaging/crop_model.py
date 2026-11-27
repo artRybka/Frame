@@ -180,8 +180,13 @@ PLATE_PART = 0.0002
 #: to one of its two figures: „Nie możemy tak robić”).
 PLATE_LINE = 9
 PLATE_FAINT = 3.0
-PLATE_DRAWN = 0.12
+PLATE_DRAWN = 0.14
 PLATE_CELL = 24
+#: …and only where the impression lies along less than :data:`PLATE_EDGED`
+#: of its box's edges (:func:`_edged`): an etching's plate keeps its cut
+#: whatever is pencilled or stained round it.
+PLATE_EDGED = 0.6
+PLATE_EDGE_DEPTH = 0.03
 PLATE_CELL_LEAST = 12
 
 _PRINT = (
@@ -443,6 +448,8 @@ class Impression:
     #: they are drawn in, as
     #: ``box`` (u, v; one row each).
     lines: np.ndarray | None = None
+    #: How much of its box's edges it lies along (:func:`_edged`).
+    edged: float = 1.0
 
     def corners(
         self,
@@ -549,6 +556,33 @@ def _lines(light: np.ndarray, band: np.ndarray, e: int) -> np.ndarray:
     return cv2.morphologyEx(line, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
 
 
+def _edged(u: np.ndarray, v: np.ndarray, box: Sequence[float]) -> float:
+    """How much of the edges of ``box`` (left, top, right, bottom) the
+    impression's pixels (``u``, ``v``) lie along, within
+    :data:`PLATE_EDGE_DEPTH` of its shorter side inside them: the mean of
+    its four sides' shares (px). A plate's impression, or one printed to a
+    ruled edge, lies along all of them; a figure drawn with no plate
+    touches them here and there."""
+    u0, v0, u1, v1 = box
+    d = max(3.0, PLATE_EDGE_DEPTH * min(u1 - u0, v1 - v0))
+    inside = (u >= u0) & (u < u1) & (v >= v0) & (v < v1)
+    u, v = u[inside], v[inside]
+    nu, nv = max(1, int(u1 - u0)), max(1, int(v1 - v0))
+    across = np.clip((u - u0).astype(int), 0, nu - 1)
+    down = np.clip((v - v0).astype(int), 0, nv - 1)
+    shares = []
+    for near, at, n in (
+        (v < v0 + d, across, nu),
+        (v >= v1 - d, across, nu),
+        (u < u0 + d, down, nv),
+        (u >= u1 - d, down, nv),
+    ):
+        seen = np.zeros(n, bool)
+        seen[at[near]] = True
+        shares.append(float(seen.mean()))
+    return float(np.mean(shares))
+
+
 def _cut_caption(t: np.ndarray, lo: float, hi: float, across: float) -> tuple[float, float]:
     """The impression's extent along one axis (``t``: its pixels' places,
     from ``lo`` to ``hi``; ``across``: its extent the other way) without a
@@ -649,6 +683,7 @@ def impression(rgb: np.ndarray, sheet: Sequence[Sequence[float]]) -> Impression 
     middle = (float(cx), float(cy))
     edges = (box[0], box[1], box[2], box[3])
     others = _others(work, parts, count, k, middle, float(turn), rows * cols)
+    edged = _edged(u, v, edges)
     line = _lines(light, band, e)
     n_r, n_c = rows // PLATE_CELL, cols // PLATE_CELL
     cells = (
@@ -666,7 +701,9 @@ def impression(rgb: np.ndarray, sheet: Sequence[Sequence[float]]) -> Impression 
             -(lx - cx) * np.sin(a) + (ly - cy) * np.cos(a),
         ]
     )
-    found = Impression(edges, float(turn), middle, (cols, rows), to_sheet, inked, others, lines)
+    found = Impression(
+        edges, float(turn), middle, (cols, rows), to_sheet, inked, others, lines, edged
+    )
     # Plain paper round it: alike on every side, light, and little on it.
     sides = [
         lab[e:b, e : cols - e],
@@ -755,7 +792,7 @@ def plate(
         u, v = found.lines[:, 0], found.lines[:, 1]
         u0, v0, u1, v1 = inked[0] - pad, inked[1] - pad, inked[2] + pad, inked[3] + pad
         out = (u < u0) | (u > u1) | (v < v0) | (v > v1)
-        if float(out.mean()) > PLATE_DRAWN:
+        if float(out.mean()) > PLATE_DRAWN and found.edged < PLATE_EDGED:
             return None
     h, w = rgb.shape[:2]
     cut = valid(found.on_photo(found.corners((pad, pad, pad, pad), inked), w, h))

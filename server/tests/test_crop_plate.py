@@ -29,10 +29,17 @@ def print_photo(impression: tuple[int, int, int, int], caption: bool = False) ->
     return (a.astype(np.int16) + rng.integers(-1, 2, a.shape)).clip(0, 255).astype(np.uint8)
 
 
-def drawing_photo(figure: tuple[int, int, int, int]) -> np.ndarray:
-    """A lithograph with no plate: ``figure`` drawn dark, the rest of the
-    scene in faint fine lines across the sheet."""
+def drawing_photo(figure: tuple[int, int, int, int], lines: bool = True) -> np.ndarray:
+    """A lithograph with no plate: a figure drawn dark (an ellipse in
+    ``figure``), the rest of the scene in faint fine lines across the sheet."""
     photo = print_photo(figure)
+    fx0, fy0, fx1, fy1 = figure
+    y, x = np.mgrid[fy0:fy1, fx0:fx1]
+    a, b = (fx1 - fx0) / 2, (fy1 - fy0) / 2
+    beyond = ((x - fx0 - a) / a) ** 2 + ((y - fy0 - b) / b) ** 2 > 1
+    photo[fy0:fy1, fx0:fx1][beyond] = (236, 230, 216)
+    if not lines:
+        return photo
     x0, y0, x1, y1 = SHEET
     for x in range(x0 + 60, x1 - 60, 17):
         if not figure[0] - 60 <= x <= figure[2] + 60:
@@ -169,8 +176,18 @@ def test_one_dark_figure_of_a_drawing_is_no_impression() -> None:
     # Toulouse-Lautrec cut to one of its two figures: „Nie możemy tak
     # robić”). The figure alone would be cut: the faint lines keep the sheet.
     figure = (250, 200, 480, 520)
-    assert cm.plate(print_photo(figure), corners(SHEET)) is not None
+    assert cm.plate(drawing_photo(figure, lines=False), corners(SHEET)) is not None
     assert cm.plate(drawing_photo(figure), corners(SHEET)) is None
+
+
+def test_an_etchings_plate_keeps_its_cut_whatever_is_drawn_round_it() -> None:
+    # Pencilled notes, stains or a sketch on the paper round a plate's
+    # impression, which lies along all its edges: still cut round it (on
+    # his prints: Millet's „The Spinner”, Boutet, Makowski).
+    impression = (250, 200, 480, 520)
+    photo = drawing_photo(impression)
+    photo[200:520, 250:480] = print_photo(impression)[200:520, 250:480]
+    assert cm.plate(photo, corners(SHEET)) is not None
 
 
 def test_lines_round_an_impression_within_its_margin_leave_it_cut() -> None:
