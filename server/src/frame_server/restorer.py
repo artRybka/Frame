@@ -24,8 +24,11 @@ Every drawing is kept the way a copy the owner brought is
 looks for sharper copies leave it be; "Przywróć zdjęcie muzeum" goes back
 to the museum's picture. It comes back in the colours of the picture it
 was drawn from (:func:`recoloured`): the model's detail on the museum's
-tones, :data:`DRAWN` of it. Each restored work goes first in the
-"Restaurator" playlist of whoever asked for it (:meth:`Restorer.file`).
+tones, :data:`DRAWN` of it. Each work Pro drew goes first in the
+"Restaurator" playlist of whoever asked for it (:meth:`Restorer.file`);
+our own model's drawing has no mark, list or switch of its own (Mateusz
+2026-11-27): the work is marked as the picture it was drawn from was
+(``SharperCopy.before``, ``low_res``).
 """
 
 from __future__ import annotations
@@ -61,7 +64,7 @@ log = logging.getLogger(__name__)
 KIND = "restorer"
 #: Where the drawing is from, as the card names it.
 ORIGIN = "Kreatywny restaurator"
-ORIGIN_PRO = "Restauracja PRO"
+ORIGIN_PRO = "Restauracja"
 #: Google's output: some 2048 px on the long side; ours is brought to it.
 SIZE = "2K"
 #: What a drawing the phone made is noted as (:meth:`Restorer.keep_drawn`).
@@ -134,6 +137,9 @@ PLAYLIST_NAME = "Restaurator"
 PLAYLIST_KEY = "restorer_playlist"
 #: The works restored before the playlist was there, put in the owner's once.
 FILLED_KEY = "restorer_playlist_filled"
+#: Our own model's drawings taken out of every "Restaurator" once
+#: (:meth:`Restorer.unfile_plain`).
+UNFILED_KEY = "restorer_playlist_plain_out"
 #: The drawings of a whole photograph cut to their work once (:meth:`Restorer.cut_kept`).
 CUT_KEY = "restorer.cut_kept"
 
@@ -351,7 +357,9 @@ class Restorer:
             now = self.library.get(item.id) or stored
             if self.restored(now):  # drawn meanwhile (another phone, Pro)
                 return now
-            updated = self.sharper.bring(now, data, ORIGIN, restored=True, pro=False)
+            updated = self.sharper.bring(
+                now, data, ORIGIN, restored=True, pro=False, before=max(own)
+            )
             self._note(
                 item.id,
                 "done",
@@ -363,7 +371,6 @@ class Restorer:
                 pro=False,
                 by=by,
             )
-        self.file(item.id, by)
         log.info("restorer: %s %s → %s on the phone of %s", item.id, own, size, by)
         return updated
 
@@ -421,7 +428,9 @@ class Restorer:
         buf = io.BytesIO()
         fitted.save(buf, "JPEG", quality=95)
         origin = ORIGIN_PRO if pro else ORIGIN
-        updated = self.sharper.bring(item, buf.getvalue(), origin, restored=True, pro=pro)
+        updated = self.sharper.bring(
+            item, buf.getvalue(), origin, restored=True, pro=pro, before=max(picture.size)
+        )
         self._note(
             item.id,
             "done",
@@ -433,7 +442,8 @@ class Restorer:
             pro=pro,
             by=by,
         )
-        self.file(item.id, by)
+        if pro:  # our own model's drawing goes in no list (Mateusz 2026-11-27)
+            self.file(item.id, by)
         log.info(
             "restorer: %s %s → %s by %s (%.3f USD)", item.id, picture.size, fitted.size, model, usd
         )
@@ -475,13 +485,34 @@ class Restorer:
             return 0
         notes = self.library.notes(KIND)
         kept = sorted(
-            (i for i in self.library.all_items() if self.restored(i)),
+            (i for i in self.library.all_items() if self.restored_pro(i)),
             key=lambda i: str(notes[i.id].data.get("at", "")) if i.id in notes else "",
         )
         for item in kept:
             self.file(item.id, OWNER_ID)
         self.library.set_state(FILLED_KEY, True)
         return len(kept)
+
+    def unfile_plain(self) -> int:
+        """Our own model's drawings taken out of every "Restaurator", once
+        (Mateusz 2026-11-27: "nie trafiają do katalogu Restaurator"): only
+        Pro's are in it. How many places a work was taken out of."""
+        if self.library.get_state(UNFILED_KEY, False):
+            return 0
+        plain = {
+            i.id for i in self.library.all_items() if i.sharper is not None and i.sharper.plain
+        }
+        taken = 0
+        for user_key in {p.owner for p in self.library.playlists()}:
+            playlist = self.playlist(user_key)
+            if playlist is None:
+                continue
+            ids = [i for i in playlist.item_ids if i not in plain]
+            if len(ids) != len(playlist.item_ids):
+                taken += len(playlist.item_ids) - len(ids)
+                self.library.save_playlist(playlist.model_copy(update={"item_ids": ids}))
+        self.library.set_state(UNFILED_KEY, True)
+        return taken
 
     # -- the drawings kept before their colours were taken back -----------------------
 
@@ -835,7 +866,7 @@ class Restorer:
         self._wake.set()
 
     def _run(self) -> None:
-        for step in (self.file_kept, self.recolour_kept, self.cut_kept):
+        for step in (self.file_kept, self.unfile_plain, self.recolour_kept, self.cut_kept):
             try:
                 step()
             except Exception:

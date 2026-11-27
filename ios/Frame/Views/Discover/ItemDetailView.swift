@@ -455,7 +455,10 @@ struct ItemDetailView: View {
                 guard let updated = model.phoneRestored[itemID], item?.sharper?.isRestored != true else { return }
                 item = updated
                 pictureSize = updated.sharper.map { ($0.width, $0.height) }
-                lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
+                // Our model's drawing: the mark of the picture it was drawn from stays.
+                if updated.sharper?.isPlain != true {
+                    lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
+                }
                 restoreKnown = nil
             }
             .allowsHitTesting(false)
@@ -527,7 +530,7 @@ struct ItemDetailView: View {
         orderingPro = true
         defer { orderingPro = false }
         model.notices.info(
-            "Zamówiona Restauracja PRO",
+            "Zamówiona Restauracja",
             "Damy znać, gdy będzie gotowe, zwykle w ciągu kilku godzin."
         )
         do {
@@ -1943,7 +1946,7 @@ struct ItemDetailView: View {
                 // full screen zooms in (a Commons tile set has places).
                 zoom: item.isFragment ? nil : Fragments.depth(fragments, scale: displayScale),
                 lowSide: lowSide,
-                restored: item.sharper?.isRestored == true,
+                restored: item.sharper?.isPro == true,
                 restoredPro: item.sharper?.isPro == true,
                 cropped: item.isCropped,
                 cleaned: item.cleanedShown != nil
@@ -2176,6 +2179,10 @@ struct ItemDetailView: View {
         let tile = ItemPeeks.tiles[itemID]?.summary
         guard let item else { return tile?.lowSide }
         if let tile, tile.picture == nil || tile.picture == (item.sharper?.itemId ?? "") { return tile.lowSide }
+        if let copy = item.sharper, copy.isPlain {
+            // Our own model's drawing: marked as the picture it was drawn from.
+            return copy.before.map(LowRes.side)
+        }
         if let copy = item.sharper { return copy.isRestored ? 0 : LowRes.side(max(copy.width, copy.height)) }
         return nil  // the own picture: the server tells (`sharpen`)
     }
@@ -2186,8 +2193,13 @@ struct ItemDetailView: View {
     private func pictureFact(_ item: Item) -> some View {
         let place: String?
         var size: String?
-        let restored = item.sharper?.isRestored == true
-        if let sharper = item.sharper, !restored {
+        let restored = item.sharper?.isPro == true
+        if let sharper = item.sharper, sharper.isPlain {
+            // Drawn by our own model on the phone: no word of it (Mateusz
+            // 2026-11-27), its museum under Kolekcja, the drawing's size.
+            place = nil
+            size = "\(sharper.width) × \(sharper.height) px"
+        } else if let sharper = item.sharper, !restored {
             place = sharper.museum.isEmpty ? Names.source(sharper.source) : sharper.museum
             size = "\(sharper.width) × \(sharper.height) px"
         } else if let sharper = item.sharper {

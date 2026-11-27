@@ -113,7 +113,11 @@ uv run mypy src
   checked with `tools/restore.py`; numbers through `tools/constants.py`,
   the app's held by `tests/test_scan_core.py`): a change of one is a change
   of the other. The server keeps what the phone sends (`/restore/drawn`)
-  and still draws what it is asked to (Pro, a playlist's batch).
+  and still draws what it is asked to (Pro, a playlist's batch). Only
+  Google's drawing ("Restauracja", `SharperCopy.pro`) is marked, listed in
+  "Restaurator" and switched before/after; our model's (`plain`) is shown
+  as the picture was, its low-resolution mark by `SharperCopy.before`
+  (Mateusz 2026-11-27).
 - "Barwy" in "Podobne do" (`library/palettes.py`): works by their bars'
   palettes. A photograph's palette is made on the phone the same way
   (`ios/…/PhonePalette.swift`); `tests/test_palettes.py` holds the two

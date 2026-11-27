@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.405
+
+- Gdy telefon odrestauruje dzieło, a Ty oglądasz je na pełnym ekranie,
+  ulepszony obraz pojawia się tam od razu.
+- Obrazy poprawione na iPhonie nie są już oznaczane jako restaurowane:
+  zostaje znaczek niskiej rozdzielczości, nie trafiają do playlisty
+  Restaurator i nie mają przełącznika przed/po.
+- „Restauracja PRO” nazywa się teraz po prostu „Restauracja”.
+
 ## 1.145.404
 
 - Restauracja robi się sama na iPhonie, gdy otworzysz kartę dzieła

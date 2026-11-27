@@ -22,7 +22,7 @@ enum Treatment: String, CaseIterable, Hashable, Sendable {
     func isDone(on item: Item) -> Bool {
         switch self {
         case .colours: item.cleanedShown != nil
-        case .restored: item.sharper?.isRestored == true
+        case .restored: item.sharper?.isPro == true  // ours has no switch (2026-11-27)
         }
     }
 

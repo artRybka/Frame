@@ -915,6 +915,7 @@ class Sharper:
         stand_in: bool = False,
         restored: bool = False,
         pro: bool = False,
+        before: int = 0,
     ) -> Item:
         stored = self.library.get(item.id)
         if stored is None:  # a museum work only looked at: kept for a while
@@ -933,6 +934,7 @@ class Sharper:
             stand_in=stand_in,
             restored=restored,
             pro=restored and pro,
+            before=before if restored else 0,
         )
         updated = self.library.update(item.id, sharper=sharper) or stored
         self.images.adopt(updated, img)
@@ -963,13 +965,15 @@ class Sharper:
         origin: str = "",
         restored: bool = False,
         pro: bool | None = None,
+        before: int | None = None,
     ) -> Item:
         """A copy of ``item``'s picture kept for good and shown in place of
         its own, as a copy the owner picked (a picture's bytes: today the
         restorer's, :mod:`frame_server.restorer`; files bought in Alamy came
         this way until 2026-11-15 and stay). ``origin``: where it is from,
         as the card names it. ``restored``: drawn again by a restorer's
-        model; ``pro``: by Restaurator Pro (None: as the copy it replaces
+        model; ``pro``: by Restaurator Pro, ``before``: the long side of
+        the picture it was drawn from (None, both: as the copy it replaces
         was). Raises ValueError for what is no picture."""
         stored = self.library.get(item.id) or item
         url, img = self.images.keep_owned(stored, data)
@@ -984,7 +988,11 @@ class Sharper:
         )
         if pro is None:
             pro = stored.sharper is not None and stored.sharper.pro
-        return self._adopt(stored, copy, img, chosen=True, restored=restored, pro=pro)
+        if before is None:
+            before = stored.sharper.before if stored.sharper is not None else 0
+        return self._adopt(
+            stored, copy, img, chosen=True, restored=restored, pro=pro, before=before
+        )
 
     def keep_own(self, item: Item) -> Item:
         """Back to the work's own picture, as the owner asked: no copy is

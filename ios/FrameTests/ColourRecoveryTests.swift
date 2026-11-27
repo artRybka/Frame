@@ -82,6 +82,7 @@ final class ColourRecoveryTests: XCTestCase {
         var both = cleaned
         both.sharper = copy
         both.sharper?.restored = true
+        both.sharper?.pro = true  // only Restauracja (Google's) has a switch (2026-11-27)
         both.cleaned?.drawn = "wmc:9"
         XCTAssertEqual(Treatment.done(on: both), [.colours, .restored])
 

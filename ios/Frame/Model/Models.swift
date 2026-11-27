@@ -246,7 +246,7 @@ struct Item: Codable, Identifiable, Hashable, Sendable {
             id: id, kind: kind, source: source, title: displayTitle, artist: artist, dateText: dateText,
             year: year, colors: colors, width: shape?.0 ?? width, height: shape?.1 ?? height, favorite: favorite,
             suitability: suitability, heldBy: heldBy, heldAt: heldAt, picture: sharper?.itemId ?? "",
-            pictureStamp: pictureStamp, subtitle: photoLine, restored: sharper?.isRestored == true ? true : nil,
+            pictureStamp: pictureStamp, subtitle: photoLine, restored: sharper?.isPro == true ? true : nil,
             restoredPro: sharper?.isPro == true ? true : nil,
             cropped: isCropped ? true : nil, cut: cutVersion,
             cleaned: cleanedShown?.kind, cleanedAt: cleanedShown == nil ? nil : cleanedVersion, own: own
@@ -411,10 +411,16 @@ struct SharperCopy: Codable, Hashable, Sendable {
     /// Drawn by "Restaurator Pro", Google's model (Mateusz 2026-11-26), not
     /// by the server's own.
     var pro: Bool? = nil
+    /// Of a drawing: the long side of the picture it was drawn from.
+    var before: Int? = nil
 
     var isChosen: Bool { chosen == true }
     var isRestored: Bool { restored == true }
     var isPro: Bool { restored == true && pro == true }
+    /// Drawn by our own model (on the phone): no mark, list or switch of its
+    /// own (Mateusz 2026-11-27: "przestajemy oznaczać jako restaurator,
+    /// zostają ze znaczkiem niskiej jakości"); marked as its picture was.
+    var isPlain: Bool { restored == true && pro != true }
 }
 
 /// The work in its museum photograph, without what is around it (a
@@ -841,9 +847,13 @@ struct PictureMarks: Equatable, Sendable {
     var cut: String?
     var cleaned: String?
     var cleanedAt: String?
+    /// Drawn by our own model: the side of the picture it was drawn from,
+    /// marked as that one was (Mateusz 2026-11-27).
+    var plainSide: Int?
 
     init(_ item: Item) {
         let summary = item.summary
+        plainSide = item.sharper.flatMap { $0.isPlain ? $0.before.map(LowRes.side) : nil }
         picture = summary.picture ?? ""
         stamp = summary.pictureStamp ?? ""
         restored = summary.restored == true
@@ -862,6 +872,7 @@ struct PictureMarks: Equatable, Sendable {
         if let known = tile.picture, known != picture || (tile.pictureStamp ?? "") != stamp {
             tile.lowSide = nil
         }
+        if let plainSide { tile.lowSide = plainSide }
         tile.picture = picture
         tile.pictureStamp = stamp.isEmpty ? nil : stamp
         tile.restored = restored ? true : nil

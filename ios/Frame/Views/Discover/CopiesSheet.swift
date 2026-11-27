@@ -537,7 +537,7 @@ struct RestoredTag: View {
                 .strokeBorder(LowRes.tint.opacity(0.5), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(pro ? "Restauracja PRO: szczegóły dorysował model Google" : "Restauracja: szczegóły dorysował model AI")
+        .accessibilityLabel(pro ? "Restauracja: szczegóły dorysował model Google" : "Restauracja: szczegóły dorysował model AI")
     }
 }
 
