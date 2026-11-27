@@ -335,7 +335,8 @@ struct GalleryView: View {
             pressed: pressed == work.id,
             held: pressed == work.id || peek == work.id,
             hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id),
-            below: index + 1 < works.count ? works[index + 1] : nil
+            below: index + 1 < works.count ? works[index + 1] : nil,
+            shown: work.id == shown?.id
         ))
         .containerRelativeFrame([.horizontal, .vertical])
         .contentShape(Rectangle())

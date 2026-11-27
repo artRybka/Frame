@@ -40,6 +40,9 @@ struct StackedPage: ViewModifier {
     /// The next work, whose edge lies under the card: drawn over the
     /// page's glow while the one melts into the other (`covered`).
     var below: RemoteItem? = nil
+    /// The page shown: only its card has the edge laid ready over its
+    /// glow (on every page of the stack, a swipe lost frames, run 16).
+    var shown = false
 
     /// How much of the screen's height the next work's edge takes (points;
     /// 2% of a 874-point screen, Mateusz 12:55: "może wystarczy 3%").
@@ -78,7 +81,7 @@ struct StackedPage: ViewModifier {
     /// had come out from behind the card, sharp).
     @State private var covered: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.45
+    nonisolated static let melt: Double = 0.3
     nonisolated static let unmelt: Double = 0.35
 
     func body(content: Content) -> some View {
@@ -113,7 +116,7 @@ struct StackedPage: ViewModifier {
                 // work's edge, melting into the glow (`covered`).
                 // Always there on the card, unseen but flooded: laid in when
                 // the press came, it was gone again a frame later (run 15).
-                if card, stacks {
+                if stacks, shown, card || held {
                     under(geo.size)
                         .opacity(flood ? covered : 0)
                         .allowsHitTesting(false)
@@ -210,7 +213,7 @@ struct StackedPage: ViewModifier {
                     try? await Task.sleep(for: .milliseconds(20))
                     guard !Task.isCancelled else { return }
                 }
-                withAnimation(.easeInOut(duration: Self.melt)) { covered = 0 }
+                withAnimation(.easeOut(duration: Self.melt)) { covered = 0 }
                 return
             }
             guard flooded else { return }
@@ -236,7 +239,7 @@ struct StackedPage: ViewModifier {
         // Only the edge: the work under lies whole behind the card, and
         // over the page it darkened all of it (run 14, back from the whole
         // work: the screen at 62 against 141 for a third of a second).
-        .clipShape(Band(height: Self.peek + 2))
+        .clipShape(OffCard(foot: Self.peek, corner: Self.corner(size)), style: FillStyle(eoFill: true))
     }
 
     /// The card's bottom corners, round with the screen's.
@@ -341,12 +344,17 @@ struct FootShadow: View {
     }
 }
 
-/// The bottom `height` points of a frame.
-struct Band: Shape {
-    let height: CGFloat
+/// All of a page but its card (filled even-odd): what the card's cut
+/// leaves of the screen, the round corners' sides with the foot (run 16:
+/// a band with a straight top, the glow light beside the corners above it).
+struct OffCard: Shape {
+    let foot: CGFloat
+    let corner: CGFloat
 
     func path(in rect: CGRect) -> Path {
-        Path(CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
+        var path = Path(rect)
+        path.addPath(CardCut(foot: foot, corner: corner).path(in: rect))
+        return path
     }
 }
 
