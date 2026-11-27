@@ -10,7 +10,9 @@ import UIKit
 /// other way: Galeria's own way out to Odkrywaj, taken under the finger
 /// as soon as it has gone far enough, not when it lifts.
 struct SideSwipe: UIGestureRecognizerRepresentable {
-    /// Only from the screen's left edge (the card's way back).
+    /// Only from the screen's edge it goes away from: the left one for a
+    /// swipe rightward (the card's way back, Galeria's grid), the right one
+    /// for a swipe leftward.
     var fromEdge = false
     var leftward = false
     var on = true
@@ -62,6 +64,8 @@ struct SideSwipe: UIGestureRecognizerRepresentable {
     }
 
     @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        /// How far in from the screen's edge a swipe from it may start.
+        static let edge: CGFloat = 44
         let fromEdge: Bool
         let leftward: Bool
         /// This swipe has done what it does.
@@ -76,8 +80,11 @@ struct SideSwipe: UIGestureRecognizerRepresentable {
             guard let pan = recognizer as? UIPanGestureRecognizer else { return false }
             let speed = pan.velocity(in: pan.view)
             if fromEdge {
+                // From the edge the swipe goes away from: the left one for
+                // a swipe rightward, the right one for a swipe leftward.
                 let start = pan.location(in: pan.view).x - pan.translation(in: pan.view).x
-                if start > 44 { return false }
+                let width = pan.view?.bounds.width ?? 0
+                if leftward ? start < width - Self.edge : start > Self.edge { return false }
             }
             let along = leftward ? -speed.x : speed.x
             return along > 0 && along > abs(speed.y) * 1.5
