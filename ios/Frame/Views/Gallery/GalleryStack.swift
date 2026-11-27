@@ -2,19 +2,35 @@ import SwiftUI
 
 /// Galeria's works lie as a stack of cards: the one shown ends a little
 /// above the screen's foot, its bottom corners round, a faint light line on
-/// its edge, and the next work's edge lies under it, dark and blurred
-/// (Mateusz 2026-11-27, variant A5 of the sketches: Galeria's whole screen
-/// and a work's full screen from its card looked the same, so a finger
-/// tried to look about the work sideways in Galeria; "jasna linia cienka
-/// jak w A3a, ale mniej intensywna i zanikająca gradientem ku górze …
-/// Cień i plama pod spodem jak w A3c", no nudge on entering).
+/// its edge, and the next work's edge lies under it, dark (Mateusz
+/// 2026-11-27, variant A5 of the sketches: Galeria's whole screen and a
+/// work's full screen from its card looked the same, so a finger tried to
+/// look about the work sideways in Galeria; "jasna linia cienka jak w A3a,
+/// ale mniej intensywna i zanikająca gradientem ku górze … Cień i plama pod
+/// spodem jak w A3c", no nudge on entering).
+///
+/// The stack is the pages themselves (16:36: "animacja przy przeciąganiu …
+/// To chyba powinna być animacja stosu?"; "Kolejne dzieło przy odsłanianiu
+/// nie może być rozmyte"): a page below the one shown does not come up from
+/// the screen's foot but lies where it is, under it (`GalleryView` lays
+/// the pages over one another, the first on top), a little narrower and
+/// dark, and comes to the whole screen, sharp all the way, as the card
+/// over it is taken off upwards. Back, the card above comes down over the
+/// one shown, which goes under the same way.
 struct StackedPage: ViewModifier {
-    /// Cut as a card: not under the grid, nor with the whole work held or
-    /// pressed, where the page is to be the screen as its tile, its whole
-    /// and its pressed window are.
+    /// Cut as a card: not under the grid, nor with the whole work held,
+    /// where the page is to be the screen as its tile and its whole are.
     var on: Bool
-    /// The work under this one.
-    var under: RemoteItem?
+    /// Lying on the stack: a page below the screen's top lies under the
+    /// one shown (not under the grid, where pages lie as tiles).
+    var stacked: Bool
+    /// Pressed: the card goes in by itself (`GalleryPage.pressedIn`), its
+    /// line and shadow gone.
+    var pressed: Bool
+    /// The card over this one is pressed or held: this one's edge under it
+    /// is gone, not drawn in with it (16:36: "Wciśnięcie powinno dotyczyć
+    /// tego co widać, a dolną część zanikać a nie jak teraz się skalować").
+    var hidden: Bool
 
     /// How much of the screen's height the next work's edge takes (points;
     /// 2% of a 874-point screen, Mateusz 12:55: "może wystarczy 3%").
@@ -25,6 +41,8 @@ struct StackedPage: ViewModifier {
     nonisolated static let edge: Double = 0.27
     /// How far up the card's sides the line goes before it is gone.
     nonisolated static let edgeRise: CGFloat = 87
+    /// How dark the work under is.
+    nonisolated static let dark: Double = 0.65
 
     /// `on`, a moment late when it comes: the page let go from the whole
     /// work grows back on its pale ground first, and cut as a card while
@@ -34,54 +52,61 @@ struct StackedPage: ViewModifier {
 
     func body(content: Content) -> some View {
         let card = on && settled
+        let foot = card ? Self.peek : 0
+        let stacks = stacked
         return GeometryReader { geo in
             let screen = ScreenCorner.radius(of: geo.size)
             let corner = max(screen - Self.peek, 20)
-            let cut = card ? Self.peek : 0
+            let tall = geo.size.height - foot
             ZStack(alignment: .top) {
-                Color.black
-                if let under, card {
-                    UnderCard(work: under, corner: max(screen - Self.underInset, 20), cardCorner: corner)
-                        .padding(.horizontal, Self.underInset)
+                // Its shadow on the card under it.
+                if card {
+                    UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
+                        .fill(.black.opacity(0.8))
+                        .frame(height: tall)
+                        .offset(y: 5)
+                        .blur(radius: 5)
+                        .opacity(pressed ? 0 : 1)
+                        .allowsHitTesting(false)
                         .transition(.opacity)
                 }
                 content
+                    // Dark as it lies under the card shown, itself once it
+                    // is the screen.
+                    .overlay {
+                        Color.black
+                            .visualEffect { content, proxy in content.opacity(Self.dark * Self.under(proxy)) }
+                            .allowsHitTesting(false)
+                    }
                     .mask(alignment: .top) {
                         UnevenRoundedRectangle(
                             bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
                             style: .continuous
                         )
-                        .frame(height: geo.size.height - cut)
+                        .frame(height: tall)
                     }
                 if card {
                     UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                        .strokeBorder(line(height: geo.size.height - cut), lineWidth: 1)
-                        .frame(height: geo.size.height - cut)
+                        .strokeBorder(line(height: tall), lineWidth: 1)
+                        .frame(height: tall)
+                        // Only on the card on top.
+                        .visualEffect { content, proxy in content.opacity(1 - Self.under(proxy)) }
+                        .opacity(pressed ? 0 : 1)
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-            // A page coming up from under the one shown comes as the work
-            // under it was, narrower, dark and blurred, and is itself only
-            // once it is the screen; one going down goes under the same way
-            // (the film of 2026-11-27: the next work came up sharp and
-            // bright under the dark edge that had been there at rest).
-            .overlay {
-                Color.black
-                    .visualEffect { content, proxy in content.opacity(Self.dark * Self.under(proxy)) }
-                    .allowsHitTesting(false)
-            }
-            .visualEffect { content, proxy in
-                let down = Self.under(proxy)
-                return content
-                    .scaleEffect(1 - 2 * Self.underInset / max(proxy.size.width, 1) * down, anchor: .top)
-                    // Sharper early on its way up, not only at the top
-                    // (the second film: blurred halfway, sharp a frame
-                    // before it was the screen).
-                    .blur(radius: Self.blur * down * down)
-            }
         }
+        .visualEffect { content, proxy in
+            let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
+            return content
+                .scaleEffect(lies.scale, anchor: .top)
+                .offset(y: lies.y)
+        }
+        .opacity(hidden ? 0 : 1)
+        .animation(.easeInOut(duration: HoldPull.press), value: pressed)
+        .animation(.easeInOut(duration: HoldPull.press), value: hidden)
         .animation(.easeInOut(duration: 0.25), value: card)
         .task(id: self.on) {
             guard self.on else { settled = false; return }
@@ -96,16 +121,26 @@ struct StackedPage: ViewModifier {
     /// back takes half a second, `GalleryPage.back`).
     static let after: Double = 0.55
 
-    /// How dark the work under is.
-    nonisolated static let dark: Double = 0.65
-    /// How blurred the work under is (points).
-    nonisolated static let blur: CGFloat = 9
-
     /// How far below the screen's top the page lies, of its height: 0 shown,
-    /// 1 a whole page down.
+    /// 1 a whole page down (and under the one shown).
     nonisolated static func under(_ proxy: GeometryProxy) -> CGFloat {
         let top = proxy.frame(in: .scrollView).minY
         return min(max(top / max(proxy.size.height, 1), 0), 1)
+    }
+
+    /// Where a page below the screen's top is drawn: kept at the top, under
+    /// the page above it, as small as the card under the one shown is
+    /// (`underInset` in from the sides) and its card's foot on the
+    /// screen's, `under` of the way from that to the whole screen. Two
+    /// pages down, it waits there too, under the one that will be.
+    nonisolated static func lies(_ proxy: GeometryProxy, foot: CGFloat) -> (scale: CGFloat, y: CGFloat) {
+        let size = proxy.size
+        let top = proxy.frame(in: .scrollView).minY
+        guard size.height > 0, top > 0, top < 2 * size.height else { return (1, 0) }
+        let down = min(top / size.height, 1)
+        let scale = 1 - 2 * underInset / max(size.width, 1) * down
+        let at = size.height - foot * (1 - down) - scale * (size.height - foot)
+        return (scale, at - top)
     }
 
     /// Brightest on the card's foot, gone `edgeRise` up its sides.
@@ -122,13 +157,13 @@ struct StackedPage: ViewModifier {
     }
 }
 
-/// The next work under the one shown: its thumbnail blurred and darkened
-/// to a patch of its colours, the card above casting its shadow on it.
-private struct UnderCard: View {
+/// The next work's edge under the one shown, should its page not be laid
+/// out yet (a lazy stack lays out what is on the screen): its thumbnail
+/// where that page lies under (`StackedPage.lies`), dark, behind all the
+/// pages. The page itself covers it as soon as it is there.
+struct StackUnder: View {
     @Environment(AppModel.self) private var model
     let work: RemoteItem
-    let corner: CGFloat
-    let cardCorner: CGFloat
     @State private var picture: UIImage?
 
     /// As a page's thumbnail (`GalleryPage.thumbPixel`): the one the page
@@ -137,33 +172,25 @@ private struct UnderCard: View {
 
     var body: some View {
         GeometryReader { geo in
-            ZStack(alignment: .top) {
-                Group {
-                    if let picture {
-                        Image(uiImage: picture)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .blur(radius: StackedPage.blur, opaque: true)
-                    } else {
-                        Color(white: 0.12)
-                    }
+            let scale = 1 - 2 * StackedPage.underInset / max(geo.size.width, 1)
+            let size = CGSize(width: geo.size.width * scale, height: (geo.size.height - StackedPage.peek) * scale)
+            let corner = max(ScreenCorner.radius(of: geo.size) - StackedPage.peek, 20) * scale
+            Group {
+                if let picture {
+                    Image(uiImage: picture)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: size.width, height: size.height)
+                } else {
+                    Color(white: 0.12)
                 }
-                .overlay(Color.black.opacity(StackedPage.dark))
-                // The card above's shadow on it.
-                UnevenRoundedRectangle(
-                    bottomLeadingRadius: cardCorner, bottomTrailingRadius: cardCorner, style: .continuous
-                )
-                .fill(.black.opacity(0.8))
-                .frame(width: geo.size.width + 2 * StackedPage.underInset,
-                       height: geo.size.height - StackedPage.peek)
-                .offset(y: 5)
-                .blur(radius: 5)
             }
-            .frame(width: geo.size.width, height: geo.size.height)
+            .overlay(Color.black.opacity(StackedPage.dark))
+            .frame(width: size.width, height: size.height)
             .clipShape(UnevenRoundedRectangle(
                 bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous
             ))
+            .position(x: geo.size.width / 2, y: geo.size.height - size.height / 2)
         }
         .allowsHitTesting(false)
         .task(id: work.id) {
@@ -174,7 +201,7 @@ private struct UnderCard: View {
             }
             let loaded = try? await ImageLoader.shared.image(for: request, maxPixel: Self.pixel)
             guard !Task.isCancelled, let loaded else { return }
-            withAnimation(.easeOut(duration: 0.3)) { picture = loaded }
+            picture = loaded
         }
     }
 }

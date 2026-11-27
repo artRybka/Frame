@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.409
+
+- Galeria przewija się jak stos kart: przy zsuwaniu dzieła w górę
+  następne nie wjeżdża od dołu, tylko leży pod spodem i rośnie do całego
+  ekranu, ostre przez całą drogę. Wstecz poprzednie dzieło nasuwa się
+  z góry na pokazane.
+- Przytrzymanie palca wciska tylko widoczną kartę, a brzeg następnego
+  dzieła pod nią gaśnie.
+
 ## 1.145.408
 
 - Próba: w Konfiguracji → Wyświetlanie dzieł nowy wybór „Światła”
