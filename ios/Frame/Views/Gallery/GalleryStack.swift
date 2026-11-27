@@ -54,7 +54,8 @@ struct StackedPage: ViewModifier {
     /// below kept under, 2 the pages laid over one another, 4 the shade
     /// and the line, 8 the thumbnail behind, 16 the cut, 32 only the next
     /// page kept under (not the one after), 64 the line, 128 the shade cut
-    /// round as the card (a plain rectangle otherwise).
+    /// round as the card (a plain rectangle otherwise), 256 the old line
+    /// (a gradient stroked round the border).
     nonisolated static let off = UserDefaults.standard.integer(forKey: "galleryStackOff")
     nonisolated static func left(_ part: Int) -> Bool { off & part != 0 }
     /// How far in the card pressed goes, all round (`GalleryPage`'s).
@@ -114,8 +115,14 @@ struct StackedPage: ViewModifier {
                     let inset = pressed ? Self.pressedInset : 0
                     let high = tall - 2 * inset
                     let corner = max(Self.corner(geo.size) - inset, 8)
-                    UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                        .strokeBorder(line(height: high), lineWidth: 1)
+                    Group {
+                        if Self.left(256) {
+                            UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
+                                .strokeBorder(line(height: high), lineWidth: 1)
+                        } else {
+                            FootLine(corner: corner, rise: Self.edgeRise, edge: Self.edge)
+                        }
+                    }
                         .frame(width: geo.size.width - 2 * inset, height: high)
                         .offset(x: inset, y: inset)
                         .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
@@ -224,6 +231,59 @@ struct StackedPage: ViewModifier {
 /// A page cut as a card: the screen's corners at its top (the phone's
 /// own), its foot `foot` above the screen's, its bottom corners round with
 /// the screen's less that; none (all of the page) at a foot of 0.
+/// The card's line, drawn cheaply: a gradient stroked along a rounded
+/// border cost a swipe half its frames (the probe's run 10, 50 ms against
+/// 17 ms without it), so the foot and its corners are one plain stroke
+/// and the sides two thin filled strips that fade up.
+struct FootLine: View {
+    let corner: CGFloat
+    let rise: CGFloat
+    let edge: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            let side = max(rise - corner, 0)
+            ZStack(alignment: .bottom) {
+                FootArc(corner: corner)
+                    .stroke(.white.opacity(edge * 0.8), lineWidth: 1)
+                HStack(spacing: 0) {
+                    strip
+                    Spacer(minLength: 0)
+                    strip
+                }
+                .frame(height: side)
+                .padding(.bottom, corner)
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+        }
+    }
+
+    private var strip: some View {
+        Rectangle()
+            .fill(LinearGradient(
+                colors: [.white.opacity(0), .white.opacity(edge * 0.4)],
+                startPoint: .top, endPoint: .bottom
+            ))
+            .frame(width: 1)
+    }
+}
+
+/// The foot of a card: up its two bottom corners and along its bottom.
+struct FootArc: Shape {
+    let corner: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let r = min(corner, rect.width / 2, rect.height)
+        let x0 = rect.minX + 0.5, x1 = rect.maxX - 0.5, y1 = rect.maxY - 0.5
+        var p = Path()
+        p.move(to: CGPoint(x: x0, y: y1 - r))
+        p.addArc(tangent1End: CGPoint(x: x0, y: y1), tangent2End: CGPoint(x: x0 + r, y: y1), radius: r)
+        p.addLine(to: CGPoint(x: x1 - r, y: y1))
+        p.addArc(tangent1End: CGPoint(x: x1, y: y1), tangent2End: CGPoint(x: x1, y: y1 - r), radius: r)
+        return p
+    }
+}
+
 struct CardCut: Shape {
     var foot: CGFloat
     let corner: CGFloat
