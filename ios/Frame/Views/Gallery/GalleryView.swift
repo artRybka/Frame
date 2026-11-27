@@ -279,7 +279,7 @@ struct GalleryView: View {
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .background {
-            if !grid, let at = shownIndex, at + 1 < works.count {
+            if carded, let at = shownIndex, at + 1 < works.count {
                 StackUnder(work: works[at + 1])
                     .opacity(peek == nil && pressed == nil ? 1 : 0)
                     .animation(.easeInOut(duration: HoldPull.press), value: pressed)
@@ -292,9 +292,16 @@ struct GalleryView: View {
         .allowsHitTesting(!gridOpen && returning == nil)
     }
 
+    /// The pages are cards on a stack: not under the grid, but already on
+    /// the way back from it, the tile growing into a card (Mateusz
+    /// 2026-11-27 18:47: "Gdy wracam z siatki do pełnego ekranu nie podoba
+    /// mi się że dolną krawędź dopiero pojawia się po chwili").
+    private var carded: Bool { !grid || returning != nil }
+
     private func page(_ work: RemoteItem, at index: Int, insets: EdgeInsets) -> some View {
         GalleryPage(
             work: work, current: work.id == shown?.id, whole: peek == work.id, pressed: pressed == work.id, still: grid,
+            card: carded,
             insets: insets, pull: pull, stock: stock,
             above: index > 0 ? works[index - 1] : nil,
             below: index + 1 < works.count ? works[index + 1] : nil,
@@ -302,8 +309,8 @@ struct GalleryView: View {
         )
         // A card on a stack, the next work's edge under it (`StackedPage`).
         .modifier(StackedPage(
-            on: !grid && peek == nil,
-            stacked: !grid,
+            on: carded && peek == nil,
+            stacked: carded,
             pressed: pressed == work.id,
             held: pressed == work.id || peek == work.id,
             hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)
@@ -1329,6 +1336,8 @@ private struct GalleryPage: View {
     /// The grid is up: cut as its tile is, no closer and no further, and
     /// no caption, so the two are one picture on the way between them.
     var still = false
+    /// Cut as a card above the next work's edge (`StackedPage`).
+    var card = true
     /// The screen's own edges (`GalleryView.insets`).
     var insets = EdgeInsets()
     /// How far the finger that holds it has been drawn up.
@@ -1585,7 +1594,7 @@ private struct GalleryPage: View {
         // first frame back from the grid or the whole work (Mateusz
         // 2026-11-27 18:47: the foot "dopiero pojawia się po chwili").
         .clipShape(Window(
-            inset: sunk ? Self.pressedInset : 0, way: way, foot: still ? 0 : Self.pressedFoot,
+            inset: sunk ? Self.pressedInset : 0, way: way, foot: card ? Self.pressedFoot : 0,
             screen: ScreenCorner.radius(of: geo.size), pressed: Self.pressedCorner(geo.size), full: Self.pressedInset,
             layout: layout, place: place, pan: pan, last: Self.wholeCorner
         ))
@@ -1593,7 +1602,7 @@ private struct GalleryPage: View {
         // work and back from it, all of it goes as one.
         .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
         .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
-        .animation(.smooth(duration: 0.3), value: still)
+        .animation(.smooth(duration: 0.3), value: card)
         .modifier(PulledUp(pull: pull, on: whole))
     }
 

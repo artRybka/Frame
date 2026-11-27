@@ -65,40 +65,35 @@ struct StackedPage: ViewModifier {
         let foot = card ? Self.peek : 0
         let stacks = stacked
         let flood = flooded
+        // Cut above the next work's edge; flooded, down to the screen's
+        // foot, the page's glow coming over that edge as the card goes in.
+        let cut = card && !flood ? Self.peek : 0
         // The page, and over it its shade and its line: each laid on the
         // stack by itself (`lies`), so each knows how far down it lies.
         // Measured inside the page moved, the shade read where the page was
         // drawn, near the top, and the work under was hardly dark (the
         // film of run 4: the edge at 80% of its brightness, not 35%).
+        // Clipped by a shape, never masked, and its shadow a gradient, not
+        // a blur: masked and blurred, each page on the screen was drawn
+        // off the screen in every frame and swipes ran at half the frames
+        // (run 6: 36 ms a frame against 17 before the stack; Mateusz
+        // 2026-11-27 18:47: "nie jest płynna. Odrobinę skacze?").
         return ZStack(alignment: .top) {
             GeometryReader { geo in
-                let corner = Self.corner(geo.size)
                 let tall = geo.size.height - foot
                 ZStack(alignment: .top) {
+                    content
+                        .clipShape(CardCut(foot: cut, corner: Self.corner(geo.size)))
                     // Its shadow on the card under it.
                     if card {
-                        UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                            .fill(.black.opacity(0.8))
-                            .frame(height: tall)
-                            .offset(y: 5)
-                            .blur(radius: 5)
+                        LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 9)
+                            .padding(.horizontal, Self.corner(geo.size) * 0.6)
+                            .offset(y: tall)
                             .opacity(flood ? 0 : 1)
                             .allowsHitTesting(false)
                             .transition(.opacity)
                     }
-                    content
-                        .mask(alignment: .top) {
-                            ZStack(alignment: .top) {
-                                UnevenRoundedRectangle(
-                                    bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
-                                    style: .continuous
-                                )
-                                .frame(height: tall)
-                                // The screen's foot, its glow coming over
-                                // the next work's edge.
-                                Rectangle().opacity(flood ? 1 : 0)
-                            }
-                        }
                 }
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
             }
@@ -109,14 +104,8 @@ struct StackedPage: ViewModifier {
             // Dark as it lies under the card shown, itself once it is the
             // screen.
             GeometryReader { geo in
-                let corner = Self.corner(geo.size)
-                UnevenRoundedRectangle(
-                    bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
-                    style: .continuous
-                )
-                .fill(.black)
-                .frame(height: geo.size.height - foot)
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                CardCut(foot: foot, corner: Self.corner(geo.size))
+                    .fill(.black)
             }
             .visualEffect { content, proxy in
                 let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
@@ -125,11 +114,11 @@ struct StackedPage: ViewModifier {
                     .opacity(stacks ? Self.dark * Self.under(proxy) : 0)
             }
             .allowsHitTesting(false)
-            // The light line, only on the card on top.
+            // The light line, only on the card on top; pressed, in with the
+            // card; not on the glow before the work let go is back there
+            // (run 6: a line at the card's size on the empty glow).
             if card {
                 GeometryReader { geo in
-                    // Pressed, in with the card's window, all round
-                    // (`GalleryPage.pressedInset`).
                     let inset = pressed ? Self.pressedInset : 0
                     let tall = geo.size.height - foot - 2 * inset
                     let corner = max(Self.corner(geo.size) - inset, 8)
@@ -145,6 +134,7 @@ struct StackedPage: ViewModifier {
                         .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
                         .opacity(1 - Self.under(proxy))
                 }
+                .opacity(flood && !held ? 0 : 1)
                 .allowsHitTesting(false)
                 .transition(.opacity)
             }
@@ -153,6 +143,7 @@ struct StackedPage: ViewModifier {
         .animation(.easeInOut(duration: HoldPull.press), value: pressed)
         .animation(.easeInOut(duration: HoldPull.press), value: hidden)
         .animation(.easeInOut(duration: 0.25), value: card)
+        .animation(.easeInOut(duration: HoldPull.press), value: held)
         .onChange(of: on) { _, now in if !now, held { wasWhole = true } }
         .task(id: held) {
             if held {
@@ -209,6 +200,27 @@ struct StackedPage: ViewModifier {
             ],
             startPoint: .top, endPoint: .bottom
         )
+    }
+}
+
+/// A page cut as a card: the screen's corners at its top (the phone's
+/// own), its foot `foot` above the screen's, its bottom corners round with
+/// the screen's less that; none (all of the page) at a foot of 0.
+struct CardCut: Shape {
+    var foot: CGFloat
+    let corner: CGFloat
+
+    var animatableData: CGFloat {
+        get { foot }
+        set { foot = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard foot > 0.05 else { return Path(rect) }
+        let share = min(foot / StackedPage.peek, 1)
+        let round = max(corner * share, 0)
+        return UnevenRoundedRectangle(bottomLeadingRadius: round, bottomTrailingRadius: round, style: .continuous)
+            .path(in: CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: max(rect.height - foot, 1)))
     }
 }
 
