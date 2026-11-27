@@ -261,7 +261,7 @@ enum ArtGlow {
                   bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
                       | CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
               ),
-              let data = context.data
+              let data = bitmap.data
         else { return nil }
         bitmap.draw(source, in: CGRect(x: 0, y: 0, width: width, height: height))
         let count = width * height
