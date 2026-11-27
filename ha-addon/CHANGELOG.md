@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.407
+
+- Galeria wygląda jak stos kart: dzieło na pełnym ekranie kończy się
+  tuż nad dolną krawędzią, ma zaokrąglone dolne rogi i delikatną jasną
+  linię, a pod nim widać ciemny, rozmyty brzeg następnego dzieła. Dzięki
+  temu nie myli się z podglądem dzieła z karty.
+
 ## 1.145.406
 
 - Na pełnym ekranie podgląd dzieła bez restauracji jest wykadrowany tak
