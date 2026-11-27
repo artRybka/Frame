@@ -11,13 +11,13 @@ import UIKit
 /// thumbnails and of the app's other requests. A picture nobody waits for
 /// any more (scrolled away) leaves the line. What is fetched before anyone
 /// looks at it (`.ahead`: Galeria's stock) goes after every picture on a
-/// screen and takes few of the line's places.
+/// screen and leaves two of the line's places free.
 actor ImageLoader {
     static let shared = ImageLoader()
 
     enum Priority: Sendable {
         /// Fetched before it is shown (Galeria's stock, its next pages'
-        /// full pictures): after every other picture of the same host, two
+        /// full pictures): after every other picture of the same host, four
         /// at a time at most, and none while `holdAhead` holds them.
         case ahead
         case normal, high
@@ -440,8 +440,10 @@ actor HostGate {
 
     /// Before the host of the frame's own server, in the line's name.
     static let own = "own:"
-    /// Pictures fetched ahead running at once, at most, per host.
-    static let aheadLimit = 2
+    /// Pictures fetched ahead running at once, at most, per host: most of
+    /// the frame's server's six, so Galeria's stock fills as fast as before,
+    /// with two always free for a picture wanted on a screen.
+    static let aheadLimit = 4
 
     /// The frame's own server: as many as the session has connections to
     /// it. Its thumbnails are files it keeps, or fetched by it within the

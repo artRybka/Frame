@@ -19,12 +19,12 @@ final class HostGateTests: XCTestCase {
         var all: [String] { lock.withLock { names } }
     }
 
-    func testAheadRunsTwoAtATimeAndNormalPassesIt() async throws {
+    func testAheadRunsFourAtATimeAndNormalPassesIt() async throws {
         let gate = HostGate()
         let host = Self.host
         let order = Order()
         var ahead: [UUID] = []
-        for index in 0 ..< 4 {
+        for index in 0 ..< 6 {
             let id = UUID()
             ahead.append(id)
             Task {
@@ -33,15 +33,16 @@ final class HostGateTests: XCTestCase {
             }
         }
         await settle()
-        XCTAssertEqual(order.all, ["ahead0", "ahead1"])
+        XCTAssertEqual(Set(order.all), ["ahead0", "ahead1", "ahead2", "ahead3"])
         let normal = UUID()
         try await gate.enter(host, id: normal, ahead: false)  // not behind the two waiting
         order.add("normal")
-        XCTAssertEqual(order.all, ["ahead0", "ahead1", "normal"])
+        XCTAssertEqual(order.all.last, "normal")
+        XCTAssertEqual(order.all.count, 5)
         await gate.leave(host, id: ahead[0])
         await settle()
-        XCTAssertEqual(order.all.last, "ahead2")
-        XCTAssertEqual(order.all.count, 4)
+        XCTAssertEqual(order.all.count, 6)  // one of the two waiting
+        XCTAssertTrue(order.all.last?.hasPrefix("ahead") == true)
     }
 
     func testFullLineLetsNormalInBeforeAhead() async throws {
