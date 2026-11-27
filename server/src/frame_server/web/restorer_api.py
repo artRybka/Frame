@@ -6,18 +6,20 @@ person's day (2026-11-26)."""
 
 from __future__ import annotations
 
+import io
 from datetime import date
 from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from ..ai import AiUnavailable
+from ..imaging import artsr
 from ..library.hosts import urgent_call
 from ..library.models import Item
-from ..restorer import NotRestored
+from ..restorer import LONGEST, NotRestored
 from ..service import FrameService
 from ..users import User
 from .deps import CurrentUser, require_owner, require_token, service
@@ -116,6 +118,85 @@ async def restore_item(item_id: str, svc: Svc, user: CurrentUser) -> Item:
         raise HTTPException(422, f"{err.code}: {err}") from err
     except (httpx.HTTPError, OSError) as err:
         raise HTTPException(502, f"picture unavailable: {err}") from err
+
+
+class RestorePlan(BaseModel):
+    """What the phone draws a work with (Mateusz 2026-11-27: „Wszystko.”,
+    the restorer on the iPhone when a card opens): the kind that leads our
+    model (0 painting, 1 print, 2 drawing: ``artsr.KINDS``) and how the work
+    looks (SigLIP 2's numbers); its picture is ``/restore/source``."""
+
+    kind: int
+    look: list[float]
+
+
+#: The most a phone's drawing may weigh.
+DRAWN_BYTES = 12_000_000
+
+
+@router.get("/library/items/{item_id:item}/restore/plan", response_model=RestorePlan)
+async def restore_plan(item_id: str, svc: Svc) -> RestorePlan:
+    """How the phone is to draw the work (422 for one that is not drawn)."""
+    item = await _work(svc, item_id)
+    try:
+        await run_in_threadpool(svc.restorer.check, item)
+        if svc.restorer.restored(item):
+            raise NotRestored("restored", "drawn again already")
+        look = await run_in_threadpool(urgent_call(svc.restorer.look), item)
+    except NotRestored as err:
+        raise HTTPException(422, f"{err.code}: {err}") from err
+    except AiUnavailable as err:
+        raise HTTPException(503, f"how the work looks is not known: {err}") from err
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"picture unavailable: {err}") from err
+    kind = artsr.KINDS.get(artsr.kind_of(item), 0)
+    return RestorePlan(kind=kind, look=[float(v) for v in look])
+
+
+@router.get("/library/items/{item_id:item}/restore/source")
+async def restore_source(item_id: str, svc: Svc) -> Response:
+    """The picture our model draws the work from, as the server would
+    (``Restorer.source``), losslessly: the phone takes its printed screen
+    out, draws it and puts it in its colours itself."""
+    item = await _work(svc, item_id)
+
+    def png() -> bytes:
+        out = io.BytesIO()
+        svc.restorer.source(item).save(out, "PNG", compress_level=1)
+        return out.getvalue()
+
+    try:
+        data = await run_in_threadpool(urgent_call(png))
+    except (httpx.HTTPError, OSError) as err:
+        raise HTTPException(502, f"picture unavailable: {err}") from err
+    return Response(data, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/library/items/{item_id:item}/restore/drawn", response_model=Item)
+async def restore_drawn(
+    item_id: str,
+    request: Request,
+    svc: Svc,
+    user: CurrentUser,
+    width: Annotated[int, Query(ge=1, le=LONGEST)],
+    height: Annotated[int, Query(ge=1, le=LONGEST)],
+) -> Item:
+    """The phone's drawing of the work (a JPEG, its body), of its source
+    ``width`` × ``height``: kept in place of its picture and put in the
+    asker's "Restaurator", as ``/restore`` keeps the server's. 422 for a
+    work that is not drawn (drawn already: the work as kept)."""
+    data = await request.body()
+    if len(data) > DRAWN_BYTES:
+        raise HTTPException(413, "too large")
+    item = await _work(svc, item_id)
+    try:
+        return await run_in_threadpool(
+            svc.restorer.keep_drawn, item, data, (width, height), user.id
+        )
+    except NotRestored as err:
+        raise HTTPException(422, f"{err.code}: {err}") from err
+    except ValueError as err:
+        raise HTTPException(422, f"not_drawn: {err}") from err
 
 
 @router.post("/library/items/{item_id:item}/restore/pro", response_model=ProOrder)

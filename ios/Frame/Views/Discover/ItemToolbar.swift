@@ -18,19 +18,13 @@ struct ItemToolbar: ToolbarContent {
     @Binding var findingCopies: Bool
     /// The long side of the picture shown now, when the server has told it.
     var pictureSide: Int? = nil
-    /// "Restauracja dzieła" (once "Kreatywny restaurator"), under the
-    /// colours' correction: for a picture small for the frame (`LowRes`),
-    /// drawn again by the image model.
-    var restore: (() -> Void)? = nil
     /// "Restaurator Pro" (Mateusz 2026-11-26): Google's model through its
     /// Batch, within this person's day; told when drawn.
     var restorePro: (() -> Void)? = nil
-    /// Waiting for "Restauracja PRO": its entry dimmed, not to be tapped,
-    /// and the plain one gone (Mateusz 2026-11-26).
+    /// Waiting for "Restauracja PRO": its entry dimmed, not to be tapped
+    /// (Mateusz 2026-11-26). The plain restoration is no entry: the phone
+    /// does it by itself when the card opens (2026-11-27).
     var proWaiting = false
-    /// "Zmierz restaurację na iPhonie": our model on this phone, timed
-    /// (the owner's, for now; Mateusz 2026-11-26: "Przetestujmy").
-    var measureOnPhone: (() -> Void)? = nil
     /// "Popraw kadr" / "Przytnij zdjęcie": the corners of the work on its
     /// museum photograph, on a screen of their own (Mateusz 2026-11-14).
     var correctCut: (() -> Void)? = nil
@@ -136,7 +130,7 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                 }
-                if recover != nil || restore != nil || restorePro != nil || proWaiting { Divider() }
+                if recover != nil || restorePro != nil || proWaiting { Divider() }
                 if let recover {
                     Button(action: recover) {
                         Label {
@@ -148,18 +142,6 @@ struct ItemToolbar: ToolbarContent {
                             } else {
                                 CleanedMark.image
                             }
-                        }
-                    }
-                }
-                // Right under the colours' correction, as the other way of
-                // giving the work back (Mateusz 2026-11-16).
-                if let restore {
-                    Button(action: restore) {
-                        Label {
-                            Text(bound: LowRes.restoredName)
-                            Text(bound: "Model AI dorysuje szczegóły")
-                        } icon: {
-                            Image(systemName: LowRes.restoredSymbol)
                         }
                     }
                 }
@@ -184,16 +166,6 @@ struct ItemToolbar: ToolbarContent {
                         }
                     }
                     .disabled(true)
-                }
-                if let measureOnPhone {
-                    Button(action: measureOnPhone) {
-                        Label {
-                            Text(bound: "Zmierz restaurację na iPhonie")
-                            Text(bound: "Próba: czas i temperatura, nic nie zapisuje")
-                        } icon: {
-                            Image(systemName: "stopwatch")
-                        }
-                    }
                 }
                 if hasCopies { Divider() }
                 if hasCopies {
@@ -296,7 +268,6 @@ struct ItemToolbar: ToolbarContent {
 /// held while the menu is open (`ItemToolbar.menuOpened`).
 struct MenuOffer: Equatable {
     var pictureSide: Int?
-    var restore: Bool
     var pro: Bool
     var proWaiting: Bool
     var recover: Bool
