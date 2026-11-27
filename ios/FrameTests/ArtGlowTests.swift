@@ -53,9 +53,12 @@ final class ArtGlowTests: XCTestCase {
 
     private func reds(_ lit: CGImage) throws -> [Float] {
         let data = try XCTUnwrap(lit.dataProvider?.data) as Data
-        return (0..<lit.width).map { x in
-            data.withUnsafeBytes { Float($0.load(fromByteOffset: x * lit.bitsPerPixel / 8, as: Float16.self)) }
+        var reds: [Float] = []
+        for x in 0..<lit.width {
+            let half: Float16 = data.withUnsafeBytes { $0.load(fromByteOffset: x * lit.bitsPerPixel / 8, as: Float16.self) }
+            reds.append(Float(half))
         }
+        return reds
     }
 
     /// A: the page's white stays close to the page, a dark grey has the
