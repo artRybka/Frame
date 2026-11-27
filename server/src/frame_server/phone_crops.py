@@ -85,9 +85,11 @@ PRINT = KINDS.index("print")
 #: The prints cut before are cut down round their impression once
 #: (:meth:`PhoneCrops.plates_again`): 1 as ``crop_model.PLATE`` 1 had it;
 #: 2 the model's from their sheet again, the margin round the impression
-#: with its lettering (Mateusz 2026-11-25). Prints left whole or to him
+#: with its lettering (Mateusz 2026-11-25); 3 the model's again where the
+#: cut left the drawing out, back to their sheet (``crop_model.PLATE_DRAWN``,
+#: Mateusz 2026-11-27: „Nie możemy tak robić”). Prints left whole or to him
 #: are looked at again instead (:meth:`wants`).
-PLATES_AGAIN = 2
+PLATES_AGAIN = 3
 #: The whole photograph, as corners.
 WHOLE = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
 
@@ -367,7 +369,7 @@ class PhoneCrops:
         if cut.aspect and not same_picture(cut.aspect, (w, h)):
             return False
         done["looked"] += 1
-        made: tuple[Quad, Quad] | None = None
+        made: tuple[Quad, Quad | None] | None = None
         if cut.by == "owner":
             # The model's sheet where it looked, else his cut is the sheet.
             sheet = (entry or {}).get("sheet") or (entry or {}).get("work")
@@ -384,6 +386,10 @@ class PhoneCrops:
             # From the sheet the model found, not from the cut made of it.
             sheet = (entry or {}).get("sheet") or cut.work
             made = plate(rgb, sheet)
+            if made is None and cut.plate is not None:
+                # Cut round what it no longer takes for its impression
+                # (one figure of a drawing): back to its sheet.
+                made = ([(float(x), float(y)) for x, y in sheet], None)
             if made is not None and overlap(made[0], cut.work, (w, h)) >= 0.995:
                 return False  # as cut now
         if made is None:
