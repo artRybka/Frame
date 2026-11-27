@@ -114,11 +114,12 @@ struct StackedPage: ViewModifier {
                     .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
                 // What lies under the card while it is flooded: the next
                 // work's edge, melting into the glow (`covered`).
-                // Always there on the card, unseen but flooded: laid in when
-                // the press came, it was gone again a frame later (run 15).
-                if stacks, shown, card || held {
+                // Only on the shown card and only flooded: laid at full and
+                // melted a moment later, never taken away by its own fade
+                // (run 15: gone a frame after it came).
+                if stacks, shown, flood {
                     under(geo.size)
-                        .opacity(flood ? covered : 0)
+                        .opacity(covered)
                         .allowsHitTesting(false)
                 }
                 // Its shadow on the card under it, round its corners too
@@ -232,7 +233,10 @@ struct StackedPage: ViewModifier {
     /// ground (what is seen beside it), to lie over the page uncut.
     private func under(_ size: CGSize) -> some View {
         ZStack(alignment: .bottom) {
-            Color.black.frame(height: Self.peek + 2)
+            // All of what the cut leaves black, beside the corners too
+            // (run 17: the glow came there at once, a square step beside
+            // the round foot).
+            Color.black
             if let below { StackUnder(work: below) }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
