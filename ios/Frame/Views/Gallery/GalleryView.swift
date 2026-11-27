@@ -192,6 +192,11 @@ struct GalleryView: View {
                 ItemDetailView(itemID: id)
             }
         }
+        // Its stock waits while another tab is up: the covers there go
+        // first (Mateusz 2026-11-27: "Miniaturki okładek playlist i w
+        // odkrywaj wczytują się wolniej").
+        .onAppear { ImageLoader.holdAhead(false) }
+        .onDisappear { ImageLoader.holdAhead(true) }
         .task {
             // Those kept from the last launch: their thumbnails too.
             prefetch(works)
@@ -891,7 +896,7 @@ struct GalleryView: View {
     nonisolated private static func fetch(
         _ id: String, _ request: URLRequest, _ pixel: CGFloat
     ) async -> (String, UIImage?, UnitPoint) {
-        guard let image = try? await ImageLoader.shared.image(for: request, maxPixel: pixel) else {
+        guard let image = try? await ImageLoader.shared.image(for: request, maxPixel: pixel, priority: .ahead) else {
             return (id, nil, .center)
         }
         // After the pictures on the screen, and waited for: the stock keeps
@@ -1443,6 +1448,14 @@ private struct GalleryPage: View {
             .ignoresSafeArea()
         }
         .task(id: Had(id: work.id, anew: anew)) { await load() }
+        .task(id: current) {
+            // Swept onto the screen while its full picture was still fetched
+            // ahead: it is wanted now, not after the grid's stock.
+            guard current, full == nil,
+                  let request = GalleryView.picture(of: work.item, model.backend)
+            else { return }
+            _ = try? await ImageLoader.shared.image(for: request, maxPixel: Self.fullPixel, priority: .high)
+        }
         .onChange(of: Recut(version: work.item.pictureVersion, current: current), initial: true) { _, now in
             // The work has another picture (cut down since this page came):
             // had anew, but never under his eyes (Mateusz 2026-11-25: the
@@ -1846,8 +1859,10 @@ private struct GalleryPage: View {
             }
         }
         guard !Task.isCancelled,
+              // The next pages' full pictures: fetched ahead, after the
+              // tiles and covers on the screen.
               let image = try? await ImageLoader.shared.image(
-                  for: fullRequest, maxPixel: Self.fullPixel, priority: current ? .high : .normal
+                  for: fullRequest, maxPixel: Self.fullPixel, priority: current ? .high : .ahead
               ),
               !Task.isCancelled
         else { return }
