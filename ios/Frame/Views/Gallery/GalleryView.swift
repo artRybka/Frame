@@ -252,7 +252,7 @@ struct GalleryView: View {
                     // The first on top: a page below lies under the one
                     // shown, a card on a stack (`StackedPage`).
                     page(work, at: index, insets: insets)
-                        .zIndex(Double(-index))
+                        .zIndex(StackedPage.left(2) ? 0 : Double(-index))
                 }
                 // At the end of what came, only the glow, flowing, till the
                 // next works are here (Mateusz 2026-11-24: "łuny … tańczą
@@ -279,7 +279,7 @@ struct GalleryView: View {
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .background {
-            if carded, let at = shownIndex, at + 1 < works.count {
+            if carded, !StackedPage.left(8), let at = shownIndex, at + 1 < works.count {
                 StackUnder(work: works[at + 1])
                     .opacity(peek == nil && pressed == nil ? 1 : 0)
                     .animation(.easeInOut(duration: HoldPull.press), value: pressed)
@@ -310,7 +310,10 @@ struct GalleryView: View {
         // A card on a stack, the next work's edge under it (`StackedPage`).
         .modifier(StackedPage(
             on: carded && peek == nil,
-            stacked: carded,
+            // Not on the way back from the grid: the camera's pages lie
+            // anywhere then, and laid under, a page above came over the
+            // tile as a dark box (run 7).
+            stacked: !grid,
             pressed: pressed == work.id,
             held: pressed == work.id || peek == work.id,
             hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)

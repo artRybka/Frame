@@ -49,6 +49,13 @@ struct StackedPage: ViewModifier {
     nonisolated static let edgeRise: CGFloat = 87
     /// How dark the work under is.
     nonisolated static let dark: Double = 0.65
+    /// Parts of the stack left out, to find what a swipe's frames cost
+    /// (`-galleryStackOff N`, the probe's; 0 in the app): 1 the pages
+    /// below kept under, 2 the pages laid over one another, 4 the shade
+    /// and the line, 8 the thumbnail behind, 16 the cut, 32 only the next
+    /// page kept under (not the one after).
+    nonisolated static let off = UserDefaults.standard.integer(forKey: "galleryStackOff")
+    nonisolated static func left(_ part: Int) -> Bool { off & part != 0 }
     /// How far in the card pressed goes, all round (`GalleryPage`'s).
     nonisolated static let pressedInset: CGFloat = 12
 
@@ -83,7 +90,7 @@ struct StackedPage: ViewModifier {
                 let tall = geo.size.height - foot
                 ZStack(alignment: .top) {
                     content
-                        .clipShape(CardCut(foot: cut, corner: Self.corner(geo.size)))
+                        .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
                     // Its shadow on the card under it.
                     if card {
                         LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
@@ -103,6 +110,7 @@ struct StackedPage: ViewModifier {
             }
             // Dark as it lies under the card shown, itself once it is the
             // screen.
+            if !Self.left(4) {
             GeometryReader { geo in
                 CardCut(foot: foot, corner: Self.corner(geo.size))
                     .fill(.black)
@@ -114,10 +122,11 @@ struct StackedPage: ViewModifier {
                     .opacity(stacks ? Self.dark * Self.under(proxy) : 0)
             }
             .allowsHitTesting(false)
+            }
             // The light line, only on the card on top; pressed, in with the
             // card; not on the glow before the work let go is back there
             // (run 6: a line at the card's size on the empty glow).
-            if card {
+            if card, !Self.left(4) {
                 GeometryReader { geo in
                     let inset = pressed ? Self.pressedInset : 0
                     let tall = geo.size.height - foot - 2 * inset
@@ -182,7 +191,8 @@ struct StackedPage: ViewModifier {
     nonisolated static func lies(_ proxy: GeometryProxy, foot: CGFloat) -> (scale: CGFloat, y: CGFloat) {
         let size = proxy.size
         let top = proxy.frame(in: .scrollView).minY
-        guard size.height > 0, top > 0, top < 2 * size.height else { return (1, 0) }
+        let reach = left(32) ? size.height + 1 : 2 * size.height
+        guard !left(1), size.height > 0, top > 0, top < reach else { return (1, 0) }
         let down = min(top / size.height, 1)
         let scale = 1 - 2 * underInset / max(size.width, 1) * down
         let at = size.height - foot * (1 - down) - scale * (size.height - foot)
