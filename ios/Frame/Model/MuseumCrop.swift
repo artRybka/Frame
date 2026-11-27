@@ -48,7 +48,9 @@ enum MuseumCrop {
     /// over this share of the impression's shorter side (`PLATE_OVER`).
     /// 2: a print the model left whole is the photograph's whole sheet,
     /// cut down round its impression all the same (Mateusz 2026-11-25).
-    static let plates = 2
+    /// 3: a cut that leaves the drawing's fine lines out is none (the
+    /// core's `PLATE_DRAWN`; Mateusz 2026-11-27).
+    static let plates = 3
     static let plateOver = 0.15
     /// A print (`crop_model.KINDS`).
     static let printKind = 2

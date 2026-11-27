@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.413
+
+- Grafiki z muzeów: automatyczny kadr „do odbitki” nie zostawia już
+  rysunku poza sobą (litografia z jedną ciemną postacią zostaje całą
+  kartką). Tak przycięte grafiki wracają do swojej kartki; kadry
+  ustawione ręcznie zostają.
+
 ## 1.145.412
 
 - Galeria: przytrzymanie dzieła zmniejsza całą kartę razem z jej
