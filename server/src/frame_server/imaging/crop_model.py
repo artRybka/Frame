@@ -102,7 +102,9 @@ KINDS = ("painting", "drawing", "print", "photo", "other")
 #: się nie kadruje?”), and the margin is round the impression with its
 #: lettering („prawie wcina się w napis”); those looked at before are
 #: looked at again (``phone_crops.wants``).
-PLATE = 2
+#: 3: a cut that leaves the drawing's fine lines out is none
+#: (:data:`PLATE_DRAWN`; Mateusz 2026-11-27, a lithograph cut to one figure).
+PLATE = 3
 #: The photograph's own edges: the sheet of a print photographed with
 #: nothing round it.
 EDGES: Quad = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
@@ -166,6 +168,27 @@ PLATE_LEAST = 0.04
 PLATE_SAME = 0.85
 #: Less of the sheet than this is a speck, not something written on it.
 PLATE_PART = 0.0002
+#: The drawing's fine lines: darker than what lies round them (a black-hat
+#: of :data:`PLATE_LINE` px on the upright sheet) by at least
+#: :data:`PLATE_FAINT` (L), or :data:`PLATE_SPREAD` median deviations above
+#: the band's. They are counted in squares of :data:`PLATE_CELL` px, those
+#: with at least :data:`PLATE_CELL_LEAST` px of them (so a densely hatched
+#: part weighs no more than a lightly drawn one), each where its middle is.
+#: A cut that leaves more than :data:`PLATE_DRAWN` of them out beside it or
+#: above it (under it is what is written under a print)
+#: is no cut: an impression found as one dark part of a drawing printed
+#: with no plate (Mateusz 2026-11-27, a lithograph by Toulouse-Lautrec cut
+#: to one of its two figures: „Nie możemy tak robić”).
+PLATE_LINE = 9
+PLATE_FAINT = 3.0
+PLATE_DRAWN = 0.14
+PLATE_CELL = 24
+#: …and only where the impression lies along less than :data:`PLATE_EDGED`
+#: of its box's edges (:func:`_edged`): an etching's plate keeps its cut
+#: whatever is pencilled or stained round it.
+PLATE_EDGED = 0.6
+PLATE_EDGE_DEPTH = 0.03
+PLATE_CELL_LEAST = 12
 
 _PRINT = (
     r"print|etching|engraving|woodcut|wood engraving|lithograph|mezzotint|aquatint|drypoint|"
@@ -422,6 +445,12 @@ class Impression:
     #: The other things printed or written on the sheet, apart from it
     #: (a title, a name, a signature): their boxes, as ``box``.
     others: tuple[tuple[float, float, float, float], ...] = ()
+    #: The drawing's fine lines (:func:`_lines`): the middles of the squares
+    #: they are drawn in, as
+    #: ``box`` (u, v; one row each).
+    lines: np.ndarray | None = None
+    #: How much of its box's edges it lies along (:func:`_edged`).
+    edged: float = 1.0
 
     def corners(
         self,
@@ -512,6 +541,47 @@ def _others(
         uj, vj = u[mine], v[mine]
         out.append((float(uj.min()), float(vj.min()), float(uj.max() + 1), float(vj.max() + 1)))
     return tuple(out)
+
+
+def _lines(light: np.ndarray, band: np.ndarray, e: int) -> np.ndarray:
+    """The drawing's fine lines on the upright sheet (``light``: its L;
+    ``band``: the paper's band; ``e``: the edge left out), as a mask."""
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (PLATE_LINE, PLATE_LINE))
+    dark = cv2.morphologyEx(light, cv2.MORPH_BLACKHAT, k)
+    line = (dark > max(PLATE_FAINT, _spread_above(dark[band]))).astype(np.uint8)
+    rows, cols = line.shape
+    line[:e, :] = 0
+    line[rows - e :, :] = 0
+    line[:, :e] = 0
+    line[:, cols - e :] = 0
+    return cv2.morphologyEx(line, cv2.MORPH_OPEN, np.ones((2, 2), np.uint8))
+
+
+def _edged(u: np.ndarray, v: np.ndarray, box: Sequence[float]) -> float:
+    """How much of the edges of ``box`` (left, top, right, bottom) the
+    impression's pixels (``u``, ``v``) lie along, within
+    :data:`PLATE_EDGE_DEPTH` of its shorter side inside them: the mean of
+    its four sides' shares (px). A plate's impression, or one printed to a
+    ruled edge, lies along all of them; a figure drawn with no plate
+    touches them here and there."""
+    u0, v0, u1, v1 = box
+    d = max(3.0, PLATE_EDGE_DEPTH * min(u1 - u0, v1 - v0))
+    inside = (u >= u0) & (u < u1) & (v >= v0) & (v < v1)
+    u, v = u[inside], v[inside]
+    nu, nv = max(1, int(u1 - u0)), max(1, int(v1 - v0))
+    across = np.clip((u - u0).astype(int), 0, nu - 1)
+    down = np.clip((v - v0).astype(int), 0, nv - 1)
+    shares = []
+    for near, at, n in (
+        (v < v0 + d, across, nu),
+        (v >= v1 - d, across, nu),
+        (u < u0 + d, down, nv),
+        (u >= u1 - d, down, nv),
+    ):
+        seen = np.zeros(n, bool)
+        seen[at[near]] = True
+        shares.append(float(seen.mean()))
+    return float(np.mean(shares))
 
 
 def _cut_caption(t: np.ndarray, lo: float, hi: float, across: float) -> tuple[float, float]:
@@ -614,7 +684,27 @@ def impression(rgb: np.ndarray, sheet: Sequence[Sequence[float]]) -> Impression 
     middle = (float(cx), float(cy))
     edges = (box[0], box[1], box[2], box[3])
     others = _others(work, parts, count, k, middle, float(turn), rows * cols)
-    found = Impression(edges, float(turn), middle, (cols, rows), to_sheet, inked, others)
+    edged = _edged(u, v, edges)
+    line = _lines(light, band, e)
+    n_r, n_c = rows // PLATE_CELL, cols // PLATE_CELL
+    cells = (
+        line[: n_r * PLATE_CELL, : n_c * PLATE_CELL]
+        .reshape(n_r, PLATE_CELL, n_c, PLATE_CELL)
+        .sum(axis=(1, 3))
+    )
+    cy_, cx_ = np.nonzero(cells >= PLATE_CELL_LEAST)
+    lx = (cx_ + 0.5) * PLATE_CELL
+    ly = (cy_ + 0.5) * PLATE_CELL
+    a = np.deg2rad(turn)
+    lines = np.column_stack(
+        [
+            (lx - cx) * np.cos(a) + (ly - cy) * np.sin(a),
+            -(lx - cx) * np.sin(a) + (ly - cy) * np.cos(a),
+        ]
+    )
+    found = Impression(
+        edges, float(turn), middle, (cols, rows), to_sheet, inked, others, lines, edged
+    )
     # Plain paper round it: alike on every side, light, and little on it.
     sides = [
         lab[e:b, e : cols - e],
@@ -697,6 +787,16 @@ def plate(
             max(inked[2], *(o[2] for o in touched)),
             max(inked[3], *(o[3] for o in touched)),
         )
+    # A cut that leaves the drawing out is none (a lithograph's one dark
+    # figure taken for its impression, the rest of it drawn in fine lines).
+    if found.lines is not None and len(found.lines):
+        u, v = found.lines[:, 0], found.lines[:, 1]
+        u0, v0, u1 = inked[0] - pad, inked[1] - pad, inked[2] + pad
+        # Under it is what is written under a print (its title, a signature,
+        # a pencilled note): not counted.
+        out = (u < u0) | (u > u1) | (v < v0)
+        if float(out.mean()) > PLATE_DRAWN and found.edged < PLATE_EDGED:
+            return None
     h, w = rgb.shape[:2]
     cut = valid(found.on_photo(found.corners((pad, pad, pad, pad), inked), w, h))
     if cut is None:

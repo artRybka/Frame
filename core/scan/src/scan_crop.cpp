@@ -422,6 +422,8 @@ struct Impression {
     std::array<double, 4> box;  // left, top, right, bottom
     std::array<double, 4> inked;  // the same with its lettering (`cut_caption` leaves it out)
     std::vector<std::array<double, 4>> others;  // the sheet's other inked parts, as `box`
+    double edged = 1.0;  // how much of its box's edges it lies along (`crop_model._edged`)
+    std::vector<cv::Point2d> lines;  // the squares the drawing's fine lines are in (`crop_model._lines`), as `box`: u, v
     double turn = 0;
     cv::Point2d middle;
     int cols = 0, rows = 0;
@@ -671,6 +673,28 @@ std::optional<Impression> impression(const cv::Mat& rgb, const Quad& sheet) {
     std::tie(box[0], box[2]) = cut_caption(ku, box[0], box[2], box[3] - box[1]);
     std::tie(box[1], box[3]) = cut_caption(kv, box[1], box[3], box[2] - box[0]);
     found.box = box;
+    {
+        // `crop_model._edged`: how much of its box's edges it lies along.
+        double u0 = box[0], v0 = box[1], u1 = box[2], v1 = box[3];
+        double d = std::max(3.0, PLATE_EDGE_DEPTH * std::min(u1 - u0, v1 - v0));
+        int nu = std::max(1, static_cast<int>(u1 - u0)), nv = std::max(1, static_cast<int>(v1 - v0));
+        std::vector<char> top(static_cast<size_t>(nu), 0), bottom(static_cast<size_t>(nu), 0);
+        std::vector<char> left(static_cast<size_t>(nv), 0), right(static_cast<size_t>(nv), 0);
+        for (size_t i = 0; i < ku.size(); i++) {
+            double uu = ku[i], vv = kv[i];
+            if (!(uu >= u0 && uu < u1 && vv >= v0 && vv < v1)) continue;
+            size_t across = static_cast<size_t>(std::clamp(static_cast<int>(uu - u0), 0, nu - 1));
+            size_t down = static_cast<size_t>(std::clamp(static_cast<int>(vv - v0), 0, nv - 1));
+            if (vv < v0 + d) top[across] = 1;
+            if (vv >= v1 - d) bottom[across] = 1;
+            if (uu < u0 + d) left[down] = 1;
+            if (uu >= u1 - d) right[down] = 1;
+        }
+        auto share = [](const std::vector<char>& x) {
+            return static_cast<double>(std::count(x.begin(), x.end(), 1)) / static_cast<double>(x.size());
+        };
+        found.edged = (share(top) + share(bottom) + share(left) + share(right)) / 4.0;
+    }
     found.turn = turn;
     found.middle = {cx, cy};
     {
@@ -691,6 +715,32 @@ std::optional<Impression> impression(const cv::Mat& rgb, const Quad& sheet) {
         for (int j = 1; j < n; j++)
             if (j != k && static_cast<double>(count[static_cast<size_t>(j)]) >= PLATE_PART * rows * cols)
                 found.others.push_back(spans[static_cast<size_t>(j)]);
+    }
+    {
+        // `crop_model._lines`: the drawing's fine lines, darker than what
+        // lies round them.
+        cv::Mat dark;
+        cv::morphologyEx(light, dark, cv::MORPH_BLACKHAT,
+                         cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(PLATE_LINE, PLATE_LINE)));
+        std::vector<float> band_dark;
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+                if (in_band(r, c)) band_dark.push_back(dark.at<float>(r, c));
+        float least_dark = std::max(static_cast<float>(PLATE_FAINT), spread_above(band_dark));
+        cv::Mat line = cv::Mat::zeros(rows, cols, CV_8U);
+        for (int r = e; r < rows - e; r++)
+            for (int c = e; c < cols - e; c++) line.at<unsigned char>(r, c) = dark.at<float>(r, c) > least_dark;
+        cv::morphologyEx(line, line, cv::MORPH_OPEN, cv::Mat::ones(2, 2, CV_8U));
+        // Counted in squares, each where its middle is.
+        double a = turn * M_PI / 180.0, ca = std::cos(a), sa = std::sin(a);
+        int n_r = rows / PLATE_CELL, n_c = cols / PLATE_CELL;
+        for (int i = 0; i < n_r; i++)
+            for (int j = 0; j < n_c; j++) {
+                int in = cv::countNonZero(line(cv::Rect(j * PLATE_CELL, i * PLATE_CELL, PLATE_CELL, PLATE_CELL)));
+                if (in < PLATE_CELL_LEAST) continue;
+                double x = (j + 0.5) * PLATE_CELL, y = (i + 0.5) * PLATE_CELL;
+                found.lines.emplace_back((x - cx) * ca + (y - cy) * sa, -(x - cx) * sa + (y - cy) * ca);
+            }
     }
     found.cols = cols, found.rows = rows;
     // Plain paper round it: alike on every side, light, and little on it.
@@ -773,6 +823,14 @@ std::optional<std::pair<Quad, Quad>> plate(const cv::Mat& rgb, const Quad& sheet
         }
         if (!touched) break;
         inked = grown;
+    }
+    // A cut that leaves the drawing out is none.
+    if (!found->lines.empty()) {
+        long out = 0;
+        for (const auto& p : found->lines)
+            out += p.x < inked[0] - pad || p.x > inked[2] + pad || p.y < inked[1] - pad;  // not under it: lettering
+        if (static_cast<double>(out) / static_cast<double>(found->lines.size()) > PLATE_DRAWN && found->edged < PLATE_EDGED)
+            return std::nullopt;
     }
     auto cut = valid(found->on_photo(found->corners_of(inked, pad), rgb.cols, rgb.rows));
     if (!cut) return std::nullopt;

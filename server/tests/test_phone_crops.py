@@ -383,6 +383,44 @@ def test_prints_cut_before_are_cut_round_their_impression_once(
     assert phone.plates_again() == {}
 
 
+def test_a_print_cut_to_one_figure_of_its_drawing_goes_back_to_its_sheet(
+    service: FrameService,
+    fake: FakeAnthropic,  # noqa: F811
+) -> None:
+    # Mateusz 2026-11-27, a Toulouse-Lautrec cut to one of its two figures:
+    # „Nie możemy tak robić”. The model's cut round it is undone.
+    from test_crop_plate import SHEET, corners, drawing_photo
+
+    figure = (250, 200, 480, 520)
+    _work(
+        service,
+        "mnw:1",
+        picture=Image.fromarray(drawing_photo(figure)),
+        pooled=True,
+        medium="litografia, papier",
+    )
+    sheet = corners(SHEET)
+    tight = corners((230, 180, 500, 540))
+    with _client(service) as client:
+        _found(
+            "mnw:1",
+            client,
+            work=tight,
+            surround=None,
+            sheet=sheet,
+            plate=corners(figure),
+            plates=cm.PLATE,
+        )
+    phone = service.phone_crops
+    state = phone._state()
+    state["plates"] = 2
+    phone._save(state)
+    assert service.library.get("mnw:1").cut.plate is not None  # type: ignore[union-attr]
+    assert phone.plates_again()["auto"] == 1
+    cut = service.library.get("mnw:1").cut  # type: ignore[union-attr]
+    assert cut is not None and _near(cut.work or [], sheet, 0.002) and cut.plate is None
+
+
 def test_the_server_looks_at_night_as_the_phone_would(
     service: FrameService,
     fake: FakeAnthropic,  # noqa: F811
