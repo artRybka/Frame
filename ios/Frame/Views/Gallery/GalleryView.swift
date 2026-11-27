@@ -1502,7 +1502,9 @@ private struct GalleryPage: View {
             had = now.version
             anew += 1
         }
-        .task(id: current) { if current { await loadPolish() } }
+        .task(id: current) {
+            if current { await loadPolish() } else if polish == nil { polish = ItemPeeks.polish[work.id] }
+        }
         .task(id: whole && current) { await nudge() }
         .task(id: current ? thumb.map { ObjectIdentifier($0) } : nil) {
             // Its card opens with this thumbnail, asked for at the plain
@@ -1603,7 +1605,12 @@ private struct GalleryPage: View {
                     .ignoredByLayout()
             )
             .modifier(Lens(sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
-            if current {
+            // On every page, the one under the card too: drawn only on the
+            // one shown, a swipe's new card had its gradient and title come
+            // in a frame after it was there (Mateusz 2026-11-27 22:50: "karta
+            // pod spodem powinna już mieć gradient od dołu i na nim
+            // litery … teraz jest mignięcie").
+            Group {
                 // Gone before the work has drawn back from under it (its
                 // shade lay on the glow for two frames of the probe's
                 // film), there again once the work is back.
