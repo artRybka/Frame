@@ -290,6 +290,11 @@ struct GalleryView: View {
             below: index + 1 < works.count ? works[index + 1] : nil,
             ready: { pageReady(work.id) }
         )
+        // A card on a stack, the next work's edge under it (`StackedPage`).
+        .modifier(StackedPage(
+            on: !grid && peek == nil && pressed == nil,
+            under: index + 1 < works.count ? works[index + 1] : nil
+        ))
         .containerRelativeFrame([.horizontal, .vertical])
         .contentShape(Rectangle())
         // One tap does nothing; two give a heart (Mateusz 2026-11-24
