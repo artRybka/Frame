@@ -1795,6 +1795,7 @@ private extension UIFont {
 struct ViewerSection: View {
     @AppStorage(ArtGlow.key) private var glow = true
     @AppStorage(ArtGlow.gainKey) private var gain = ArtGlow.defaultGain
+    @AppStorage(ArtGlow.Lights.key) private var lights = ArtGlow.Lights.even
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1829,6 +1830,19 @@ struct ViewerSection: View {
                         .tint(Theme.ink)
                         .accessibilityValue(ArtGlow.label(gain))
                         Text("Domyślnie 1,6×.")
+                            .font(.caption)
+                            .foregroundStyle(Theme.inkSoft)
+                    }
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(bound: "Światła (próba)")
+                        Picker("Światła (próba)", selection: $lights) {
+                            ForEach(ArtGlow.Lights.allCases) { option in
+                                Text(bound: option.label).tag(option)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        Text(bound: lights.detail)
                             .font(.caption)
                             .foregroundStyle(Theme.inkSoft)
                     }
