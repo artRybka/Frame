@@ -295,6 +295,58 @@ struct ItemDetailView: View {
         }
         .task(id: itemID) { await makeEdgeGlow() }
         .background { phoneRestorer }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let item {
+                let offer = menuHeld ?? menuOffer(item)
+                ItemToolbar(
+                    model: model, item: item, changed: { self.item = $0 },
+                    addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
+                    findingCopies: $findingCopies, pictureSide: offer.pictureSide,
+                    // A pick lets go of what the open menu held: its own
+                    // change shows at the next opening (Mateusz 2026-11-26:
+                    // "Menu odświeża się dopiero gdy wyjdę i wrócę do karty";
+                    // `onDisappear` of an entry does not come on every close).
+                    restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
+                    proWaiting: offer.proWaiting,
+                    correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
+                    undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
+                    recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
+                    recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
+                    editOwn: ownActions(item) ? { editingOwn = true } : nil,
+                    retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
+                    deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
+                    deletingOwn: $deletingOwn,
+                    menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
+                )
+            }
+        }
+        .task(id: itemID) { await load() }
+        .task(id: item?.fragmentsID ?? itemID) { await loadFragments() }
+        .task(id: itemID) { await loadDetails() }
+        .task(id: described) { await loadSeen() }
+        .task(id: described) { await sharpen() }
+        .task(id: fresh) { await checkCut() }
+        .task(id: item?.framed == nil ? "" : (item?.pictureVersion ?? "")) { await warmFramed() }
+        .onChange(of: view) { _, mode in if mode == .frame { leaveFrame() } }
+        .onChange(of: item?.framed) { _, look in if look == nil { leaveFrame() } }
+        .fullScreenCover(isPresented: $correctingCut) {
+            if let item {
+                CutEditor(item: item) { update in await setCut(update) }
+            }
+        }
+        .sheet(isPresented: $editingOwn) {
+            if let item {
+                OwnDescriptionSheet(item: item) { updated in
+                    withAnimation(.easeOut(duration: 0.3)) { self.item = updated }
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $retakingOwn) {
+            if let item {
+                OwnWorkFlow(mode: .retake(item)) { updated in cutChanged(updated) }
+            }
+        }
         .task(id: described) { await findHolder() }
         .task(id: described) { await findMedium() }
         .task(id: recoveryKey) { await findRecovery() }
