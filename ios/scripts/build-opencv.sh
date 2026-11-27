@@ -29,7 +29,7 @@ SDIST=https://files.pythonhosted.org/packages/1d/99/76b7c80252aa83c1af16393454aa
 SHA256=b82f9831daab90b725c7c1ee1b36cb5732c367096ac76d119e64e14eb70d5f3c
 MIN_IOS=17.0
 # Raised when what is built of those sources changes.
-BUILD=2
+BUILD=3
 
 ios="$(cd "$(dirname "$0")/.." && pwd)"
 out="$ios/Vendor/OpenCV"
@@ -66,7 +66,7 @@ build() {
             -DAPPLE_FRAMEWORK=ON -DFRAMEWORK_NAME=opencv2 \
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$dir/install" \
             -DOPENCV_INCLUDE_INSTALL_PATH=include -DOPENCV_3P_LIB_INSTALL_PATH=lib/3rdparty \
-            -DBUILD_LIST=core,imgproc,flann,geometry,features -DBUILD_SHARED_LIBS=OFF \
+            -DBUILD_LIST=core,imgproc,flann,geometry,features,video -DBUILD_SHARED_LIBS=OFF \
             -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_DOCS=OFF \
             -DBUILD_opencv_apps=OFF -DBUILD_JAVA=OFF -DBUILD_OBJC=OFF \
             -DBUILD_opencv_python2=OFF -DBUILD_opencv_python3=OFF \
@@ -91,7 +91,7 @@ build() {
             { tail -n 40 "$dir/install.log"; exit 1; }
     )
     mkdir -p "$out/$sdk"
-    # One library of the five modules and what they stand on (zlib, LAPACK).
+    # One library of the six modules and what they stand on (zlib, LAPACK).
     libtool -static -o "$out/$sdk/libopencv.a" "$dir"/install/lib/*.a "$dir"/install/lib/3rdparty/*.a
 }
 

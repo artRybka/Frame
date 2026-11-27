@@ -1,14 +1,22 @@
 import CoreGraphics
 import CoreML
 import Foundation
+import FrameScan
+import ImageIO
 import os
+import UniformTypeIdentifiers
 
-/// Our restorer's model (ArtSR G3, the server's `imaging/artsr.py`) on the
-/// phone's Neural Engine, for now only measured (Mateusz 2026-11-26: "Czy
-/// prace modelu możemy wrzucić na iPhone w sytuacji gdy wchodzimy na kartę
-/// dzieła?" … "Przetestujmy"): the picture four times larger, drawn in
-/// windows of `window` px as the server draws its tiles, then brought to
-/// 2K. The base model is LocalSR Photo M (Hermes Reisner, CC BY 4.0).
+/// Our restorer on the phone, all of it (Mateusz 2026-11-27: „Wszystko.”,
+/// „telefon wykonuje poprawę. Od razu ja pokazuje a w tle wysyła na
+/// serwer”): the picture the server would draw from (`/restore/source`)
+/// loses its printed screen (the core's `frame_restore_descreen`, the
+/// server's `imaging/descreen.py`), is drawn four times larger by our model
+/// (ArtSR G3, the server's `imaging/artsr.py`) on the Neural Engine in
+/// windows of `window` px as the server draws its tiles, and is brought to
+/// 2K and put in the picture's colours (`frame_restore_colours`, the
+/// server's `restorer.recoloured`). Some seconds when a card opens; the
+/// iPhone drew 1800 × 1415 px in 1.0 s, cool (Mateusz's trial,
+/// 2026-11-27). The base model is LocalSR Photo M (Hermes Reisner, CC BY 4.0).
 enum PhoneRestorer {
     /// The model's fixed window, its overlap and its scale (`TILE` +
     /// 2 × `OVERLAP`, `SCALE` on the server).
@@ -17,22 +25,27 @@ enum PhoneRestorer {
     static let scale = 4
     /// The drawing's long side (`restorer.LONGEST`).
     static let longest = 2048
+    /// What is kept of what the model drew finer than the picture
+    /// (`restorer.DRAWN`); the rest is the picture enlarged plainly.
+    static let drawn = 0.7
 
     struct Failed: Error, LocalizedError {
         var told: String
         var errorDescription: String? { told }
     }
 
-    /// What one drawing took.
-    struct Measured: Sendable {
+    /// A work drawn on the phone: the drawing (in the picture's colours, 2K
+    /// long) and its JPEG for the server, of a picture `columns` × `rows`.
+    struct Made: @unchecked Sendable {
+        var image: CGImage
+        var jpeg: Data
         var columns: Int
         var rows: Int
-        var windows: Int
-        var load: Duration
-        var draw: Duration
-        var thermalBefore: ProcessInfo.ThermalState
-        var thermalAfter: ProcessInfo.ThermalState
-        var drawing: CGImage
+        /// The printed screen's points taken out (0: none).
+        var screen: Int
+        /// The drawing lay on its picture (else kept as drawn).
+        var laid: Bool
+        var took: Duration
     }
 
     private static let log = Logger(subsystem: "Frame", category: "PhoneRestorer")
@@ -59,27 +72,50 @@ enum PhoneRestorer {
         }
     }
 
-    /// `photo` drawn four times larger and brought to 2K, measured. `look`:
-    /// the work's 768 SigLIP numbers (zeros when not known: the time is the
-    /// same); `kind`: 0 painting, 1 print, 2 drawing.
-    static func measure(_ photo: MuseumCrop.Pixels, look: [Float]? = nil, kind: Int = 0) throws -> Measured {
-        let before = ProcessInfo.processInfo.thermalState
+    /// The picture in `file` (the server's `/restore/source`) drawn again
+    /// as the server's restorer draws it: `look` the work's 768 SigLIP
+    /// numbers, `kind` 0 painting, 1 print, 2 drawing (`/restore/plan`).
+    static func restore(_ file: Data, look: [Float], kind: Int) throws -> Made {
         let clock = ContinuousClock()
-        var model: MLModel?
-        let load = try clock.measure { model = try Loaded.shared.get() }
-        guard let model else { throw Failed(told: "the model did not load") }
-        var windows = 0
-        var drawn: [UInt8] = []
-        let draw = try clock.measure {
-            (drawn, windows) = try larger(photo, model: model, look: look ?? [Float](repeating: 0, count: 768), kind: kind)
+        let start = clock.now
+        var photo = try MuseumCrop.pixels(of: file)
+        var error = [CChar](repeating: 0, count: 512)
+        let size = Int32(error.count)
+        var screen: Int32 = 0
+        let rows = Int32(photo.rows), columns = Int32(photo.columns)
+        let cleared = photo.rgb.withUnsafeMutableBufferPointer { rgb in
+            frame_restore_descreen(rgb.baseAddress, rows, columns, &screen, &error, size)
         }
-        let image = try twoK(drawn, columns: photo.columns * scale, rows: photo.rows * scale)
-        let measured = Measured(
-            columns: photo.columns, rows: photo.rows, windows: windows, load: load, draw: draw,
-            thermalBefore: before, thermalAfter: ProcessInfo.processInfo.thermalState, drawing: image
+        guard cleared == 0 else { throw Failed(told: told(error)) }
+        let model = try Loaded.shared.get()
+        let (big, windows) = try larger(photo, model: model, look: look, kind: kind)
+        var into = [UInt8](repeating: 0, count: longest * longest * 3)
+        var height: Int32 = 0, width: Int32 = 0, laid: Int32 = 0
+        let coloured = photo.rgb.withUnsafeBufferPointer { rgb in
+            big.withUnsafeBufferPointer { big in
+                into.withUnsafeMutableBufferPointer { into in
+                    frame_restore_colours(
+                        rgb.baseAddress, rows, columns, big.baseAddress, rows * Int32(scale), columns * Int32(scale),
+                        drawn, into.baseAddress, &height, &width, &laid, &error, size
+                    )
+                }
+            }
+        }
+        guard coloured == 0 else { throw Failed(told: told(error)) }
+        let image = try picture(into, columns: Int(width), rows: Int(height))
+        let jpeg = try encoded(image)
+        let took = clock.now - start
+        log.info(
+            "drew \(photo.columns)×\(photo.rows) in \(windows) windows (screen \(screen), laid \(laid)): \(took)"
         )
-        log.info("drew \(photo.columns)×\(photo.rows) in \(windows) windows: \(draw)")
-        return measured
+        return Made(
+            image: image, jpeg: jpeg, columns: photo.columns, rows: photo.rows, screen: Int(screen), laid: laid != 0,
+            took: took
+        )
+    }
+
+    private static func told(_ error: [CChar]) -> String {
+        String(decoding: error.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 
     /// Where the windows start along a side of `n` px (at least `window`):
@@ -182,31 +218,39 @@ enum PhoneRestorer {
         }
     }
 
-    /// The drawing brought down to `longest` on its long side.
-    static func twoK(_ rgb: [UInt8], columns: Int, rows: Int) throws -> CGImage {
+    /// RGB bytes as a picture.
+    static func picture(_ rgb: [UInt8], columns: Int, rows: Int) throws -> CGImage {
         var rgba = [UInt8](repeating: 255, count: columns * rows * 4)
         for i in 0 ..< columns * rows {
             rgba[i * 4] = rgb[i * 3]
             rgba[i * 4 + 1] = rgb[i * 3 + 1]
             rgba[i * 4 + 2] = rgb[i * 3 + 2]
         }
-        let space = CGColorSpace(name: CGColorSpace.sRGB)!
-        let info = CGImageAlphaInfo.noneSkipLast.rawValue
-        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
-              let full = CGImage(
-                  width: columns, height: rows, bitsPerComponent: 8, bitsPerPixel: 32,
-                  bytesPerRow: columns * 4, space: space, bitmapInfo: CGBitmapInfo(rawValue: info),
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let provider = CGDataProvider(data: Data(rgba) as CFData),
+              let made = CGImage(
+                  width: columns, height: rows, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: columns * 4,
+                  space: space, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
                   provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
               )
         else { throw Failed(told: "the drawing could not be made") }
-        let k = Double(longest) / Double(max(columns, rows))
-        let tw = Int((Double(columns) * k).rounded()), th = Int((Double(rows) * k).rounded())
-        guard let context = CGContext(
-            data: nil, width: tw, height: th, bitsPerComponent: 8, bytesPerRow: 0, space: space, bitmapInfo: info
-        ) else { throw Failed(told: "the drawing could not be made") }
-        context.interpolationQuality = .high
-        context.draw(full, in: CGRect(x: 0, y: 0, width: tw, height: th))
-        guard let made = context.makeImage() else { throw Failed(told: "the drawing could not be made") }
         return made
     }
+
+    /// The drawing as the server keeps one (a JPEG of 95).
+    static func encoded(_ image: CGImage) throws -> Data {
+        let out = NSMutableData()
+        guard let into = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw Failed(told: "the drawing could not be written")
+        }
+        CGImageDestinationAddImage(into, image, [kCGImageDestinationLossyCompressionQuality: 0.95] as CFDictionary)
+        guard CGImageDestinationFinalize(into) else { throw Failed(told: "the drawing could not be written") }
+        return out as Data
+    }
+}
+
+/// How the server says a work is to be drawn on the phone (`/restore/plan`).
+struct RestorePlan: Codable, Sendable {
+    var kind: Int
+    var look: [Float]
 }

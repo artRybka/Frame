@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, Any
 
 import cv2
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image
 
 from .ai.gemini import MODEL, PRO, Ask, NotDrawn
 from .imaging import artsr
@@ -64,6 +64,8 @@ ORIGIN = "Kreatywny restaurator"
 ORIGIN_PRO = "Restauracja PRO"
 #: Google's output: some 2048 px on the long side; ours is brought to it.
 SIZE = "2K"
+#: What a drawing the phone made is noted as (:meth:`Restorer.keep_drawn`).
+PHONE = f"{artsr.NAME}-phone"
 #: A picture this long or longer gains nothing from a drawing of 2K.
 LONGEST = 2048
 #: The proportions of the drawing may differ from the picture's by this
@@ -194,6 +196,8 @@ class Restorer:
         #: How a picture looks to SigLIP 2 (``seen.SeenModel.pictures``),
         #: which leads our model; set by the service.
         self.look_of: Callable[[Image.Image], np.ndarray] | None = None
+        #: A work's numbers as kept (``seen.index.vector``); set by the service.
+        self.look_kept: Callable[[str], np.ndarray | None] | None = None
         #: Told when a work ordered of Pro is over (the notification).
         self.on_pro: Done | None = None
         self.clock = clock
@@ -291,23 +295,77 @@ class Restorer:
 
     # -- one work ---------------------------------------------------------------------
 
-    def _picture(self, item: Item) -> Image.Image:
+    def source(self, item: Item) -> Image.Image:
+        """The picture our model draws ``item`` from, its printed screen
+        not taken out yet (:meth:`_picture`; on the phone, Mateusz
+        2026-11-27, the core's ``frame_restore_descreen``)."""
         if self.restored(item):
             # Drawn already (ours, ordered again of Pro): drawn again from
             # the museum's picture, never from the drawing, cut as the
             # work is shown.
-            return descreened(self.images.work_before_drawn(item, urgent=True).convert("RGB"))
+            return self.images.work_before_drawn(item, urgent=True).convert("RGB")
         if item.cleaned_shown() is not None:
             # A work shown cleaned (``Item.cleaned``) is drawn from the
             # picture as it came: the drawing is cleaned after, the same.
-            return descreened(self.images.before_cleaning(item, urgent=True).convert("RGB"))
+            return self.images.before_cleaning(item, urgent=True).convert("RGB")
         # Without its original (a dead link), the thumbnail the card shows
         # (``ImageCache.picture``) is what is drawn larger.
         path, _original = self.images.picture(item, urgent=True)
         with Image.open(path) as img:
-            # A scan of a printed page loses its dots first: drawn larger,
-            # they were a net over the whole work (``imaging.descreen``).
-            return descreened(img.convert("RGB"))
+            return img.convert("RGB")
+
+    def _picture(self, item: Item) -> Image.Image:
+        # A scan of a printed page loses its dots first: drawn larger, they
+        # were a net over the whole work (``imaging.descreen``).
+        return descreened(self.source(item))
+
+    def look(self, item: Item) -> np.ndarray:
+        """The numbers that lead our model for ``item``: the work's own
+        (``seen.index``, of its thumbnail) when kept, else of its picture."""
+        if self.look_kept is not None:
+            kept = self.look_kept(item.id)
+            if kept is not None and np.isfinite(kept).all() and float(np.abs(kept).sum()) > 0:
+                return np.asarray(kept, dtype=np.float32).reshape(-1)
+        return self._look(self._picture(item))
+
+    def keep_drawn(self, item: Item, data: bytes, own: tuple[int, int], by: str = OWNER_ID) -> Item:
+        """A drawing the phone made of ``item`` (Mateusz 2026-11-27:
+        „Wszystko.”, „telefon wykonuje poprawę. Od razu ja pokazuje a w
+        tle wysyła na serwer”): of :meth:`source` (``own``: its size),
+        without its printed screen, drawn by our model and put in the
+        picture's colours there as :meth:`_keep` puts them here. Kept as
+        :meth:`restore` keeps the server's; a work drawn again already is
+        left as it is. Raises :class:`NotRestored`."""
+        stored = self.library.get(item.id) or item
+        if self.restored(stored):  # by another phone, the night, Pro
+            return stored
+        self.check(stored)
+        try:
+            with Image.open(io.BytesIO(data)) as img:
+                size = img.size
+        except (OSError, ValueError) as err:
+            raise NotRestored("not_drawn", f"no picture: {err}") from err
+        if max(size) <= max(own) or max(size) > LONGEST + 2:
+            raise NotRestored("small", f"drawn {size[0]}×{size[1]} of {own[0]}×{own[1]}")
+        with self._lock:
+            now = self.library.get(item.id) or stored
+            if self.restored(now):  # drawn meanwhile (another phone, Pro)
+                return now
+            updated = self.sharper.bring(now, data, ORIGIN, restored=True, pro=False)
+            self._note(
+                item.id,
+                "done",
+                usd=0.0,
+                size=list(size),
+                own=list(own),
+                colours=COLOURS,
+                model=PHONE,
+                pro=False,
+                by=by,
+            )
+        self.file(item.id, by)
+        log.info("restorer: %s %s → %s on the phone of %s", item.id, own, size, by)
+        return updated
 
     def restore(self, item: Item, by: str = OWNER_ID) -> Item:
         """``item`` drawn again now by our model (a minute or two on the
@@ -861,9 +919,11 @@ def recoloured(picture: Image.Image, drawn: Image.Image, share: float = DRAWN) -
     drew, ``share`` is kept over the picture enlarged plainly."""
     size = drawn.size
     sigma = COLOUR_SIGMA * max(size) / max(picture.size)
-    plain = picture.convert("RGB").filter(ImageFilter.GaussianBlur(GRAIN_SIGMA))
-    own = plain.resize(size, Image.Resampling.LANCZOS)
-    museum = linear_to_oklab(u8_to_linear(np.asarray(own))).astype(np.float32)
+    # OpenCV's blur and enlargement, not Pillow's: the phone's core
+    # (``frame_restore_colours``) does it with the same OpenCV.
+    plain = cv2.GaussianBlur(np.asarray(picture.convert("RGB")), (0, 0), GRAIN_SIGMA)
+    own = cv2.resize(plain, size, interpolation=cv2.INTER_LANCZOS4)
+    museum = linear_to_oklab(u8_to_linear(own)).astype(np.float32)
     lab = linear_to_oklab(u8_to_linear(np.asarray(drawn.convert("RGB")))).astype(np.float32)
     laid = _laid(museum[..., 0], lab[..., 0])
     if laid is None:

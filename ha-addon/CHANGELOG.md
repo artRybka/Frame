@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.145.404
+
+- Restauracja robi się sama na iPhonie, gdy otworzysz kartę dzieła
+  ze zdjęciem poniżej 1800 px: telefon usuwa raster druku, dorysowuje
+  szczegóły i dopasowuje barwy w sekundę lub dwie, od razu pokazuje
+  wynik, a w tle wysyła go na serwer. W menu „…” zostaje tylko
+  Restauracja PRO.
+
 ## 1.145.403
 
 - Próba restauracji na iPhonie: w menu „…” karty (tylko właściciel)

@@ -101,6 +101,27 @@ int frame_crop_plate(const unsigned char* pixels, int rows, int columns, const d
  * `crop_model.upright_off`. */
 double frame_crop_upright(const double* quad, int rows, int columns);
 
+/* Our restorer on the phone (Mateusz 2026-11-27: „Wszystko.”), around its model:
+ * `server/src/frame_server/imaging/descreen.py` and `restorer.py`.
+ *
+ * `pixels` (rows × columns × 3 bytes, RGB) with a printed screen taken out
+ * (`descreened`), in place: what the model is given. `found`: the screen's
+ * points (0: none; a small picture loses its finest grain all the same).
+ * Zero when it went well; -1 when it went wrong (said in `error`). */
+int frame_restore_descreen(unsigned char* pixels, int rows, int columns, int* found, char* error, int error_size);
+
+/* The model's `drawn` (`drawn_rows` × `drawn_columns` × 3 bytes, four times
+ * `picture`, which `frame_restore_descreen` made) brought to 2K
+ * (`LONGEST`) and to `picture`'s proportions (`restorer.fit`) and put in
+ * its colours, keeping `share` of what was drawn finer (`DRAWN`:
+ * `restorer.recoloured`), into `into` (room for 2048 × 2048 × 3 bytes): its
+ * size into `into_rows`, `into_columns`. `laid`: 0 when the drawing did not
+ * lie on its picture and was kept as drawn. Zero when it went well; -1
+ * when it went wrong (said in `error`). */
+int frame_restore_colours(const unsigned char* picture, int rows, int columns, const unsigned char* drawn,
+                          int drawn_rows, int drawn_columns, double share, unsigned char* into, int* into_rows,
+                          int* into_columns, int* laid, char* error, int error_size);
+
 /* No more threads than these from now on (0: as many as there are cores). */
 void frame_scan_threads(int threads);
 

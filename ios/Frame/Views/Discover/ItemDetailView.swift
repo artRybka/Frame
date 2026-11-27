@@ -45,11 +45,7 @@ struct ItemDetailView: View {
     /// "Popraw kadr" on the whole screen (also a tap on "Pełny kadr").
     @State private var correctingCut = false
     /// The cut asked of the server (the print's edge: some seconds).
-    /// "Kreatywny restaurator" at work (half a minute).
-    @State private var restoring = false
     @State private var orderingPro = false
-    /// "Zmierz restaurację na iPhonie" running.
-    @State private var measuring = false
     /// Ordered of "Restauracja PRO" from this card (the server's
     /// `restoringPro` comes only with the card's own fetch).
     @State private var proOrdered = false
@@ -299,34 +295,7 @@ struct ItemDetailView: View {
         }
         .task(id: itemID) { await makeEdgeGlow() }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let item {
-                let offer = menuHeld ?? menuOffer(item)
-                ItemToolbar(
-                    model: model, item: item, changed: { self.item = $0 },
-                    addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
-                    findingCopies: $findingCopies, pictureSide: offer.pictureSide,
-                    // A pick lets go of what the open menu held: its own
-                    // change shows at the next opening (Mateusz 2026-11-26:
-                    // "Menu odświeża się dopiero gdy wyjdę i wrócę do karty";
-                    // `onDisappear` of an entry does not come on every close).
-                    restore: offer.restore ? { menuHeld = nil; Task { await restoreByModel() } } : nil,
-                    restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
-                    proWaiting: offer.proWaiting,
-                    measureOnPhone: model.isOwner && item.kind == .artwork && item.look == nil && !measuring
-                        ? { Task { await measureOnPhone() } } : nil,
-                    correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
-                    undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
-                    recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
-                    editOwn: ownActions(item) ? { editingOwn = true } : nil,
-                    retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
-                    deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
-                    deletingOwn: $deletingOwn,
-                    menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
-                )
-            }
-        }
+        .toolbar { cardToolbar }
         .task(id: itemID) { await load() }
         .task(id: item?.fragmentsID ?? itemID) { await loadFragments() }
         .task(id: itemID) { await loadDetails() }
@@ -444,6 +413,54 @@ struct ItemDetailView: View {
         }
     }
 
+    /// The card's "…" and its fellows (apart from the body, which the
+    /// compiler can type-check only so long).
+    @ToolbarContentBuilder private var cardToolbar: some ToolbarContent {
+        if let item {
+            let offer = menuHeld ?? menuOffer(item)
+            ItemToolbar(
+                model: model, item: item, changed: { self.item = $0 },
+                addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
+                findingCopies: $findingCopies, pictureSide: offer.pictureSide,
+                // A pick lets go of what the open menu held: its own
+                // change shows at the next opening (Mateusz 2026-11-26:
+                // "Menu odświeża się dopiero gdy wyjdę i wrócę do karty";
+                // `onDisappear` of an entry does not come on every close).
+                restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
+                proWaiting: offer.proWaiting,
+                correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
+                undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
+                recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
+                recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
+                editOwn: ownActions(item) ? { editingOwn = true } : nil,
+                retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
+                deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
+                deletingOwn: $deletingOwn,
+                menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
+            )
+        }
+    }
+
+    /// Our restorer on the phone, by itself when the card of a small
+    /// picture opens (`AppModel.restoreOnPhone`), and the card taking what
+    /// the server kept of it. Apart from the body, which is long enough.
+    private var phoneRestorer: some View {
+        Color.clear
+            .onChange(of: restoreSide, initial: true) {
+                if let item, item.id == itemID, restoresOnPhone(item) { model.restoreOnPhone(item) }
+            }
+            .onChange(of: model.phoneRestored[itemID]?.pictureVersion) {
+                // Drawn on the phone and kept by the server: the card has it
+                // as a picked copy, without a word (the picture is shown already).
+                guard let updated = model.phoneRestored[itemID], item?.sharper?.isRestored != true else { return }
+                item = updated
+                pictureSize = updated.sharper.map { ($0.width, $0.height) }
+                lowKnown = updated.sharper.map { LowRes.side(max($0.width, $0.height)) }
+                restoreKnown = nil
+            }
+            .allowsHitTesting(false)
+    }
+
     // MARK: Copies
 
     /// A copy picked in "Szukaj lepszej kopii": the card fades to it. On the
@@ -471,7 +488,6 @@ struct ItemDetailView: View {
     private func menuOffer(_ item: Item) -> MenuOffer {
         MenuOffer(
             pictureSide: pictureSize.map { max($0.0, $0.1) },
-            restore: canRestore(item) && !proWaiting(item),
             pro: canRestorePro(item),
             proWaiting: proWaiting(item) && item.sharper?.isPro != true,
             recover: recoveryKind != nil && !cleaning,
@@ -479,11 +495,13 @@ struct ItemDetailView: View {
         )
     }
 
-    /// "Kreatywny restaurator" in the menu: for everyone (2026-11-19), a museum work
-    /// whose picture is small for the frame and not drawn again yet.
-    private func canRestore(_ item: Item) -> Bool {
-        item.kind == .artwork && item.look == nil && !restoring
-            && item.sharper?.isRestored != true && restoreSide > 0
+    /// Our restorer, on the phone by itself when the card opens (Mateusz
+    /// 2026-11-27: „Wszystko.”; "…" keeps only PRO): for everyone, a museum
+    /// work whose picture is under 1800 px and not drawn again yet, nor
+    /// waiting for PRO.
+    private func restoresOnPhone(_ item: Item) -> Bool {
+        item.kind == .artwork && item.look == nil && item.sharper?.isRestored != true && restoreSide > 0
+            && !proWaiting(item)
     }
 
     /// "Restaurator Pro" in the menu (Mateusz 2026-11-26): Google's model
@@ -526,74 +544,12 @@ struct ItemDetailView: View {
         }
     }
 
-    /// "Zmierz restaurację na iPhonie": the museum's picture (as the server
-    /// gives our model one, up to 1800 px) drawn by the phone's own copy of
-    /// the model, timed; nothing is kept.
-    private func measureOnPhone() async {
-        measuring = true
-        defer { measuring = false }
-        model.notices.info("Mierzę restaurację na iPhonie…", "Kilka sekund, nic nie zostanie zapisane.")
-        do {
-            let file = try await model.backend.museumPhoto(itemID: itemID, side: LowRes.restoreLimit)
-            let measured = try await Task.detached(priority: .userInitiated) {
-                try PhoneRestorer.measure(try MuseumCrop.pixels(of: file))
-            }.value
-            let seconds = { (d: Duration) in
-                (Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18)
-                    .formatted(.number.precision(.fractionLength(1)))
-            }
-            let warm = Self.thermal(measured.thermalAfter)
-            model.notices.info(
-                "Restauracja na iPhonie: \(seconds(measured.draw)) s",
-                "\(measured.columns)×\(measured.rows) px, \(measured.windows) okien, model wczytany w "
-                    + "\(seconds(measured.load)) s. Telefon: \(warm)."
-            )
-        } catch {
-            if !error.isCancellation {
-                model.notices.warn("Restauracja na iPhonie", error.localizedDescription)
-            }
-        }
-    }
-
-    private static func thermal(_ state: ProcessInfo.ThermalState) -> String {
-        switch state {
-        case .nominal: "chłodny"
-        case .fair: "ciepły"
-        case .serious: "gorący"
-        case .critical: "przegrzany"
-        @unknown default: "nie wiadomo"
-        }
-    }
-
     /// The server's message out of its JSON answer (`{"detail": "…"}`).
     private static func detail(_ body: String) -> String {
         guard let data = body.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let detail = json["detail"] as? String else { return body }
         return detail
-    }
-
-    /// "Restauracja dzieła": the server's own model draws the picture again
-    /// larger (a minute or two); the card fades to it as to a picked copy.
-    private func restoreByModel() async {
-        restoring = true
-        defer { restoring = false }
-        model.notices.info("Restauracja trwa…", "Potrwa minutę lub dwie.")
-        do {
-            copyPicked(try await model.restore(itemID: itemID))
-        } catch let BackendError.http(status, body) where status == 422 && body.contains("refused") {
-            // Refused five times on the server (Mateusz 2026-11-13: "tytuł:
-            // "Nazwa dzieła, Autor", treść: "Restaurator odmówił pracy, bo to
-            // dzieło chronione"").
-            let named = item.map { [title($0), $0.artist.isEmpty ? "" : Names.artist($0.artist)] }?
-                .filter { !$0.isEmpty } ?? []
-            model.notices.warn(
-                named.isEmpty ? "Restaurator odmówił" : named.joined(separator: ", "),
-                "Restaurator odmówił pracy, bo to dzieło chronione"
-            )
-        } catch {
-            if !error.isCancellation { model.show(error) }
-        }
     }
 
     private func loaded(_ item: Item) -> some View {
@@ -634,6 +590,9 @@ struct ItemDetailView: View {
             .modifier(restOfCard)
         }
         .layoutProbe("column")
+        // The phone's restorer goes with a loaded card (kept out of the
+        // body, which the compiler can type-check only so long).
+        .background { phoneRestorer }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
         .modifier(CardHeld(leave: leave))

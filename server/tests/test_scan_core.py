@@ -407,3 +407,48 @@ def test_the_servers_crop_models_are_the_apps() -> None:
         weights = weights / "weights" / "weight.bin"
         if weights.is_file():
             assert hashlib.sha256(weights.read_bytes()).hexdigest() == said["mlpackage"], package
+
+
+def test_the_phones_restorer_goes_by_the_servers_numbers() -> None:
+    """Our restorer on the phone (``PhoneRestorer`` in the app; Mateusz
+    2026-11-27: „Wszystko.”): the model's windows as the server's tiles, the
+    drawing's length and what is kept of it as ``restorer.py`` has them, and
+    the made-up print of ``PhoneRestorerTests`` holds the screen
+    ``descreen.screen`` finds in it. (The core's steps against the
+    server's, number by number: ``core/scan/tools/restore.py``.)"""
+    import re
+
+    import numpy as np
+    from PIL import Image
+
+    from frame_server import restorer
+    from frame_server.imaging import artsr, descreen
+
+    source = IOS / "Frame" / "Model" / "PhoneRestorer.swift"
+    tests = IOS / "FrameTests" / "PhoneRestorerTests.swift"
+    if not source.is_file() or not tests.is_file():
+        pytest.skip("the server's tree without the app beside it")
+    text, held = source.read_text(), tests.read_text()
+
+    def number(name: str) -> float:
+        found = re.search(rf"static let {name} = ([0-9.]+)\n", text)
+        assert found is not None, name
+        return float(found.group(1))
+
+    assert number("window") == artsr.TILE + 2 * artsr.OVERLAP
+    assert number("overlap") == artsr.OVERLAP and number("scale") == artsr.SCALE
+    assert number("longest") == restorer.LONGEST and number("drawn") == restorer.DRAWN
+
+    rows, columns = 320, 400
+    y, x = np.mgrid[0:rows, 0:columns]
+    base = 40 + (x * 100) // columns + (y * 30) // rows
+    ink = (np.cos(2 * np.pi * x / 4.5) + np.cos(2 * np.pi * y / 4.5)) > 0
+    v = np.where(ink, base, base + 70).astype(np.uint8)
+    rgb = np.stack([v, v, (v * 0.8).astype(np.uint8)], -1)
+    assert (
+        "let ink = cos(2 * Double.pi * Double(x) / 4.5) + cos(2 * Double.pi * Double(y) / 4.5) > 0"
+        in held
+    )
+    found = re.search(r"static let screenPoints = (\d+)\n", held)
+    assert found is not None
+    assert len(descreen.screen(Image.fromarray(rgb))) == int(found.group(1))
