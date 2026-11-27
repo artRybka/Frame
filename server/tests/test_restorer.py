@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from test_sharper import OWN, OWN_THUMB, Web, _jpeg, _own, _print, _serve
 
+from frame_server import restorer
 from frame_server.ai.gatekeeper import asked_by_rules
 from frame_server.ai.gemini import MODEL, PRO, Ask, NotDrawn
 from frame_server.config import Settings
@@ -796,3 +797,63 @@ def test_our_model_draws_a_large_picture_in_tiles_into_bytes() -> None:
     assert drawn.size == (2080, 1200)
     small = np.asarray(drawn.resize(picture.size, Image.Resampling.BOX), np.int16)
     assert np.abs(small - np.asarray(picture, np.int16)).max() <= 1
+
+
+def test_the_phone_draws_a_work_and_the_server_keeps_it(app: Any) -> None:
+    """Mateusz 2026-11-27: „Wszystko.” and „telefon wykonuje poprawę. Od
+    razu ja pokazuje a w tle wysyła na serwer”. The phone asks how to draw
+    the work (its kind, its looks) and the picture the server would draw
+    it from, does it all itself, and sends the drawing: kept as the
+    server's is, in the asker's "Restaurator", noted as the phone's."""
+    client, service, _web, _painter = app
+    own = _small(service, favorite=True)
+
+    plan = client.get(f"/api/library/items/{own.id}/restore/plan")
+    assert plan.status_code == 200, plan.text
+    assert plan.json()["kind"] == 0 and len(plan.json()["look"]) == 768
+    # Its kept numbers lead when there are some.
+    service.restorer.look_kept = lambda item_id: np.full(768, 2.0, np.float32)
+    assert client.get(f"/api/library/items/{own.id}/restore/plan").json()["look"][0] == 2.0
+
+    source = client.get(f"/api/library/items/{own.id}/restore/source")
+    assert source.status_code == 200 and source.headers["content-type"] == "image/png"
+    with Image.open(io.BytesIO(source.content)) as img:
+        assert img.size == (900, 600)
+
+    drawn = _jpeg(_print(1, (2048, 1365)), 92)
+    resp = client.post(
+        f"/api/library/items/{own.id}/restore/drawn?width=900&height=600",
+        content=drawn,
+        headers={"Content-Type": "image/jpeg"},
+    )
+    assert resp.status_code == 200, resp.text
+    copy = resp.json()["sharper"]
+    assert copy["restored"] and not copy["pro"] and copy["museum"] == "Kreatywny restaurator"
+    assert (copy["width"], copy["height"]) == (2048, 1365)
+    assert service.restorer.model.asked == []  # not drawn here
+    note = service.library.note(own.id, "restorer")
+    assert note is not None and note.model == "artsr-g3-phone"
+    assert note.data["own"] == [900, 600] and note.data["colours"] == restorer.COLOURS
+    playlist = service.restorer.playlist(OWNER_ID)
+    assert playlist is not None and playlist.item_ids == [own.id]
+    # Drawn once: another phone's is not taken, nor a plan given.
+    again = client.post(
+        f"/api/library/items/{own.id}/restore/drawn?width=900&height=600", content=drawn
+    )
+    assert again.status_code == 200 and again.json()["sharper"] == copy
+    assert client.get(f"/api/library/items/{own.id}/restore/plan").status_code == 422
+
+
+def test_a_phones_drawing_no_larger_than_its_picture_is_not_kept(app: Any) -> None:
+    client, service, _web, _painter = app
+    own = _small(service)
+    resp = client.post(
+        f"/api/library/items/{own.id}/restore/drawn?width=900&height=600",
+        content=_jpeg(_print(1, (900, 600))),
+    )
+    assert resp.status_code == 422 and resp.json()["detail"].startswith("small:")
+    junk = client.post(
+        f"/api/library/items/{own.id}/restore/drawn?width=900&height=600", content=b"no picture"
+    )
+    assert junk.status_code == 422
+    assert service.library.get(own.id).sharper is None  # type: ignore[union-attr]

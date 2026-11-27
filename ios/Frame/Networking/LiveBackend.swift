@@ -1231,6 +1231,34 @@ struct LiveBackend: FrameBackend {
         return try await perform(req)
     }
 
+    func restorePlan(itemID: String) async throws -> RestorePlan {
+        var req = request("/api/library/items/\(escape(itemID))/restore/plan")
+        req.timeoutInterval = 120  // its numbers made on the NAS when not kept
+        return try await perform(req)
+    }
+
+    func restoreSource(itemID: String) async throws -> Data {
+        var req = request("/api/library/items/\(escape(itemID))/restore/source")
+        req.timeoutInterval = 120
+        let (data, response) = try await load(req)
+        guard let http = response as? HTTPURLResponse else { throw BackendError.invalidResponse }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw BackendError.http(status: http.statusCode, body: String(decoding: data.prefix(2000), as: UTF8.self))
+        }
+        return data
+    }
+
+    func restoreDrawn(itemID: String, jpeg: Data, columns: Int, rows: Int) async throws -> Item {
+        var req = request(
+            "/api/library/items/\(escape(itemID))/restore/drawn", method: "POST",
+            query: [URLQueryItem(name: "width", value: "\(columns)"), URLQueryItem(name: "height", value: "\(rows)")]
+        )
+        req.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        req.httpBody = jpeg
+        req.timeoutInterval = 120
+        return try await perform(req)
+    }
+
     func restorer() async throws -> RestorerState { try await get("/api/ai/restorer") }
 
     func restorer(playlistID: Int) async throws -> RestorerState {

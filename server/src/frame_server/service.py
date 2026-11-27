@@ -441,6 +441,7 @@ class FrameService:
         self.seen.cared = self.cared.ranks
         # Our restorer's model is led by how the work looks (SigLIP 2's numbers).
         self.restorer.look_of = self._look_of_picture
+        self.restorer.look_kept = self.seen.index.vector
         self.looks = Looks(self.library, self.images, self.seen, settings.data_dir / "looks")
         self.looks.english = self._english
         # Szukaj's words for how works look, the groups narrowing them, and

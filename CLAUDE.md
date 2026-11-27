@@ -105,6 +105,15 @@ uv run mypy src
   looks at night at what the phone has not (Mateusz 2026-11-24, „Na
   serwerze w nocy”): a new model is exported there too (its name and the
   app's weights are held by `tests/test_scan_core.py`).
+- Our restorer (ArtSR, `restorer.py`) runs on the phone by itself when a
+  card of a small picture opens (Mateusz 2026-11-27: „Wszystko.”;
+  `PhoneRestorer`, `ios/Models/ArtSR.mlpackage`): `descreen.descreened`
+  before the model and `restorer.fit`, `recoloured` and `_laid` after are
+  written a second time in the core (`core/scan/src/scan_restore.cpp`,
+  checked with `tools/restore.py`; numbers through `tools/constants.py`,
+  the app's held by `tests/test_scan_core.py`): a change of one is a change
+  of the other. The server keeps what the phone sends (`/restore/drawn`)
+  and still draws what it is asked to (Pro, a playlist's batch).
 - "Barwy" in "Podobne do" (`library/palettes.py`): works by their bars'
   palettes. A photograph's palette is made on the phone the same way
   (`ios/…/PhonePalette.swift`); `tests/test_palettes.py` holds the two

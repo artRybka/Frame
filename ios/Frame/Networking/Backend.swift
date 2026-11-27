@@ -107,6 +107,12 @@ protocol FrameBackend: Sendable {
     /// "Restaurator Pro": the work sent to Google's model (within a day);
     /// 429 past this person's day, 409 without Google's key.
     func restorePro(itemID: String) async throws -> ProOrder
+    /// Our restorer on the phone (Mateusz 2026-11-27, `PhoneRestorer`):
+    /// how the work is drawn (422 for one that is not), the picture it is
+    /// drawn from (a PNG), and the drawing sent back, kept in its place.
+    func restorePlan(itemID: String) async throws -> RestorePlan
+    func restoreSource(itemID: String) async throws -> Data
+    func restoreDrawn(itemID: String, jpeg: Data, columns: Int, rows: Int) async throws -> Item
     /// Konfiguracja: the works waiting in Google's batches and those drawn.
     func restorer() async throws -> RestorerState
     /// The playlist's "…" → "Kreatywny restaurator": its works under
@@ -520,6 +526,13 @@ extension FrameBackend {
     }
 
     func museumPhoto(itemID: String, side: Int) async throws -> Data { throw BackendError.notFound }
+
+    /// Only the server draws on the phone's behalf: elsewhere nothing is drawn there.
+    func restorePlan(itemID: String) async throws -> RestorePlan { throw BackendError.notFound }
+    func restoreSource(itemID: String) async throws -> Data { throw BackendError.notFound }
+    func restoreDrawn(itemID: String, jpeg: Data, columns: Int, rows: Int) async throws -> Item {
+        throw BackendError.notFound
+    }
 
     func cropReview() async throws -> CropReview { CropReview(cut: [], unsure: []) }
 

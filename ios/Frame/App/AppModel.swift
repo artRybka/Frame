@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import Observation
+import os
 import UIKit
 
 /// App-wide state: connection, what the frame shows, its status and settings.
@@ -161,6 +162,11 @@ final class AppModel {
     /// work shows them at once, not waiting for the server to make its own
     /// again. Kept while the work shows that picture (`pictureSeen`).
     @ObservationIgnored private(set) var phonePictures: [String: PhonePicture] = [:]
+    /// Works drawn again on the phone (`restoreOnPhone`) as the server
+    /// keeps them now: an open card takes it.
+    private(set) var phoneRestored: [String: Item] = [:]
+    /// Works being drawn on the phone now: each once at a time.
+    @ObservationIgnored private var drawingOnPhone: Set<String> = []
     /// What the cards opened since launch show of their works' pictures
     /// (`PictureMarks`): the lists loaded before follow (`asOnCard`).
     private(set) var cardMarks: [String: PictureMarks] = [:]
@@ -2309,13 +2315,48 @@ final class AppModel {
         return updated
     }
 
-    /// "Kreatywny restaurator": the work's small picture drawn again larger
-    /// by the image model, kept in its place; its thumbnail and previews
-    /// follow at once, as for a picked copy.
-    func restore(itemID: String) async throws -> Item {
-        let updated = try await backend.restore(itemID: itemID)
-        cardShows(updated, changed: true)
-        return updated
+    /// Our restorer on the phone, when a card of a small picture opens
+    /// (Mateusz 2026-11-27: „Wszystko.”, „telefon wykonuje poprawę. Od
+    /// razu ja pokazuje a w tle wysyła na serwer”): drawn here
+    /// (`PhoneRestorer`), shown at once on the card and every thumbnail,
+    /// and sent to the server behind, which keeps it in place of the
+    /// picture (and puts it in "Restaurator"). Goes on when the card is
+    /// left. Nothing is said when it cannot be done: "…" still has PRO.
+    func restoreOnPhone(_ item: Item) {
+        guard drawingOnPhone.insert(item.id).inserted else { return }
+        let id = item.id
+        Task {
+            defer { drawingOnPhone.remove(id) }
+            do {
+                async let plan = backend.restorePlan(itemID: id)
+                async let source = backend.restoreSource(itemID: id)
+                let (told, file) = try await (plan, source)
+                let made = try await Task.detached(priority: .userInitiated) {
+                    try PhoneRestorer.restore(file, look: told.look, kind: told.kind)
+                }.value
+                let shown = UIImage(cgImage: made.image)
+                // A work shown with its colours corrected is drawn from its
+                // picture as it came and corrected on the server after: it
+                // is shown once the server has it.
+                let plain = !PhonePicture.on(in: item.pictureVersion)
+                if plain { await phoneShows(item, on: false, picture: shown) }
+                do {
+                    let updated = try await backend.restoreDrawn(
+                        itemID: id, jpeg: made.jpeg, columns: made.columns, rows: made.rows
+                    )
+                    cardShows(updated, changed: true)
+                    if plain, !PhonePicture.on(in: updated.pictureVersion) {
+                        await phoneShows(updated, on: false, picture: shown, pending: false)
+                    }
+                    phoneRestored[id] = updated
+                } catch {
+                    if plain { phoneForget(id) }
+                    throw error
+                }
+            } catch {
+                if !error.isCancellation { Logger(subsystem: "Frame", category: "PhoneRestorer").info("\(id) not drawn: \(error)") }
+            }
+        }
     }
 
     /// "Restaurator Pro": the work sent to Google's model (within a day);
