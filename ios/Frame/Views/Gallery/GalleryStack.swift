@@ -315,13 +315,22 @@ struct StackUnder: View {
     /// below has asked for already.
     private static let pixel: CGFloat = 900
 
+    /// What is in memory already, from the first frame: back from the
+    /// grid the edge was black till its thumbnail came (the probe's run
+    /// 12), though the grid had the work's tile all along.
+    private var kept: UIImage? {
+        guard let request = GalleryView.thumb(of: work.item, model.backend) else { return nil }
+        return ImageLoader.inMemory(for: request, maxPixel: Self.pixel)
+            ?? ImageLoader.inMemory(for: request, maxPixel: GalleryView.gridPixel)
+    }
+
     var body: some View {
         GeometryReader { geo in
             let scale = 1 - 2 * StackedPage.underInset / max(geo.size.width, 1)
             let size = CGSize(width: geo.size.width * scale, height: (geo.size.height - StackedPage.peek) * scale)
             let corner = max(ScreenCorner.radius(of: geo.size) - StackedPage.peek, 20) * scale
             Group {
-                if let picture {
+                if let picture = picture ?? kept {
                     Image(uiImage: picture)
                         .resizable()
                         .scaledToFill()
@@ -340,6 +349,7 @@ struct StackUnder: View {
         .allowsHitTesting(false)
         .task(id: work.id) {
             guard let request = GalleryView.thumb(of: work.item, model.backend) else { return }
+            picture = nil
             if let kept = ImageLoader.inMemory(for: request, maxPixel: Self.pixel) {
                 picture = kept
                 return

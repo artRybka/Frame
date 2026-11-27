@@ -798,14 +798,16 @@ struct GalleryView: View {
                 }
                 GalleryLog.trace("pages at \(Int(flow.y)), \(lies(at: id) ? "there" : "not there")")
             }
+            // Not quietly: the page's caption comes back in gently. Before
+            // `returning` goes, so the card stays one (`carded`): the other
+            // way round, a frame of the page uncut (the probe's run 12).
+            grid = false
             withTransaction(Self.quiet) {
                 windowShown = true
                 gridOpen = false
                 bars = false
                 returning = nil
             }
-            // Not quietly: the page's caption comes back in gently.
-            grid = false
             camera.on = false
             hand = .idle
             pulling = false
