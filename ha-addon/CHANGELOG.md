@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.411
+
+- Okładki w Odkrywaj, Playlistach i Szukaj wczytują się od razu: nie
+  czekają już w kolejce za zapasem obrazów Galerii.
+
 ## 1.145.410
 
 - Jaśniejsze dzieła: jasne płaszczyzny nie świecą już jak podświetlana
