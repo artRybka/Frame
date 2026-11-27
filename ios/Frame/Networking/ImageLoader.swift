@@ -9,17 +9,33 @@ import UIKit
 /// original or preview) goes first: it skips the line of a grid's
 /// thumbnails and has connections of its own, apart from those of the
 /// thumbnails and of the app's other requests. A picture nobody waits for
-/// any more (scrolled away) leaves the line.
+/// any more (scrolled away) leaves the line. What is fetched before anyone
+/// looks at it (`.ahead`: Galeria's stock) goes after every picture on a
+/// screen and takes few of the line's places.
 actor ImageLoader {
     static let shared = ImageLoader()
 
     enum Priority: Sendable {
+        /// Fetched before it is shown (Galeria's stock, its next pages'
+        /// full pictures): after every other picture of the same host, two
+        /// at a time at most, and none while `holdAhead` holds them.
+        case ahead
         case normal, high
     }
 
     private struct Download {
         let task: Task<UIImage, Error>
         var waiting: Set<UUID>
+        /// Its place in the host's line, and the priority it holds there.
+        let ticket: UUID
+        var priority: Priority
+    }
+
+    /// Pictures fetched ahead wait (those already downloading finish): the
+    /// screen that wanted them is not up (Galeria left for another tab),
+    /// so they take nothing from the covers the owner looks at now.
+    nonisolated static func holdAhead(_ held: Bool) {
+        Task { await gate.hold(held) }
     }
 
     private let cache = Memory.shared.cache
@@ -182,6 +198,13 @@ actor ImageLoader {
         let task: Task<UIImage, Error>
         if var running = inflight[key] {
             running.waiting.insert(waiter)
+            if running.priority == .ahead, priority != .ahead {
+                // Fetched ahead, wanted on a screen now: it leaves the back
+                // of the line (Galeria's stock held every cover up).
+                running.priority = priority
+                let ticket = running.ticket
+                Task { await Self.gate.promote(ticket) }
+            }
             inflight[key] = running
             task = running.task
         } else {
@@ -195,15 +218,16 @@ actor ImageLoader {
             if let reframed, Memory.shared.stale(address, reframes: reframed) {
                 request.cachePolicy = .reloadIgnoringLocalCacheData
             }
+            let ticket = UUID()
             task = Task.detached(priority: priority == .high ? .userInitiated : .utility) { [request] in
-                let data = try await Self.download(request, priority: priority)
+                let data = try await Self.download(request, priority: priority, ticket: ticket)
                 if let reframed { Memory.shared.refetched(address, reframes: reframed) }
                 guard let image = Self.downsample(data, maxPixel: maxPixel) else {
                     throw BackendError.invalidResponse
                 }
                 return image
             }
-            inflight[key] = Download(task: task, waiting: [waiter])
+            inflight[key] = Download(task: task, waiting: [waiter], ticket: ticket, priority: priority)
         }
         let image: UIImage
         do {
@@ -258,9 +282,10 @@ actor ImageLoader {
     /// Connections of their own: a burst of thumbnails, each waiting for
     /// the server to fetch it from a museum, fills neither the line of the
     /// app's other requests nor that of the picture looked at.
-    private static let sessions: [Priority: URLSession] = [
-        .normal: session(), .high: session(),
-    ]
+    private static let sessions: [Priority: URLSession] = {
+        let normal = session()
+        return [.ahead: normal, .normal: normal, .high: session()]
+    }()
     /// Answers worth another try: throttled (museums and Commons answer a
     /// grid's burst with 429) or briefly down.
     private static let retryStatus: Set<Int> = [408, 429, 500, 502, 503, 504]
@@ -276,19 +301,19 @@ actor ImageLoader {
     /// The picture's bytes: thumbnails a few per host at a time, the one
     /// looked at right away; tried again after a short wait when the host
     /// is busy.
-    private static func download(_ request: URLRequest, priority: Priority) async throws -> Data {
+    private static func download(_ request: URLRequest, priority: Priority, ticket: UUID) async throws -> Data {
         let session = sessions[priority] ?? .shared
-        guard priority == .normal else { return try await fetch(request, session: session) }
+        guard priority != .high else { return try await fetch(request, session: session) }
         // The frame's own server has a line of its own, a wider one.
         let own = route?.serves(request) == true
         let host = (own ? HostGate.own : "") + (request.url?.host ?? "")
-        try await gate.enter(host)
+        try await gate.enter(host, id: ticket, ahead: priority == .ahead)
         do {
             let data = try await fetch(request, session: session)
-            await gate.leave(host)
+            await gate.leave(host, id: ticket)
             return data
         } catch {
-            await gate.leave(host)
+            await gate.leave(host, id: ticket)
             throw error
         }
     }
@@ -387,17 +412,36 @@ actor ImageLoader {
 /// Lets a few downloads per host run at once; the rest wait in line, and
 /// one cancelled while waiting leaves it. Commons allows two parallel media
 /// requests, museum CDNs throttle bursts too.
-private actor HostGate {
-    private typealias Waiter = (id: UUID, continuation: CheckedContinuation<Void, Error>)
+///
+/// Pictures fetched ahead (`ImageLoader.Priority.ahead`) let every other
+/// waiting one by and run at most `aheadLimit` at a time: Galeria, the
+/// first tab, put some 200 thumbnails and its next pages' full pictures in
+/// the line at launch, and the covers of Odkrywaj, Playlisty and Szukaj
+/// waited behind them (Mateusz 2026-11-27: "Miniaturki okładek playlist i w
+/// odkrywaj wczytują się wolniej").
+actor HostGate {
+    private struct Waiter {
+        let id: UUID
+        var ahead: Bool
+        let continuation: CheckedContinuation<Void, Error>
+    }
 
     private var running: [String: Int] = [:]
+    /// Of those running, the ones fetched ahead.
+    private var runningAhead: [String: Set<UUID>] = [:]
     private var waiting: [String: [Waiter]] = [:]
-    /// On their way into the line, and those of them cancelled already.
+    /// On their way into the line, and those of them cancelled already or
+    /// wanted on a screen already.
     private var coming: Set<UUID> = []
     private var cancelled: Set<UUID> = []
+    private var promoted: Set<UUID> = []
+    /// Pictures fetched ahead are not let in (`ImageLoader.holdAhead`).
+    private var held = false
 
     /// Before the host of the frame's own server, in the line's name.
     static let own = "own:"
+    /// Pictures fetched ahead running at once, at most, per host.
+    static let aheadLimit = 2
 
     /// The frame's own server: as many as the session has connections to
     /// it. Its thumbnails are files it keeps, or fetched by it within the
@@ -408,33 +452,48 @@ private actor HostGate {
         return host.hasSuffix("wikimedia.org") ? 2 : 4
     }
 
-    func enter(_ host: String) async throws {
+    func enter(_ host: String, id: UUID, ahead: Bool) async throws {
         try Task.checkCancellation()
-        if running[host, default: 0] < Self.limit(host) {
-            running[host, default: 0] += 1
+        let ahead = ahead && promoted.remove(id) == nil
+        // Not past anyone it would let by in the line.
+        let queue = waiting[host, default: []]
+        let passes = ahead ? queue.isEmpty : !queue.contains { !$0.ahead }
+        if passes, admits(host, ahead: ahead) {
+            take(host, id: id, ahead: ahead)
             return
         }
-        let id = UUID()
         coming.insert(id)
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                Task { await self.wait(id, continuation, for: host) }
+                Task { await self.wait(id, ahead: ahead, continuation, for: host) }
             }
         } onCancel: {
             Task { await self.cancel(id, for: host) }
         }
     }
 
-    private func wait(_ id: UUID, _ continuation: CheckedContinuation<Void, Error>, for host: String) {
+    private func admits(_ host: String, ahead: Bool) -> Bool {
+        guard running[host, default: 0] < Self.limit(host) else { return false }
+        guard ahead else { return true }
+        return !held && runningAhead[host, default: []].count < Self.aheadLimit
+    }
+
+    private func take(_ host: String, id: UUID, ahead: Bool) {
+        running[host, default: 0] += 1
+        if ahead { runningAhead[host, default: []].insert(id) }
+    }
+
+    private func wait(
+        _ id: UUID, ahead: Bool, _ continuation: CheckedContinuation<Void, Error>, for host: String
+    ) {
         coming.remove(id)
         if cancelled.remove(id) != nil {
             continuation.resume(throwing: CancellationError())
-        } else if running[host, default: 0] < Self.limit(host) {
-            running[host, default: 0] += 1
-            continuation.resume()
-        } else {
-            waiting[host, default: []].append((id, continuation))
+            return
         }
+        let ahead = ahead && promoted.remove(id) == nil
+        waiting[host, default: []].append(Waiter(id: id, ahead: ahead, continuation: continuation))
+        pump(host)
     }
 
     private func cancel(_ id: UUID, for host: String) {
@@ -446,14 +505,48 @@ private actor HostGate {
         }
     }
 
-    func leave(_ host: String) {
-        if var queue = waiting[host], !queue.isEmpty {
-            // The slot passes straight to the next in line.
-            let next = queue.removeFirst()
+    /// A picture fetched ahead is wanted on a screen now: it waits and runs
+    /// as any other.
+    func promote(_ id: UUID) {
+        for host in Array(waiting.keys) {
+            if let index = waiting[host]?.firstIndex(where: { $0.id == id }) {
+                waiting[host]![index].ahead = false
+                pump(host)
+                return
+            }
+        }
+        for host in Array(runningAhead.keys) where runningAhead[host]?.contains(id) == true {
+            runningAhead[host]?.remove(id)
+            pump(host)  // its place among those ahead is free
+            return
+        }
+        // Not in line yet (on its way, or its download not started): it
+        // comes in as wanted.
+        promoted.insert(id)
+    }
+
+    func hold(_ held: Bool) {
+        self.held = held
+        if !held { for host in Array(waiting.keys) { pump(host) } }
+    }
+
+    func leave(_ host: String, id: UUID) {
+        running[host, default: 1] -= 1
+        runningAhead[host]?.remove(id)
+        pump(host)
+    }
+
+    /// Lets in whoever may run now: first those wanted on a screen, in the
+    /// order they came, then those fetched ahead.
+    private func pump(_ host: String) {
+        while var queue = waiting[host], !queue.isEmpty, running[host, default: 0] < Self.limit(host) {
+            let index = queue.firstIndex { !$0.ahead }
+                ?? (admits(host, ahead: true) ? queue.firstIndex { $0.ahead } : nil)
+            guard let index else { return }
+            let next = queue.remove(at: index)
             waiting[host] = queue
+            take(host, id: next.id, ahead: next.ahead)
             next.continuation.resume()
-        } else {
-            running[host, default: 1] -= 1
         }
     }
 }
