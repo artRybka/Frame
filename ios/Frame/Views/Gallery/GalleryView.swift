@@ -276,6 +276,14 @@ struct GalleryView: View {
             GalleryLog.trace("pages' insets \(Int(now[0])) and \(Int(now[1])), \(Int(now[2])) tall")
         }
         .onScrollPhaseChange { _, phase in GalleryLog.trace("pages' scroll \(phase)") }
+        .task(id: grid) {
+            guard !grid else { withTransaction(Self.quiet) { stacking = false }; return }
+            guard !stacking else { return }
+            try? await Task.sleep(for: Self.stackAfter)
+            guard !Task.isCancelled, !grid else { return }
+            withTransaction(Self.quiet) { stacking = true }
+            GalleryLog.trace("pages stacked")
+        }
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .background {
@@ -298,6 +306,14 @@ struct GalleryView: View {
     /// mi się że dolną krawędź dopiero pojawia się po chwili").
     private var carded: Bool { !grid || returning != nil }
 
+    /// The pages laid as a stack: not under the grid, and back from it
+    /// only once the pages lie still and have their pictures. Laid at once,
+    /// the work under came as a black box, then a page uncut, then square
+    /// corners, for some 0.4 s (the probe's run 11); till then the next
+    /// work's edge is its thumbnail (`StackUnder`), the same to the eye.
+    @State private var stacking = true
+    nonisolated static let stackAfter: Duration = .milliseconds(500)
+
     private func page(_ work: RemoteItem, at index: Int, insets: EdgeInsets) -> some View {
         GalleryPage(
             work: work, current: work.id == shown?.id, whole: peek == work.id, pressed: pressed == work.id, still: grid,
@@ -313,7 +329,7 @@ struct GalleryView: View {
             // Not on the way back from the grid: the camera's pages lie
             // anywhere then, and laid under, a page above came over the
             // tile as a dark box (run 7).
-            stacked: !grid,
+            stacked: stacking,
             pressed: pressed == work.id,
             held: pressed == work.id || peek == work.id,
             hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)

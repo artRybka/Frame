@@ -228,9 +228,6 @@ struct StackedPage: ViewModifier {
     }
 }
 
-/// A page cut as a card: the screen's corners at its top (the phone's
-/// own), its foot `foot` above the screen's, its bottom corners round with
-/// the screen's less that; none (all of the page) at a foot of 0.
 /// The card's line, drawn cheaply: a gradient stroked along a rounded
 /// border cost a swipe half its frames (the probe's run 10, 50 ms against
 /// 17 ms without it), so the foot and its corners are one plain stroke
@@ -245,7 +242,7 @@ struct FootLine: View {
             let side = max(rise - corner, 0)
             ZStack(alignment: .bottom) {
                 FootArc(corner: corner)
-                    .stroke(.white.opacity(edge * 0.8), lineWidth: 1)
+                    .stroke(.white.opacity(edge * 0.7), lineWidth: 1)
                 HStack(spacing: 0) {
                     strip
                     Spacer(minLength: 0)
@@ -261,7 +258,7 @@ struct FootLine: View {
     private var strip: some View {
         Rectangle()
             .fill(LinearGradient(
-                colors: [.white.opacity(0), .white.opacity(edge * 0.4)],
+                colors: [.white.opacity(0), .white.opacity(edge * 0.6)],
                 startPoint: .top, endPoint: .bottom
             ))
             .frame(width: 1)
@@ -284,6 +281,9 @@ struct FootArc: Shape {
     }
 }
 
+/// A page cut as a card: the screen's corners at its top (the phone's
+/// own), its foot `foot` above the screen's, its bottom corners round with
+/// the screen's less that; none (all of the page) at a foot of 0.
 struct CardCut: Shape {
     var foot: CGFloat
     let corner: CGFloat
