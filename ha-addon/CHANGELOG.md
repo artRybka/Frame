@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.407
+
+- Próba: w Konfiguracji → Wyświetlanie dzieł nowy wybór „Światła”
+  (Obecnie, A, B, C), żeby jasne płaszczyzny dzieł nie świeciły jak
+  podświetlana kaseta. Do porównania na telefonie.
+
 ## 1.145.406
 
 - Na pełnym ekranie podgląd dzieła bez restauracji jest wykadrowany tak

@@ -39,4 +39,48 @@ final class ArtGlowTests: XCTestCase {
         XCTAssertEqual(ArtGlow.label(1.6), "1,6×")
         XCTAssertTrue(ArtGlow.gains.contains(ArtGlow.defaultGain))
     }
+
+    private func picture(_ greys: [UInt8]) throws -> CGImage {
+        let bytes = greys.flatMap { [$0, $0, $0, 255] }
+        let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
+        return try XCTUnwrap(CGImage(width: greys.count, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
+                                     bytesPerRow: greys.count * 4, space: space,
+                                     bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                     provider: provider, decode: nil, shouldInterpolate: false,
+                                     intent: .defaultIntent))
+    }
+
+    private func reds(_ lit: CGImage) throws -> [Float] {
+        let data = try XCTUnwrap(lit.dataProvider?.data) as Data
+        return (0..<lit.width).map { x in
+            data.withUnsafeBytes { Float($0.load(fromByteOffset: x * lit.bitsPerPixel / 8, as: Float16.self)) }
+        }
+    }
+
+    /// A: the page's white stays close to the page, a dark grey has the
+    /// whole gain.
+    func testTheShoulderKeepsTheLightsNearThePage() throws {
+        let lit = try XCTUnwrap(ArtGlow.render(try picture([255, 60]), gain: 1.6, lights: .shoulder))
+        XCTAssertTrue(lit.colorSpace?.name == CGColorSpace.extendedLinearSRGB)
+        let red = try reds(lit)
+        XCTAssertLessThanOrEqual(red[0], 1.151)
+        XCTAssertGreaterThan(red[0], 1.05)
+        let grey: Float = pow((60 / 255 + 0.055) / 1.055, 2.4)
+        XCTAssertEqual(red[1] / grey, 1.6, accuracy: 0.03)
+    }
+
+    /// B: a picture all of white paper is hardly lifted, a dark one fully.
+    func testTheGainFitsThePicture() {
+        XCTAssertEqual(ArtGlow.fitted(1.6, lightness: [Float](repeating: 1, count: 100), share: 0.05), 1, accuracy: 0.01)
+        XCTAssertEqual(ArtGlow.fitted(1.6, lightness: [Float](repeating: 0.3, count: 100), share: 0.05), 1.6)
+        let half = [Float](repeating: 0.8, count: 50) + [Float](repeating: 0.2, count: 50)
+        XCTAssertEqual(ArtGlow.fitted(1.6, lightness: half, share: 0.05), 1.25, accuracy: 0.01)
+    }
+
+    func testTheShoulderNeverPassesItsCeiling() {
+        XCTAssertEqual(ArtGlow.eased(0.5, knee: 0.9, ceiling: 1.25), 0.5)
+        XCTAssertLessThan(ArtGlow.eased(3, knee: 0.9, ceiling: 1.25), 1.25)
+        XCTAssertGreaterThan(ArtGlow.eased(1.6, knee: 0.9, ceiling: 1.25), 1.1)
+    }
 }
