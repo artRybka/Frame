@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.145.414
+
+- Galeria: przy przytrzymaniu i powrocie z całego dzieła brzeg następnego
+  dzieła łagodnie przenika w łunę i z powrotem; miękki cień pod kartą
+  obejmuje jej narożniki; linia karty bez skoków.
+- Galeria: karta pod spodem ma od razu gradient i tytuł (bez mignięcia).
+- Galeria: siatka gestem od lewej krawędzi (bez przycisku w rogu),
+  „Odkrywaj” tylko od prawej krawędzi, podwójne stuknięcie zdejmuje
+  serduszko.
+
 ## 1.145.413
 
 - Grafiki z muzeów: automatyczny kadr „do odbitki” nie zostawia już

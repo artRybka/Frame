@@ -92,17 +92,11 @@ final class GalleryProbeTests: XCTestCase {
         sleep(3)
         mark(app, "tile tapped a third time")
 
-        // The grid's own button on the page's corner.
-        let gridButton = app.buttons["Pokaż siatkę"].firstMatch
-        if gridButton.waitForExistence(timeout: 3) {
-            shot("07d-the-grid-button")
-            gridButton.tap()
-        } else {
-            mark(app, "no grid button on the page")
-        }
+        // From the left edge rightward: the grid (no button for it now).
+        at(0.01, 0.5).press(forDuration: 0.05, thenDragTo: at(0.6, 0.5), withVelocity: .fast, thenHoldForDuration: 0)
         sleep(3)
-        mark(app, "grid button tapped: the grid")
-        shot("07e-grid-by-its-button")
+        mark(app, "swiped from the left edge: the grid")
+        shot("07e-grid-from-the-left-edge")
         at(0.5, 0.5).tap()
         sleep(3)
         mark(app, "tile tapped a fourth time")
