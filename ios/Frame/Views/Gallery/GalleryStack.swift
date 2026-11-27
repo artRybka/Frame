@@ -168,6 +168,9 @@ struct StackedPage: ViewModifier {
         }
     }
 
+    /// The card's bottom corners, round with the screen's.
+    static func corner(_ size: CGSize) -> CGFloat { max(ScreenCorner.radius(of: size) - peek, 20) }
+
     /// Seconds the glow stays at the screen's foot after the whole work
     /// is let go, the last of its way back (`GalleryPage.back`, 0.55 s)
     /// then the next work's edge coming out of it.
