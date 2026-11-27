@@ -249,7 +249,10 @@ struct GalleryView: View {
         return ScrollView(.vertical) {
             LazyVStack(spacing: 0) {
                 ForEach(Array(works.enumerated()), id: \.element.id) { index, work in
+                    // The first on top: a page below lies under the one
+                    // shown, a card on a stack (`StackedPage`).
                     page(work, at: index, insets: insets)
+                        .zIndex(Double(-index))
                 }
                 // At the end of what came, only the glow, flowing, till the
                 // next works are here (Mateusz 2026-11-24: "łuny … tańczą
@@ -275,6 +278,13 @@ struct GalleryView: View {
         .onScrollPhaseChange { _, phase in GalleryLog.trace("pages' scroll \(phase)") }
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
+        .background {
+            if !grid, let at = shownIndex, at + 1 < works.count {
+                StackUnder(work: works[at + 1])
+                    .opacity(peek == nil && pressed == nil ? 1 : 0)
+                    .animation(.easeInOut(duration: HoldPull.press), value: pressed)
+            }
+        }
         .modifier(WindowZoom(camera: camera))
         .opacity(windowShown && begun ? 1 : 0)
         // Not by `grid`: it comes while a finger of the pages' own is still
@@ -292,8 +302,10 @@ struct GalleryView: View {
         )
         // A card on a stack, the next work's edge under it (`StackedPage`).
         .modifier(StackedPage(
-            on: !grid && peek == nil && pressed == nil,
-            under: index + 1 < works.count ? works[index + 1] : nil
+            on: !grid && peek == nil,
+            stacked: !grid,
+            pressed: pressed == work.id,
+            hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)
         ))
         .containerRelativeFrame([.horizontal, .vertical])
         .contentShape(Rectangle())
@@ -1370,9 +1382,13 @@ private struct GalleryPage: View {
     /// share of each side, 9 points at the sides and 20 above and below,
     /// its corners 44 on a screen of 62).
     static let pressedInset: CGFloat = 12
-    /// How small the work pressed is of itself: what brings its top and
-    /// its foot to the window's.
-    static func pressedIn(_ box: CGSize) -> CGFloat { 1 - 2 * pressedInset / max(box.height, 1) }
+    /// The card's foot over the next work's edge (`StackedPage.peek`): what
+    /// is pressed in is the card seen, not the page under it (Mateusz
+    /// 2026-11-27 16:36: "Wciśnięcie powinno dotyczyć tego co widać").
+    nonisolated static let pressedFoot: CGFloat = StackedPage.peek
+    /// How small the work pressed is of itself: what brings the card's top
+    /// and its foot to the window's.
+    static func pressedIn(_ box: CGSize) -> CGFloat { 1 - 2 * pressedInset / max(box.height - pressedFoot, 1) }
     static func pressedCorner(_ box: CGSize) -> CGFloat { max(ScreenCorner.radius(of: box) - pressedInset, 20) }
     /// The whole work's corners (points).
     static let wholeCorner: CGFloat = 8
@@ -2041,7 +2057,8 @@ private struct Lens: GeometryEffect {
         let middle = CGPoint(x: size.width / 2, y: size.height / 2)
         let cutScale = max(sink, 0.01)
         let cutX = middle.x * (1 - sink)
-        let cutY = middle.y * (1 - sink)
+        // About the card's middle, above the page's by half its foot.
+        let cutY = (middle.y - GalleryPage.pressedFoot / 2) * (1 - sink)
         let wholeScale = smaller(layout, place)
         let wholeX = middle.x + place.offset.width - place.size.width / 2 - wholeScale * layout.offset.width
         let wholeY = middle.y + place.offset.height - place.size.height / 2 - wholeScale * layout.offset.height
@@ -2161,17 +2178,23 @@ private struct Window: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        let window = rect.insetBy(dx: inset, dy: inset)
         let gone = min(max(way, 0), 1)
+        let into = min(max(inset / max(full, 0.01), 0), 1)
+        // The card pressed in, not the next work's edge under it; that is
+        // the card's foot no more on the way to the whole work.
+        let foot = GalleryPage.pressedFoot * into * (1 - gone)
+        let window = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: max(rect.height - foot, 1))
+            .insetBy(dx: inset, dy: inset)
         // The corners of the window `inset` in: the screen's less that
-        // (where the screen has none, growing to the pressed window's).
-        let cut = max(screen + (pressed - screen) * min(max(inset / max(full, 0.01), 0), 1), 0)
+        // (where the screen has none, growing to the pressed window's);
+        // at the foot, the card's less that.
+        let cut = max(screen + (pressed - screen) * into, 0)
         guard gone > 0, rect.height > 0 else {
             // All of the page: the phone's own corners are its corners.
             if inset < 0.05 { return Path(rect) }
-            return Path(roundedRect: window, cornerRadius: cut, style: .continuous)
+            return Self.rounded(window, top: cut, foot: max(cut - foot, min(cut, 8)))
         }
-        let sink = 1 - 2 * inset / rect.height
+        let sink = 1 - 2 * inset / max(rect.height - GalleryPage.pressedFoot, 1)
         let lies = Lens.lies(sink: sink, way: way, layout: layout, place: place, size: layout.size)
         let picture = CGRect(
             x: rect.midX - layout.size.width / 2 + lies.x + lies.scale * layout.offset.width,
@@ -2181,7 +2204,7 @@ private struct Window: Shape {
         let aside = pan * (1 - gone) * lies.scale
         let seen = window.intersection(picture).intersection(picture.offsetBy(dx: aside, dy: 0))
         guard !seen.isNull, seen.width > 1, seen.height > 1 else {
-            return Path(roundedRect: window, cornerRadius: cut, style: .continuous)
+            return Self.rounded(window, top: cut, foot: max(cut - foot, min(cut, 8)))
         }
         let sides = min(seen.minX - rect.minX, rect.maxX - seen.maxX)
         let ends = min(seen.minY - rect.minY, rect.maxY - seen.maxY)
@@ -2190,9 +2213,18 @@ private struct Window: Shape {
         // that is squarer still).
         let least = min(last, max(cut, last * gone))
         let round = max(min(withScreen, cut + (last - cut) * gone), least)
-        return Path(
-            roundedRect: seen, cornerRadius: min(max(round, 0), min(seen.width, seen.height) / 2), style: .continuous
+        let most = min(seen.width, seen.height) / 2
+        return Self.rounded(
+            seen, top: min(max(round, 0), most), foot: min(max(round - foot, min(round, least)), most)
         )
+    }
+
+    private static func rounded(_ rect: CGRect, top: CGFloat, foot: CGFloat) -> Path {
+        UnevenRoundedRectangle(
+            topLeadingRadius: top, bottomLeadingRadius: foot, bottomTrailingRadius: foot, topTrailingRadius: top,
+            style: .continuous
+        )
+        .path(in: rect)
     }
 }
 
