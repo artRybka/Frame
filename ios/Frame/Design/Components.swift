@@ -1253,11 +1253,11 @@ enum LowRes {
     /// the sparkles alone, in gold that glints as the phone turns
     /// (`ProGold`; 13:28 UTC: „znaczek iskierki tylko złote, mieniące się
     /// przy przechyleniu”).
-    static let proName = "Restauracja PRO"
+    static let proName = "Restauracja"  // "PRO" no more (Mateusz 2026-11-27)
     /// Its entry in "…": the sparkles with a small plus at their corner
     /// (`SparklesPlus.imageset`, a template; Mateusz 2026-11-26).
     static var proMenuImage: Image { Image("SparklesPlus").renderingMode(.template) }
-    static let proSpoken = "odnowione Restauracją PRO"
+    static let proSpoken = "odnowione Restauracją"
     /// The marks' grey, not a warning's amber (Mateusz 2026-11-14: the
     /// low resolution's, the restorer's and the crop's marks grey).
     static let tint = Theme.inkSoft

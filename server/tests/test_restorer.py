@@ -176,17 +176,18 @@ def test_a_small_picture_drawn_again_stays_the_same_work(app: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None
     summary = ItemSummary.of(stored)
-    assert summary.restored and summary.low_side == 0
+    # Our own model's drawing has no mark of its own: the work is marked
+    # as the picture it was drawn from (Mateusz 2026-11-27).
+    assert stored.sharper is not None and stored.sharper.before == 900
+    assert not summary.restored and not summary.restored_pro and summary.low_side == 900
     # The gatekeeper leaves the owner's drawing be.
     assert not asked_by_rules(stored.model_copy(update={"source": "wikiart"}))
     # The night's look for sharper copies leaves it be too.
     view = client.post(f"/api/library/items/{own.id}/sharpen").json()
     assert view["status"] == "found" and view["sharper"]["restored"]
-    assert view["low_side"] == 0
-    # In "Restaurator", made for it.
-    playlist = service.restorer.playlist(OWNER_ID)
-    assert playlist is not None and playlist.name == "Restaurator"
-    assert playlist.item_ids == [own.id] and playlist.owner == OWNER_ID
+    assert view["low_side"] == 900 and view["sharper"]["before"] == 900
+    # Not in "Restaurator": only Pro's drawings go there.
+    assert service.restorer.playlist(OWNER_ID) is None
     # Drawn once.
     again = client.post(f"/api/library/items/{own.id}/restore")
     assert again.status_code == 422 and again.json()["detail"].startswith("restored:")
@@ -306,7 +307,7 @@ def test_restaurator_pro_through_the_batch(app: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.restored and stored.sharper.pro
-    assert stored.sharper.museum == "Restauracja PRO"
+    assert stored.sharper.museum == "Restauracja"
     assert told == [(own.id, OWNER_ID, True)]
     assert client.get(f"/api/library/items/{own.id}").json()["restoring_pro"] is False
     assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
@@ -506,17 +507,21 @@ def test_a_batch_from_before_goes_to_our_model(app: Any) -> None:
     assert service.library.get(own.id).sharper.restored
 
 
-def test_the_works_restored_before_go_into_restaurator(app: Any) -> None:
+def test_our_models_drawings_leave_restaurator(app: Any) -> None:
+    """Only Pro's drawings are in "Restaurator" (Mateusz 2026-11-27): our
+    own model's, filed there before, are taken out once; the works drawn
+    before the list was there go in only when Pro drew them."""
     client, service, _web, _painter = app
     own = _small(service)
     assert client.post(f"/api/library/items/{own.id}/restore").status_code == 200
-    service.library.save_playlist(
-        service.restorer.playlist(OWNER_ID).model_copy(update={"item_ids": []})
-    )
+    assert service.restorer.playlist(OWNER_ID) is None
+    service.restorer.file(own.id, OWNER_ID)  # as it was filed before
     service.library.set_state("restorer_playlist_filled", False)
-    assert service.restorer.file_kept() == 1
-    assert service.restorer.playlist(OWNER_ID).item_ids == [own.id]
-    assert service.restorer.file_kept() == 0  # once
+    assert service.restorer.file_kept() == 0
+    assert service.restorer.unfile_plain() == 1
+    assert service.restorer.playlist(OWNER_ID).item_ids == []
+    service.restorer.file(own.id, OWNER_ID)
+    assert service.restorer.unfile_plain() == 0  # once
 
 
 def test_the_drawing_has_a_thumbnail(app: Any) -> None:
@@ -834,8 +839,8 @@ def test_the_phone_draws_a_work_and_the_server_keeps_it(app: Any) -> None:
     note = service.library.note(own.id, "restorer")
     assert note is not None and note.model == "artsr-g3-phone"
     assert note.data["own"] == [900, 600] and note.data["colours"] == restorer.COLOURS
-    playlist = service.restorer.playlist(OWNER_ID)
-    assert playlist is not None and playlist.item_ids == [own.id]
+    # No mark, list or switch of its own: marked as its picture was.
+    assert copy["before"] == 900 and service.restorer.playlist(OWNER_ID) is None
     # Drawn once: another phone's is not taken, nor a plan given.
     again = client.post(
         f"/api/library/items/{own.id}/restore/drawn?width=900&height=600", content=drawn

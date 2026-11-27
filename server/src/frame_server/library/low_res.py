@@ -51,6 +51,14 @@ def low_side(item: Item, size: tuple[int, int] | None = None, below: int = LOW_S
     read it already. ``below``: the side it is to be shorter than."""
     if item.kind != ItemKind.ARTWORK or item.part_of or item.source in OWN_SOURCES:
         return 0
+    if item.sharper is not None and item.sharper.plain:
+        # Drawn by our own model: marked as the picture it was drawn from
+        # (Mateusz 2026-11-27), that one's side when noted, else the
+        # museum's.
+        if item.sharper.before:
+            return _below(item, item.sharper.before, below)
+        item = item.model_copy(update={"sharper": None})
+        size = None
     side = said_side(item) if item.sharper is not None else None
     if side is None and size is not None and min(size) > 0:
         side = max(size)
@@ -58,6 +66,10 @@ def low_side(item: Item, size: tuple[int, int] | None = None, below: int = LOW_S
         side = _sides(item)
     if side is None:
         side = said_side(item)
+    return _below(item, side, below)
+
+
+def _below(item: Item, side: int | None, below: int) -> int:
     shown = item.cut_shown()
     if side is not None and shown is not None and item.cut is not None:
         # Sizes are the museum photograph's; the work cut out of it is less.

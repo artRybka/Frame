@@ -730,7 +730,8 @@ actor DemoBackend: FrameBackend {
         let scale = 2048.0 / Double(max(width, height, 1))
         return SharperCopy(
             url: "", itemId: "owned:\(item.id)", source: "owned", museum: "Kreatywny restaurator",
-            width: Int(Double(width) * scale), height: Int(Double(height) * scale), chosen: true, restored: true
+            width: Int(Double(width) * scale), height: Int(Double(height) * scale), chosen: true, restored: true,
+            pro: true  // only Restauracja (Google's) is marked (2026-11-27)
         )
     }
 
@@ -744,7 +745,7 @@ actor DemoBackend: FrameBackend {
         _ = try update(itemID) { item in
             var copy = Self.restoredCopy(item)
             copy.pro = true
-            copy.museum = "Restauracja PRO"
+            copy.museum = "Restauracja"
             item.sharper = copy
         }
         return ProOrder(sent: true, left: nil)
