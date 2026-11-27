@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.145.412
+
+- Galeria: przytrzymanie dzieła zmniejsza całą kartę razem z jej
+  krawędzią, a brzeg następnego dzieła u dołu zalewa łuna.
+- Po powrocie z siatki i z całego dzieła dolny brzeg karty jest od razu,
+  bez doklejania po chwili.
+- Galeria: przerzucanie dzieł znów płynne (linia krawędzi karty rysowana
+  taniej), bez migotania paska po powrocie z siatki.
+
 ## 1.145.411
 
 - Okładki w Odkrywaj, Playlistach i Szukaj wczytują się od razu: nie
