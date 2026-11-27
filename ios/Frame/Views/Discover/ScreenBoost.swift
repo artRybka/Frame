@@ -69,19 +69,19 @@ final class ScreenBoost {
 }
 
 /// The artwork on the work's card and in the study a little brighter than
-/// the page around it: the whole picture, evenly (an exposure lift in
-/// linear light, the gain set in Konfiguracja), drawn as an extended-range copy that the
-/// screen shows above its usual white where it has the headroom (EDR). No
-/// part of the picture is lifted more than another, so it looks like the
-/// same picture in more light. Konfiguracja → Wyświetlanie dzieł, on by
-/// default; nothing changes on screens without headroom or in Low Power
-/// Mode.
+/// the page around it: an exposure lift in linear light (the gain set in
+/// Konfiguracja, 2× by default), drawn as an extended-range copy that the
+/// screen shows above its usual white where it has the headroom (EDR). A
+/// bright picture is lifted less and its lights eased under 1.25× the
+/// page's white (`Lights`), so white paper does not glow like a lightbox.
+/// Konfiguracja → Wyświetlanie dzieł, on by default; nothing changes on
+/// screens without headroom or in Low Power Mode.
 enum ArtGlow {
     static let key = "art.glow"
     /// How many times brighter, set in Konfiguracja (`gains`).
     static let gainKey = "art.glowGain"
     /// About two thirds of a stop.
-    static let defaultGain: Double = 1.6
+    static let defaultGain: Double = 2
     static let gains: ClosedRange<Double> = 1.1...3
 
     /// "1,6×", as Polish writes it.
@@ -92,75 +92,23 @@ enum ArtGlow {
     /// How the lights of a bright picture are kept from glowing like a
     /// lightbox over the page (Mateusz 2026-11-27: "gdy dzieło jest
     /// kontrastowe, ma sporo bardzo jasnych płaszczyzn to są one mocno
-    /// prześwietlone"). A trial: Konfiguracja → Wyświetlanie dzieł →
-    /// "Światła (próba)", until he picks one.
-    enum Lights: String, CaseIterable, Identifiable {
-        /// Evenly by the gain, as before.
-        case even
-        /// A: the shadows and mid tones by the gain, the lights eased into
-        /// at most 1.15× the page's white.
-        case shoulder
-        /// B: evenly, but by no more than leaves 5 % of the picture
-        /// brighter than the page's white.
-        case fitted
-        /// C: B with 15 % and a shoulder up to 1.25× the page's white.
-        case both
-
-        static let key = "art.glowLights"
-        var id: String { rawValue }
-
-        var label: String {
-            switch self {
-            case .even: "Obecnie"
-            case .shoulder: "A"
-            case .fitted: "B"
-            case .both: "C"
-            }
-        }
-
-        var detail: String {
-            switch self {
-            case .even: "Całe dzieło równo jaśniejsze o ustawioną siłę."
-            case .shoulder: "Cienie i średnie tony z pełną siłą, światła miękko najwyżej do 1,15× bieli strony."
-            case .fitted: "Równo, ale jasne dzieło słabiej: najwyżej 5% dzieła jaśniejsze niż strona."
-            case .both: "Siła według dzieła (do 15% jaśniejsze niż strona) i miękkie światła do 1,25× bieli strony."
-            }
-        }
-
-        /// The share of the picture that may be brighter than the page's
-        /// white (the gain lowered to it), nil: the gain as set.
-        var share: Double? {
-            switch self {
-            case .fitted: 0.05
-            case .both: 0.15
-            case .even, .shoulder: nil
-            }
-        }
-
-        /// The knee and the ceiling of the lights, in the page's white;
-        /// nil: none.
-        var shoulder: (knee: Double, ceiling: Double)? {
-            switch self {
-            case .shoulder: (0.85, 1.15)
-            case .both: (0.9, 1.25)
-            case .even, .fitted: nil
-            }
-        }
-
-        static var stored: Lights {
-            UserDefaults.standard.string(forKey: key).flatMap(Lights.init(rawValue:)) ?? .even
-        }
+    /// prześwietlone"; of the trial's A, B and C he kept C, 18:59 UTC): the
+    /// gain lowered so that no more than `share` of the picture is brighter
+    /// than the page's white, and the lights eased from `knee` into at most
+    /// `ceiling` times the page's white.
+    enum Lights {
+        static let share = 0.15
+        static let knee = 0.9
+        static let ceiling = 1.25
     }
 
-    /// A brighter copy and the gain and lights it was asked with.
+    /// A brighter copy and the gain it was asked with.
     private final class Lit {
         let image: UIImage
         let gain: Double
-        let lights: Lights
-        init(_ image: UIImage, gain: Double, lights: Lights) {
+        init(_ image: UIImage, gain: Double) {
             self.image = image
             self.gain = gain
-            self.lights = lights
         }
     }
 
@@ -172,8 +120,8 @@ enum ArtGlow {
     private static let context = CIContext(options: [.cacheIntermediates: false])
 
     /// The brighter copy made before at this gain, if any.
-    static func cached(_ image: UIImage, gain: Double, lights: Lights = .stored) -> UIImage? {
-        guard let lit = cache.object(forKey: image), abs(lit.gain - gain) < 0.001, lit.lights == lights else { return nil }
+    static func cached(_ image: UIImage, gain: Double) -> UIImage? {
+        guard let lit = cache.object(forKey: image), abs(lit.gain - gain) < 0.001 else { return nil }
         return lit.image
     }
 
@@ -192,19 +140,17 @@ enum ArtGlow {
         }
     }
 
-    static func image(_ image: UIImage, gain asked: Double, lights: Lights = .stored) async -> UIImage? {
-        if let done = cached(image, gain: asked, lights: lights) { return done }
+    static func image(_ image: UIImage, gain asked: Double) async -> UIImage? {
+        if let done = cached(image, gain: asked) { return done }
         let headroom = await ScreenBoost.shared.headroom
         let gain = min(CGFloat(asked), headroom * 0.9)
         guard gain > 1.05, let cg = image.cgImage else { return nil }
         let scale = image.scale
         let orientation = image.imageOrientation
-        guard let out = await Task.detached(priority: .userInitiated, operation: {
-            lights == .even ? render(cg, gain: gain) : render(cg, gain: gain, lights: lights)
-        }).value
+        guard let out = await Task.detached(priority: .userInitiated, operation: { lit(cg, gain: gain) }).value
         else { return nil }
         let result = UIImage(cgImage: out, scale: scale, orientation: orientation)
-        cache.setObject(Lit(result, gain: asked, lights: lights), forKey: image, cost: out.bytesPerRow * out.height)
+        cache.setObject(Lit(result, gain: asked), forKey: image, cost: out.bytesPerRow * out.height)
         return result
     }
 
@@ -248,10 +194,11 @@ enum ArtGlow {
         return knee + room * (1 - exp(-(u - knee) / room))
     }
 
-    /// The brighter copy with the lights kept down as `lights` says
-    /// (`Lights`): brightness changed by the strongest of the three colours,
-    /// so a colour keeps its hue and its saturation.
-    static func render(_ source: CGImage, gain asked: CGFloat, lights: Lights) -> CGImage? {
+    /// The brighter copy of an artwork, its lights kept down (`Lights`):
+    /// brightness changed by the strongest of the three colours, so a
+    /// colour keeps its hue and its saturation. `gain` is at most what the
+    /// screen can show, and so is the ceiling of the lights.
+    static func lit(_ source: CGImage, gain asked: CGFloat) -> CGImage? {
         let width = source.width, height = source.height
         guard width > 0, height > 0,
               let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB),
@@ -267,7 +214,7 @@ enum ArtGlow {
         let count = width * height
         let pixels = data.bindMemory(to: Float.self, capacity: count * 4)
         var gain = Double(asked)
-        if let share = lights.share {
+        do {
             let step = max(1, count / 250_000)
             var lightness: [Float] = []
             lightness.reserveCapacity(count / step + 1)
@@ -277,16 +224,17 @@ enum ArtGlow {
                 lightness.append(0.2126 * pixels[p] + 0.7152 * pixels[p + 1] + 0.0722 * pixels[p + 2])
                 i += step
             }
-            gain = fitted(gain, lightness: lightness, share: share)
+            gain = fitted(gain, lightness: lightness, share: Lights.share)
         }
-        let shoulder = lights.shoulder
+        let ceiling = min(Lights.ceiling, Double(asked))
+        let knee = min(Lights.knee, ceiling)
         for i in 0..<count {
             let p = i * 4
             let strongest = Double(max(pixels[p], pixels[p + 1], pixels[p + 2]))
             var factor = gain
-            if let shoulder, strongest > 0 {
-                let u = strongest * gain
-                factor = eased(u, knee: shoulder.knee, ceiling: shoulder.ceiling) / strongest
+            if strongest > 0 {
+                // Never darker than the picture itself.
+                factor = max(1, eased(strongest * gain, knee: knee, ceiling: ceiling) / strongest)
             }
             let f = Float(factor)
             pixels[p] *= f

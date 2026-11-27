@@ -514,7 +514,6 @@ struct ArtImage: View {
     @State private var failed = false
     @AppStorage(ArtGlow.key) private var glowAllowed = true
     @AppStorage(ArtGlow.gainKey) private var glowSet = ArtGlow.defaultGain
-    @AppStorage(ArtGlow.Lights.key) private var glowLights = ArtGlow.Lights.even
     /// The gain the brighter copy is made with.
     private var glowGain: Double { glowSet * glowBoost }
     /// The brighter copy of the picture shown (`brighten`).
@@ -532,7 +531,6 @@ struct ArtImage: View {
         let image: ObjectIdentifier?
         let on: Bool
         let gain: Double
-        let lights: ArtGlow.Lights
     }
 
     /// Failed, and shows it: a clear placeholder lies over another picture
@@ -609,7 +607,7 @@ struct ArtImage: View {
     /// The brighter copy over the picture, as far as the way in is.
     @ViewBuilder
     private func glowLayers(_ image: UIImage) -> some View {
-        if glows, let lit = glowing ?? ArtGlow.cached(image, gain: glowGain, lights: glowLights) {
+        if glows, let lit = glowing ?? ArtGlow.cached(image, gain: glowGain) {
             if let glowFade {
                 picture(lit)
                     .opacity(glowShown)
@@ -661,7 +659,7 @@ struct ArtImage: View {
         }
         .animation(.easeOut(duration: 0.35), value: image != nil)
         .allowedDynamicRange(glows ? .high : nil)
-        .task(id: GlowJob(image: shown.map(ObjectIdentifier.init), on: glows, gain: glowGain, lights: glowLights)) {
+        .task(id: GlowJob(image: shown.map(ObjectIdentifier.init), on: glows, gain: glowGain)) {
             let start = appeared ?? .now
             if appeared == nil { appeared = start }
             guard glows, let source = shown else {
@@ -687,17 +685,27 @@ struct ArtImage: View {
         func seconds() -> Double { (ContinuousClock.now - start) / .seconds(1) }
         let span = ArtGlow.WayIn.span
         let wayIn = !glowReady && seconds() < span.upperBound
-        let made = await ArtGlow.image(source, gain: glowGain, lights: glowLights)
+        let made = await ArtGlow.image(source, gain: glowGain)
         guard !Task.isCancelled else { return }
         guard let made else {
             withAnimation(.easeOut(duration: 0.25)) { glowReady = true }
             return
         }
         guard wayIn else {
-            withAnimation(.easeInOut(duration: 0.25)) {
+            if glowReady {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    glowing = made
+                    glowShown = 1
+                }
+            } else {
+                // A picture over another one, already lit (the card's
+                // original over the tile's thumbnail): it comes in lit.
+                // Fading in it and its brighter copy together showed it
+                // darker halfway, so the card lit up, dimmed and lit
+                // again (Mateusz 2026-11-27).
                 glowing = made
                 glowShown = 1
-                glowReady = true
+                withAnimation(.easeInOut(duration: 0.25)) { glowReady = true }
             }
             return
         }
