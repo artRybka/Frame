@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.410
+
+- Jaśniejsze dzieła: jasne płaszczyzny nie świecą już jak podświetlana
+  kaseta (wybrany wariant C), a domyślna siła rozjaśnienia to 2×.
+- Obraz na karcie dzieła zapala się raz, bez przygasania w połowie.
+
 ## 1.145.409
 
 - Galeria przewija się jak stos kart: przy zsuwaniu dzieła w górę

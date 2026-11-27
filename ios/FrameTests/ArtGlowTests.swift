@@ -62,19 +62,25 @@ final class ArtGlowTests: XCTestCase {
         return reds
     }
 
-    /// A: the page's white stays close to the page, a dark grey has the
-    /// whole gain.
-    func testTheShoulderKeepsTheLightsNearThePage() throws {
-        let lit = try XCTUnwrap(ArtGlow.render(try picture([255, 60]), gain: 1.6, lights: .shoulder))
+    /// The page's white stays close to the page (at most 1.25×), a dark
+    /// grey has the whole gain; one white among ten is no reason to lower it.
+    func testTheLightsStayNearThePage() throws {
+        let lit = try XCTUnwrap(ArtGlow.lit(try picture([255] + [UInt8](repeating: 60, count: 9)), gain: 1.6))
         XCTAssertTrue(lit.colorSpace?.name == CGColorSpace.extendedLinearSRGB)
         let red = try reds(lit)
-        XCTAssertLessThanOrEqual(red[0], 1.151)
-        XCTAssertGreaterThan(red[0], 1.05)
+        XCTAssertLessThanOrEqual(red[0], 1.251)
+        XCTAssertGreaterThan(red[0], 1.1)
         let grey: Float = pow((60 / 255 + 0.055) / 1.055, 2.4)
         XCTAssertEqual(red[1] / grey, 1.6, accuracy: 0.03)
     }
 
-    /// B: a picture all of white paper is hardly lifted, a dark one fully.
+    /// A picture all of white paper is lit no brighter than the ceiling.
+    func testWhitePaperIsNoLightbox() throws {
+        let lit = try XCTUnwrap(ArtGlow.lit(try picture([UInt8](repeating: 255, count: 10)), gain: 2))
+        for red in try reds(lit) { XCTAssertEqual(red, 1, accuracy: 0.01) }
+    }
+
+    /// A picture all of white paper is hardly lifted, a dark one fully.
     func testTheGainFitsThePicture() {
         XCTAssertEqual(ArtGlow.fitted(1.6, lightness: [Float](repeating: 1, count: 100), share: 0.05), 1, accuracy: 0.01)
         XCTAssertEqual(ArtGlow.fitted(1.6, lightness: [Float](repeating: 0.3, count: 100), share: 0.05), 1.6)
