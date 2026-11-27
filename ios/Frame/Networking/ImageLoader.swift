@@ -527,6 +527,9 @@ actor HostGate {
         promoted.insert(id)
     }
 
+    /// How many wait in `host`'s line (for the tests).
+    func inLine(_ host: String) -> Int { waiting[host, default: []].count }
+
     func hold(_ held: Bool) {
         self.held = held
         if !held { for host in Array(waiting.keys) { pump(host) } }
