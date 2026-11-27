@@ -37,6 +37,9 @@ struct StackedPage: ViewModifier {
     /// is gone, not drawn in with it (16:36: "Wciśnięcie powinno dotyczyć
     /// tego co widać, a dolną część zanikać a nie jak teraz się skalować").
     var hidden: Bool
+    /// The next work, whose edge lies under the card: drawn over the
+    /// page's glow while the one melts into the other (`covered`).
+    var below: RemoteItem? = nil
 
     /// How much of the screen's height the next work's edge takes (points;
     /// 2% of a 874-point screen, Mateusz 12:55: "może wystarczy 3%").
@@ -68,6 +71,15 @@ struct StackedPage: ViewModifier {
     /// u dołu powinien być od razu"; before, the cut waited 0.55 s).
     @State private var flooded = false
     @State private var wasWhole = false
+    /// Flooded, how much the next work's edge still lies over the glow:
+    /// the page is uncut at once and the edge fades into the glow, and
+    /// back (Mateusz 2026-11-27 22:41: "Tło łuny powinno delikatnie
+    /// przenikać i pojawiać się płynnie"; the cut drawn down, the glow
+    /// had come out from behind the card, sharp).
+    @State private var covered: Double = 1
+    /// Seconds the next work's edge takes to melt into the glow, and back.
+    nonisolated static let melt: Double = 0.45
+    nonisolated static let unmelt: Double = 0.35
 
     func body(content: Content) -> some View {
         let card = on
@@ -97,13 +109,22 @@ struct StackedPage: ViewModifier {
             ZStack(alignment: .top) {
                 content
                     .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
-                // Its shadow on the card under it.
+                // What lies under the card while it is flooded: the next
+                // work's edge, melting into the glow (`covered`).
+                if card, flood, !pressed || covered > 0 {
+                    under(geo.size)
+                        .opacity(covered)
+                        .allowsHitTesting(false)
+                }
+                // Its shadow on the card under it, round its corners too
+                // (22:41: "Cień pod aktywnym dziełem się urywa, jest płaskim
+                // paskiem"): plain strokes of its foot, each lower and
+                // fainter, never a blur (a pass off the screen each frame).
                 if card, stacks {
-                    LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                        .frame(height: 9)
-                        .padding(.horizontal, Self.corner(geo.size) * 0.6)
-                        .offset(y: tall)
-                        .opacity(flood ? 0 : 1)
+                    FootShadow(corner: Self.corner(geo.size))
+                        .frame(width: geo.size.width, height: tall)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                        .opacity(flood ? covered : 1)
                         .allowsHitTesting(false)
                         .transition(.opacity)
                 }
@@ -111,8 +132,8 @@ struct StackedPage: ViewModifier {
                 // glow before the work let go is back there (run 6: a line
                 // at the card's size on the empty glow). Under the card
                 // shown, dark with the rest of its page.
-                if card, !Self.left(64) {
-                    let inset = pressed ? Self.pressedInset : 0
+                if !Self.left(64) {
+                    let inset = pressed || !card ? Self.pressedInset : 0
                     let high = tall - 2 * inset
                     let corner = max(Self.corner(geo.size) - inset, 8)
                     Group {
@@ -126,9 +147,12 @@ struct StackedPage: ViewModifier {
                         .frame(width: geo.size.width - 2 * inset, height: high)
                         .offset(x: inset, y: inset)
                         .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                        .opacity(flood && !held ? 0 : 1)
+                        // Gone with the way to the whole work as it starts,
+                        // back as the card is (22:41: it stayed on the
+                        // way, then went from one frame to the next).
+                        .opacity(!card || (flood && !held) ? 0 : 1)
+                        .animation(.easeOut(duration: card ? 0.3 : 0.12), value: card)
                         .allowsHitTesting(false)
-                        .transition(.opacity)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
@@ -168,10 +192,13 @@ struct StackedPage: ViewModifier {
         .animation(.easeInOut(duration: HoldPull.press), value: held)
         .onChange(of: on) { _, now in if !now, held { wasWhole = true } }
         .task(id: held) {
+            var quiet = Transaction()
+            quiet.disablesAnimations = true
             if held {
-                // Quickly, the screen's corners with it (run 8: black for a
-                // fifth of a second while the glow came down).
-                withAnimation(.easeOut(duration: 0.15)) { flooded = true }
+                // Uncut at once, the next work's edge drawn over the glow
+                // where it was, then melting into it.
+                if !flooded { withTransaction(quiet) { flooded = true; covered = 1 } }
+                withAnimation(.easeInOut(duration: Self.melt)) { covered = 0 }
                 return
             }
             guard flooded else { return }
@@ -179,8 +206,21 @@ struct StackedPage: ViewModifier {
             if wasWhole { try? await Task.sleep(for: .seconds(Self.after)) }
             guard !Task.isCancelled else { return }
             wasWhole = false
-            withAnimation(.easeOut(duration: 0.3)) { flooded = false }
+            withAnimation(.easeInOut(duration: Self.unmelt)) { covered = 1 }
+            try? await Task.sleep(for: .seconds(Self.unmelt))
+            guard !Task.isCancelled else { return }
+            withTransaction(quiet) { flooded = false }
         }
+    }
+
+    /// The next work's edge as it lies under the card, on the screen's
+    /// ground (what is seen beside it), to lie over the page uncut.
+    private func under(_ size: CGSize) -> some View {
+        ZStack(alignment: .bottom) {
+            Color.black.frame(height: Self.peek + 2)
+            if let below { StackUnder(work: below) }
+        }
+        .frame(width: size.width, height: size.height, alignment: .bottom)
     }
 
     /// The card's bottom corners, round with the screen's.
@@ -265,9 +305,36 @@ struct FootLine: View {
     }
 }
 
+/// The card's shadow on what lies under it: its foot stroked again and
+/// again, each a little lower and fainter, so it is soft and goes round
+/// the corners as the card does.
+struct FootShadow: View {
+    let corner: CGFloat
+    static let steps = 6
+
+    var body: some View {
+        ZStack {
+            ForEach(1 ... Self.steps, id: \.self) { step in
+                let k = CGFloat(step)
+                FootArc(corner: corner + k * 0.8)
+                    .stroke(.black.opacity(0.26 * pow(1 - (k - 1) / CGFloat(Self.steps), 1.6)), lineWidth: 1.6)
+                    .padding(.horizontal, -k * 0.8)
+                    .offset(y: k * 1.4)
+            }
+        }
+    }
+}
+
 /// The foot of a card: up its two bottom corners and along its bottom.
 struct FootArc: Shape {
-    let corner: CGFloat
+    var corner: CGFloat
+
+    // Pressed, the corner goes in with the card, frame by frame (22:41:
+    // the line "przeskakuje na narożnikach").
+    var animatableData: CGFloat {
+        get { corner }
+        set { corner = newValue }
+    }
 
     func path(in rect: CGRect) -> Path {
         let r = min(corner, rect.width / 2, rect.height)
