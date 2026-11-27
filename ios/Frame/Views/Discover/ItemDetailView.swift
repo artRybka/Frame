@@ -296,31 +296,7 @@ struct ItemDetailView: View {
         .task(id: itemID) { await makeEdgeGlow() }
         .background { phoneRestorer }
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let item {
-                let offer = menuHeld ?? menuOffer(item)
-                ItemToolbar(
-                    model: model, item: item, changed: { self.item = $0 },
-                    addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
-                    findingCopies: $findingCopies, pictureSide: offer.pictureSide,
-                    // A pick lets go of what the open menu held: its own
-                    // change shows at the next opening (Mateusz 2026-11-26:
-                    // "Menu odświeża się dopiero gdy wyjdę i wrócę do karty";
-                    // `onDisappear` of an entry does not come on every close).
-                    restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
-                    proWaiting: offer.proWaiting,
-                    correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
-                    undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
-                    recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
-                    recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
-                    editOwn: ownActions(item) ? { editingOwn = true } : nil,
-                    retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
-                    deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
-                    deletingOwn: $deletingOwn,
-                    menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
-                )
-            }
-        }
+        .toolbar { cardToolbar }
         .task(id: itemID) { await load() }
         .task(id: item?.fragmentsID ?? itemID) { await loadFragments() }
         .task(id: itemID) { await loadDetails() }
@@ -435,6 +411,34 @@ struct ItemDetailView: View {
                 .padding(.top, view.whole == nil ? 0 : 6)
                 DetailStrip(details: view.details)
             }
+        }
+    }
+
+    /// The card's "…" and its fellows (apart from the body, which the
+    /// compiler can type-check only so long).
+    @ToolbarContentBuilder private var cardToolbar: some ToolbarContent {
+        if let item {
+            let offer = menuHeld ?? menuOffer(item)
+            ItemToolbar(
+                model: model, item: item, changed: { self.item = $0 },
+                addingToPlaylist: $showingPlaylists, savingPhoto: $savingPhoto,
+                findingCopies: $findingCopies, pictureSide: offer.pictureSide,
+                // A pick lets go of what the open menu held: its own
+                // change shows at the next opening (Mateusz 2026-11-26:
+                // "Menu odświeża się dopiero gdy wyjdę i wrócę do karty";
+                // `onDisappear` of an entry does not come on every close).
+                restorePro: offer.pro ? { menuHeld = nil; proOrdered = true; Task { await orderPro() } } : nil,
+                proWaiting: offer.proWaiting,
+                correctCut: Self.canCut(item) ? { correctingCut = true } : nil,
+                undoCut: Self.canCut(item) && item.isCropped ? { Task { await undoCut() } } : nil,
+                recover: offer.recover ? { menuHeld = nil; Task { await toggleCleaning() } } : nil,
+                recoveryKind: offer.recoveryKind, cleaned: item.cleanedShown != nil,
+                editOwn: ownActions(item) ? { editingOwn = true } : nil,
+                retakeOwn: ownActions(item) ? { retakingOwn = true } : nil,
+                deleteOwn: ownActions(item) ? { Task { await deleteOwn() } } : nil,
+                deletingOwn: $deletingOwn,
+                menuOpened: { open in menuHeld = open ? menuOffer(item) : nil }
+            )
         }
     }
 
