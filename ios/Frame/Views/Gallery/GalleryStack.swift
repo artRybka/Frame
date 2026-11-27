@@ -85,68 +85,56 @@ struct StackedPage: ViewModifier {
         // off the screen in every frame and swipes ran at half the frames
         // (run 6: 36 ms a frame against 17 before the stack; Mateusz
         // 2026-11-27 18:47: "nie jest płynna. Odrobinę skacze?").
-        return ZStack(alignment: .top) {
-            GeometryReader { geo in
-                let tall = geo.size.height - foot
-                ZStack(alignment: .top) {
-                    content
-                        .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
-                    // Its shadow on the card under it.
-                    if card {
-                        LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 9)
-                            .padding(.horizontal, Self.corner(geo.size) * 0.6)
-                            .offset(y: tall)
-                            .opacity(flood ? 0 : 1)
-                            .allowsHitTesting(false)
-                            .transition(.opacity)
-                    }
+        let shaded = !Self.left(4)
+        // One layer, laid on the stack by itself (`lies`) and shaded there
+        // by how far down it lies. A shade and a line each laid on the
+        // stack beside it, each changing in every frame, halved a swipe's
+        // frames (run 8: 34 ms a frame with them, 17 without).
+        return GeometryReader { geo in
+            let tall = geo.size.height - foot
+            ZStack(alignment: .top) {
+                content
+                    .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
+                // Its shadow on the card under it.
+                if card, stacks {
+                    LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0)], startPoint: .top, endPoint: .bottom)
+                        .frame(height: 9)
+                        .padding(.horizontal, Self.corner(geo.size) * 0.6)
+                        .offset(y: tall)
+                        .opacity(flood ? 0 : 1)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
                 }
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-            }
-            .visualEffect { content, proxy in
-                let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
-                return content.scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
-            }
-            // Dark as it lies under the card shown, itself once it is the
-            // screen.
-            if !Self.left(4) {
-            GeometryReader { geo in
-                CardCut(foot: foot, corner: Self.corner(geo.size))
-                    .fill(.black)
-            }
-            .visualEffect { content, proxy in
-                let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
-                return content
-                    .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
-                    .opacity(stacks ? Self.dark * Self.under(proxy) : 0)
-            }
-            .allowsHitTesting(false)
-            }
-            // The light line, only on the card on top; pressed, in with the
-            // card; not on the glow before the work let go is back there
-            // (run 6: a line at the card's size on the empty glow).
-            if card, !Self.left(4) {
-                GeometryReader { geo in
+                // The light line; pressed, in with the card; not on the
+                // glow before the work let go is back there (run 6: a line
+                // at the card's size on the empty glow). Under the card
+                // shown, dark with the rest of its page.
+                if card {
                     let inset = pressed ? Self.pressedInset : 0
-                    let tall = geo.size.height - foot - 2 * inset
+                    let high = tall - 2 * inset
                     let corner = max(Self.corner(geo.size) - inset, 8)
                     UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                        .strokeBorder(line(height: tall), lineWidth: 1)
-                        .frame(width: geo.size.width - 2 * inset, height: tall)
+                        .strokeBorder(line(height: high), lineWidth: 1)
+                        .frame(width: geo.size.width - 2 * inset, height: high)
                         .offset(x: inset, y: inset)
                         .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                        .opacity(flood && !held ? 0 : 1)
+                        .allowsHitTesting(false)
+                        .transition(.opacity)
                 }
-                .visualEffect { content, proxy in
-                    let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
-                    return content
-                        .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
-                        .opacity(1 - Self.under(proxy))
-                }
-                .opacity(flood && !held ? 0 : 1)
-                .allowsHitTesting(false)
-                .transition(.opacity)
             }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+        }
+        .visualEffect { content, proxy in
+            let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
+            // Darker by `dark` lying under the card shown: its colours
+            // times `keep`, as a contrast about the middle grey and a
+            // brightness that bring it there.
+            let keep = 1 - (stacks && shaded ? Self.dark * Self.under(proxy) : 0)
+            return content
+                .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+                .contrast(keep)
+                .brightness(-0.5 * (1 - keep))
         }
         .opacity(hidden ? 0 : 1)
         .animation(.easeInOut(duration: HoldPull.press), value: pressed)
@@ -156,7 +144,9 @@ struct StackedPage: ViewModifier {
         .onChange(of: on) { _, now in if !now, held { wasWhole = true } }
         .task(id: held) {
             if held {
-                withAnimation(.easeInOut(duration: HoldPull.press)) { flooded = true }
+                // Quickly, the screen's corners with it (run 8: black for a
+                // fifth of a second while the glow came down).
+                withAnimation(.easeOut(duration: 0.15)) { flooded = true }
                 return
             }
             guard flooded else { return }
