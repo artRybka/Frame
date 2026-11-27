@@ -32,6 +32,11 @@ targets:
       - path: Models/KadrPainting.mlpackage
         type: file
         buildPhase: sources
+      # Our restorer's model (ArtSR G3, the server's `imaging/artsr.py`), for
+      # now only measured on the phone (`Model/PhoneRestorer.swift`).
+      - path: Models/ArtSR.mlpackage
+        type: file
+        buildPhase: sources
     dependencies:
       - target: FrameWidgets
       - target: FrameNotifications
