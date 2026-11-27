@@ -1066,8 +1066,13 @@ class ImageCache:
             shown = item.model_copy(update={"cleaned": None})
         drawn = item.sharper is not None and item.sharper.restored
         if drawn and not restored:
-            shown = shown.model_copy(update={"sharper": None})
-            img = self.before_drawn(item, urgent)
+            # The work as the drawing was drawn from it, cut already: the
+            # cut may be noted on an earlier drawing, which would leave the
+            # museum's photograph whole here (Mateusz 2026-11-27, Janinet's
+            # print: „Podgląd przed restauracją pokazuje obraz przed
+            # kadrowaniem”).
+            shown = shown.model_copy(update={"sharper": None, "cut": None})
+            img = self.work_before_drawn(item, urgent)
         else:
             img = load_image(self.museum_photo(item, urgent))
         made = self._shown(shown, img, side)

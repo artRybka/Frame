@@ -362,6 +362,15 @@ def test_pro_after_ours_draws_the_work_as_cut(app: Any) -> None:
     stored = service.library.get(own.id)
     assert stored is not None and stored.sharper is not None and stored.sharper.pro
     assert abs(stored.sharper.width / stored.sharper.height - shape) < 0.05
+    # The full screen without the drawing: the work as it was cut, not the
+    # museum's whole photograph (Mateusz 2026-11-27, Janinet's print), also
+    # when the cut is noted on our model's drawing before Pro's.
+    noted = stored.cut.model_copy(update={"picture": "owned:earlier.jpg"})
+    assert service.library.update(own.id, cut=noted) is not None
+    before = client.get(f"/api/library/items/{own.id}/treated", params={"restored": "false"})
+    assert before.status_code == 200, before.text
+    with Image.open(io.BytesIO(before.content)) as img:
+        assert abs(img.width / img.height - shape) < 0.05
 
 
 def test_a_drawing_of_the_whole_photograph_is_cut_to_the_work_once(app: Any) -> None:
@@ -382,6 +391,9 @@ def test_a_drawing_of_the_whole_photograph_is_cut_to_the_work_once(app: Any) -> 
     assert stored is not None and stored.sharper is not None
     assert stored.sharper.restored and stored.sharper.pro
     assert abs(stored.sharper.width / stored.sharper.height - 720 / 420) < 0.05
+    # Without the drawing, the work as cut too (Mateusz 2026-11-27).
+    before = service.images.treated(stored, restored=False, cleaned=False, side=2048)
+    assert abs(before.width / before.height - 720 / 420) < 0.05
     assert service.library.get_state(CUT_KEY, False)
     assert restorer.cut_kept() == 0  # once
     service.library.set_state(CUT_KEY, False)
