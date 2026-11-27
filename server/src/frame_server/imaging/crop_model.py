@@ -174,7 +174,8 @@ PLATE_PART = 0.0002
 #: the band's. They are counted in squares of :data:`PLATE_CELL` px, those
 #: with at least :data:`PLATE_CELL_LEAST` px of them (so a densely hatched
 #: part weighs no more than a lightly drawn one), each where its middle is.
-#: A cut that leaves more than :data:`PLATE_DRAWN` of them out
+#: A cut that leaves more than :data:`PLATE_DRAWN` of them out beside it or
+#: above it (under it is what is written under a print)
 #: is no cut: an impression found as one dark part of a drawing printed
 #: with no plate (Mateusz 2026-11-27, a lithograph by Toulouse-Lautrec cut
 #: to one of its two figures: „Nie możemy tak robić”).
@@ -790,8 +791,10 @@ def plate(
     # figure taken for its impression, the rest of it drawn in fine lines).
     if found.lines is not None and len(found.lines):
         u, v = found.lines[:, 0], found.lines[:, 1]
-        u0, v0, u1, v1 = inked[0] - pad, inked[1] - pad, inked[2] + pad, inked[3] + pad
-        out = (u < u0) | (u > u1) | (v < v0) | (v > v1)
+        u0, v0, u1 = inked[0] - pad, inked[1] - pad, inked[2] + pad
+        # Under it is what is written under a print (its title, a signature,
+        # a pencilled note): not counted.
+        out = (u < u0) | (u > u1) | (v < v0)
         if float(out.mean()) > PLATE_DRAWN and found.edged < PLATE_EDGED:
             return None
     h, w = rgb.shape[:2]

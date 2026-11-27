@@ -828,7 +828,7 @@ std::optional<std::pair<Quad, Quad>> plate(const cv::Mat& rgb, const Quad& sheet
     if (!found->lines.empty()) {
         long out = 0;
         for (const auto& p : found->lines)
-            out += p.x < inked[0] - pad || p.x > inked[2] + pad || p.y < inked[1] - pad || p.y > inked[3] + pad;
+            out += p.x < inked[0] - pad || p.x > inked[2] + pad || p.y < inked[1] - pad;  // not under it: lettering
         if (static_cast<double>(out) / static_cast<double>(found->lines.size()) > PLATE_DRAWN && found->edged < PLATE_EDGED)
             return std::nullopt;
     }
