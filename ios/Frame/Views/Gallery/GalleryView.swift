@@ -102,9 +102,6 @@ struct GalleryView: View {
     @State private var cutHere: Set<String> = []
     /// Scrolled to the work it starts with (`begin`): shown from then on.
     @State private var begun = false
-    /// The pages are moving: the work under the one shown is not drawn
-    /// (`StackedPage`), the next one itself coming up.
-    @State private var scrolling = false
 
     private enum Hand {
         /// `gone`: on its way to the grid with no finger's say any more
@@ -275,10 +272,7 @@ struct GalleryView: View {
         } action: { _, now in
             GalleryLog.trace("pages' insets \(Int(now[0])) and \(Int(now[1])), \(Int(now[2])) tall")
         }
-        .onScrollPhaseChange { _, phase in
-            GalleryLog.trace("pages' scroll \(phase)")
-            scrolling = phase != .idle
-        }
+        .onScrollPhaseChange { _, phase in GalleryLog.trace("pages' scroll \(phase)") }
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .modifier(WindowZoom(camera: camera))
@@ -298,9 +292,8 @@ struct GalleryView: View {
         )
         // A card on a stack, the next work's edge under it (`StackedPage`).
         .modifier(StackedPage(
-            on: !grid && peek == nil,
-            under: index + 1 < works.count ? works[index + 1] : nil,
-            showsUnder: work.id == shown?.id && !scrolling && pressed == nil
+            on: !grid && peek == nil && pressed == nil,
+            under: index + 1 < works.count ? works[index + 1] : nil
         ))
         .containerRelativeFrame([.horizontal, .vertical])
         .contentShape(Rectangle())

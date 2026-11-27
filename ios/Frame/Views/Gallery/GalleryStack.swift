@@ -9,23 +9,22 @@ import SwiftUI
 /// jak w A3a, ale mniej intensywna i zanikająca gradientem ku górze …
 /// Cień i plama pod spodem jak w A3c", no nudge on entering).
 struct StackedPage: ViewModifier {
-    /// Cut as a card: not under the grid, nor with the whole work held,
-    /// where the page is to be the screen as its tile and its whole are.
+    /// Cut as a card: not under the grid, nor with the whole work held or
+    /// pressed, where the page is to be the screen as its tile, its whole
+    /// and its pressed window are.
     var on: Bool
     /// The work under this one.
     var under: RemoteItem?
-    /// The work under it shows: this page is shown and still.
-    var showsUnder: Bool
 
     /// How much of the screen's height the next work's edge takes (points;
     /// 2% of a 874-point screen, Mateusz 12:55: "może wystarczy 3%").
-    static let peek: CGFloat = 17
+    nonisolated static let peek: CGFloat = 17
     /// How far in from the screen's sides the work under lies.
-    static let underInset: CGFloat = 18
+    nonisolated static let underInset: CGFloat = 18
     /// The light line's white at its brightest, on the card's foot.
-    static let edge: Double = 0.27
+    nonisolated static let edge: Double = 0.27
     /// How far up the card's sides the line goes before it is gone.
-    static let edgeRise: CGFloat = 87
+    nonisolated static let edgeRise: CGFloat = 87
 
     func body(content: Content) -> some View {
         GeometryReader { geo in
@@ -34,7 +33,7 @@ struct StackedPage: ViewModifier {
             let cut = on ? Self.peek : 0
             ZStack(alignment: .top) {
                 Color.black
-                if let under, on, showsUnder {
+                if let under, on {
                     UnderCard(work: under, corner: max(screen - Self.underInset, 20), cardCorner: corner)
                         .padding(.horizontal, Self.underInset)
                         .transition(.opacity)
@@ -56,9 +55,36 @@ struct StackedPage: ViewModifier {
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            // A page coming up from under the one shown comes as the work
+            // under it was, narrower, dark and blurred, and is itself only
+            // once it is the screen; one going down goes under the same way
+            // (the film of 2026-11-27: the next work came up sharp and
+            // bright under the dark edge that had been there at rest).
+            .overlay {
+                Color.black
+                    .visualEffect { content, proxy in content.opacity(Self.dark * Self.under(proxy)) }
+                    .allowsHitTesting(false)
+            }
+            .visualEffect { content, proxy in
+                let down = Self.under(proxy)
+                return content
+                    .scaleEffect(1 - 2 * Self.underInset / max(proxy.size.width, 1) * down, anchor: .top)
+                    .blur(radius: Self.blur * down)
+            }
         }
         .animation(.easeInOut(duration: 0.25), value: on)
-        .animation(.easeInOut(duration: 0.25), value: showsUnder)
+    }
+
+    /// How dark the work under is.
+    nonisolated static let dark: Double = 0.65
+    /// How blurred the work under is (points).
+    nonisolated static let blur: CGFloat = 9
+
+    /// How far below the screen's top the page lies, of its height: 0 shown,
+    /// 1 a whole page down.
+    nonisolated static func under(_ proxy: GeometryProxy) -> CGFloat {
+        let top = proxy.frame(in: .scrollView).minY
+        return min(max(top / max(proxy.size.height, 1), 0), 1)
     }
 
     /// Brightest on the card's foot, gone `edgeRise` up its sides.
@@ -97,12 +123,12 @@ private struct UnderCard: View {
                             .resizable()
                             .scaledToFill()
                             .frame(width: geo.size.width, height: geo.size.height)
-                            .blur(radius: 9, opaque: true)
+                            .blur(radius: StackedPage.blur, opaque: true)
                     } else {
                         Color(white: 0.12)
                     }
                 }
-                .overlay(Color.black.opacity(0.65))
+                .overlay(Color.black.opacity(StackedPage.dark))
                 // The card above's shadow on it.
                 UnevenRoundedRectangle(
                     bottomLeadingRadius: cardCorner, bottomTrailingRadius: cardCorner, style: .continuous
