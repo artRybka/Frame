@@ -6,6 +6,8 @@
   krawędzią, a brzeg następnego dzieła u dołu zalewa łuna.
 - Po powrocie z siatki i z całego dzieła dolny brzeg karty jest od razu,
   bez doklejania po chwili.
+- Galeria: przerzucanie dzieł znów płynne (linia krawędzi karty rysowana
+  taniej), bez migotania paska po powrocie z siatki.
 
 ## 1.145.409
 
