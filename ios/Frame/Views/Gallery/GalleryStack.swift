@@ -25,8 +25,14 @@ struct StackedPage: ViewModifier {
     /// one shown (not under the grid, where pages lie as tiles).
     var stacked: Bool
     /// Pressed: the card goes in by itself (`GalleryPage.pressedIn`), its
-    /// line and shadow gone.
+    /// line with it.
     var pressed: Bool
+    /// Pressed or held: what lies round the card, the next work's edge
+    /// under it too, is the page's glow (Mateusz 2026-11-27 18:47: "całe
+    /// dzieło na froncie powinno się zmniejszać (wraz z krawędzią
+    /// pseudo-ekranu) a pod spodem widoczny kawałek dzieła zalewać się
+    /// łuną"), and stays so till the work let go has come back as the card.
+    var held: Bool
     /// The card over this one is pressed or held: this one's edge under it
     /// is gone, not drawn in with it (16:36: "Wciśnięcie powinno dotyczyć
     /// tego co widać, a dolną część zanikać a nie jak teraz się skalować").
@@ -43,17 +49,22 @@ struct StackedPage: ViewModifier {
     nonisolated static let edgeRise: CGFloat = 87
     /// How dark the work under is.
     nonisolated static let dark: Double = 0.65
+    /// How far in the card pressed goes, all round (`GalleryPage`'s).
+    nonisolated static let pressedInset: CGFloat = 12
 
-    /// `on`, a moment late when it comes: the page let go from the whole
-    /// work grows back on its pale ground first, and cut as a card while
-    /// it did, a pale rim showed round it on black (the film of
-    /// 2026-11-27, frames 50 to 56).
-    @State private var settled = true
+    /// The foot of the screen is the page's (its glow), not the next
+    /// work's: from the press, and after the whole work is let go till it
+    /// is the card again. The card itself is cut as soon as it is one
+    /// (18:47: "Przy powrocie z całego dzieła do pełnego ekranu też pasek
+    /// u dołu powinien być od razu"; before, the cut waited 0.55 s).
+    @State private var flooded = false
+    @State private var wasWhole = false
 
     func body(content: Content) -> some View {
-        let card = on && settled
+        let card = on
         let foot = card ? Self.peek : 0
         let stacks = stacked
+        let flood = flooded
         // The page, and over it its shade and its line: each laid on the
         // stack by itself (`lies`), so each knows how far down it lies.
         // Measured inside the page moved, the shade read where the page was
@@ -71,17 +82,22 @@ struct StackedPage: ViewModifier {
                             .frame(height: tall)
                             .offset(y: 5)
                             .blur(radius: 5)
-                            .opacity(pressed ? 0 : 1)
+                            .opacity(flood ? 0 : 1)
                             .allowsHitTesting(false)
                             .transition(.opacity)
                     }
                     content
                         .mask(alignment: .top) {
-                            UnevenRoundedRectangle(
-                                bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
-                                style: .continuous
-                            )
-                            .frame(height: tall)
+                            ZStack(alignment: .top) {
+                                UnevenRoundedRectangle(
+                                    bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
+                                    style: .continuous
+                                )
+                                .frame(height: tall)
+                                // The screen's foot, its glow coming over
+                                // the next work's edge.
+                                Rectangle().opacity(flood ? 1 : 0)
+                            }
                         }
                 }
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
@@ -112,14 +128,16 @@ struct StackedPage: ViewModifier {
             // The light line, only on the card on top.
             if card {
                 GeometryReader { geo in
-                    let tall = geo.size.height - foot
-                    UnevenRoundedRectangle(
-                        bottomLeadingRadius: Self.corner(geo.size), bottomTrailingRadius: Self.corner(geo.size),
-                        style: .continuous
-                    )
-                    .strokeBorder(line(height: tall), lineWidth: 1)
-                    .frame(height: tall)
-                    .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                    // Pressed, in with the card's window, all round
+                    // (`GalleryPage.pressedInset`).
+                    let inset = pressed ? Self.pressedInset : 0
+                    let tall = geo.size.height - foot - 2 * inset
+                    let corner = max(Self.corner(geo.size) - inset, 8)
+                    UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
+                        .strokeBorder(line(height: tall), lineWidth: 1)
+                        .frame(width: geo.size.width - 2 * inset, height: tall)
+                        .offset(x: inset, y: inset)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                 }
                 .visualEffect { content, proxy in
                     let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
@@ -127,7 +145,6 @@ struct StackedPage: ViewModifier {
                         .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
                         .opacity(1 - Self.under(proxy))
                 }
-                .opacity(pressed ? 0 : 1)
                 .allowsHitTesting(false)
                 .transition(.opacity)
             }
@@ -136,21 +153,25 @@ struct StackedPage: ViewModifier {
         .animation(.easeInOut(duration: HoldPull.press), value: pressed)
         .animation(.easeInOut(duration: HoldPull.press), value: hidden)
         .animation(.easeInOut(duration: 0.25), value: card)
-        .task(id: self.on) {
-            guard self.on else { settled = false; return }
-            guard !settled else { return }
-            try? await Task.sleep(for: .seconds(Self.after))
+        .onChange(of: on) { _, now in if !now, held { wasWhole = true } }
+        .task(id: held) {
+            if held {
+                withAnimation(.easeInOut(duration: HoldPull.press)) { flooded = true }
+                return
+            }
+            guard flooded else { return }
+            // Let go of the whole work: the glow till it is the card again.
+            if wasWhole { try? await Task.sleep(for: .seconds(Self.after)) }
             guard !Task.isCancelled else { return }
-            settled = true
+            wasWhole = false
+            withAnimation(.easeOut(duration: 0.3)) { flooded = false }
         }
     }
 
-    /// The card's bottom corners, round with the screen's.
-    static func corner(_ size: CGSize) -> CGFloat { max(ScreenCorner.radius(of: size) - peek, 20) }
-
-    /// Seconds the card waits after the whole work is let go (its way
-    /// back takes half a second, `GalleryPage.back`).
-    static let after: Double = 0.55
+    /// Seconds the glow stays at the screen's foot after the whole work
+    /// is let go, the last of its way back (`GalleryPage.back`, 0.55 s)
+    /// then the next work's edge coming out of it.
+    static let after: Double = 0.35
 
     /// How far below the screen's top the page lies, of its height: 0 shown,
     /// 1 a whole page down (and under the one shown).

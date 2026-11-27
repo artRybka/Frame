@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.410
+
+- Galeria: przytrzymanie dzieła zmniejsza całą kartę razem z jej
+  krawędzią, a brzeg następnego dzieła u dołu zalewa łuna.
+- Po powrocie z siatki i z całego dzieła dolny brzeg karty jest od razu,
+  bez doklejania po chwili.
+
 ## 1.145.409
 
 - Galeria przewija się jak stos kart: przy zsuwaniu dzieła w górę

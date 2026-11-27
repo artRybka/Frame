@@ -305,6 +305,7 @@ struct GalleryView: View {
             on: !grid && peek == nil,
             stacked: !grid,
             pressed: pressed == work.id,
+            held: pressed == work.id || peek == work.id,
             hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)
         ))
         .containerRelativeFrame([.horizontal, .vertical])
@@ -593,7 +594,10 @@ struct GalleryView: View {
     /// swipes down the works brings the grid.
     private func scrolled(_ y: CGFloat) {
         flow.note(y)
-        if grid || camera.on { GalleryLog.trace("pages at \(Int(y))") }
+        // Every frame, in tenths of a point: a swipe's evenness is read off
+        // these (Mateusz 2026-11-27 18:47: "nie jest płynna. Odrobinę
+        // skacze?").
+        GalleryLog.trace("pages at \(String(format: "%.1f", y))")
         if returning != nil { showWindow() }
         guard !grid, hand == .idle, peek == nil, path.isEmpty else { return }
         guard let index = run.scrolled(to: y, height: area.height), works.indices.contains(index) else { return }
@@ -1381,7 +1385,7 @@ private struct GalleryPage: View {
     /// góra-dół jest większy niż prawo-lewo": the page was pressed in by a
     /// share of each side, 9 points at the sides and 20 above and below,
     /// its corners 44 on a screen of 62).
-    static let pressedInset: CGFloat = 12
+    static let pressedInset: CGFloat = StackedPage.pressedInset
     /// The card's foot over the next work's edge (`StackedPage.peek`): what
     /// is pressed in is the card seen, not the page under it (Mateusz
     /// 2026-11-27 16:36: "Wciśnięcie powinno dotyczyć tego co widać").
@@ -1577,8 +1581,11 @@ private struct GalleryPage: View {
         // corners were square ones from one frame to the next (Mateusz
         // 2026-11-25 21:54: "Zaokrąglenie narożników przy zmianie z pełnego
         // ekranu na całe dzieło jest skokowe").
+        // A card above the next work's edge (`StackedPage`), from the
+        // first frame back from the grid or the whole work (Mateusz
+        // 2026-11-27 18:47: the foot "dopiero pojawia się po chwili").
         .clipShape(Window(
-            inset: sunk ? Self.pressedInset : 0, way: way,
+            inset: sunk ? Self.pressedInset : 0, way: way, foot: still ? 0 : Self.pressedFoot,
             screen: ScreenCorner.radius(of: geo.size), pressed: Self.pressedCorner(geo.size), full: Self.pressedInset,
             layout: layout, place: place, pan: pan, last: Self.wholeCorner
         ))
@@ -1586,6 +1593,7 @@ private struct GalleryPage: View {
         // work and back from it, all of it goes as one.
         .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
         .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
+        .animation(.smooth(duration: 0.3), value: still)
         .modifier(PulledUp(pull: pull, on: whole))
     }
 
@@ -2158,6 +2166,8 @@ private struct Window: Shape {
     /// How far in from the page's edges, all round (points).
     var inset: CGFloat
     var way: CGFloat
+    /// The card's foot over the next work's edge (none under the grid).
+    var foot: CGFloat
     /// The screen's own corners, and the window's when it is pressed in
     /// all the way (`full` points).
     let screen: CGFloat
@@ -2169,20 +2179,21 @@ private struct Window: Shape {
     /// The whole work's corners.
     let last: CGFloat
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(inset, way) }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(inset, way), foot) }
         set {
-            inset = newValue.first
-            way = newValue.second
+            inset = newValue.first.first
+            way = newValue.first.second
+            foot = newValue.second
         }
     }
 
     func path(in rect: CGRect) -> Path {
         let gone = min(max(way, 0), 1)
         let into = min(max(inset / max(full, 0.01), 0), 1)
-        // The card pressed in, not the next work's edge under it; that is
-        // the card's foot no more on the way to the whole work.
-        let foot = GalleryPage.pressedFoot * into * (1 - gone)
+        // The card, pressed in or not, never the next work's edge under
+        // it; that is the card's foot no more on the way to the whole work.
+        let foot = self.foot * (1 - gone)
         let window = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: max(rect.height - foot, 1))
             .insetBy(dx: inset, dy: inset)
         // The corners of the window `inset` in: the screen's less that
@@ -2191,7 +2202,7 @@ private struct Window: Shape {
         let cut = max(screen + (pressed - screen) * into, 0)
         guard gone > 0, rect.height > 0 else {
             // All of the page: the phone's own corners are its corners.
-            if inset < 0.05 { return Path(rect) }
+            if inset < 0.05, foot < 0.05 { return Path(rect) }
             return Self.rounded(window, top: cut, foot: max(cut - foot, min(cut, 8)))
         }
         let sink = 1 - 2 * inset / max(rect.height - GalleryPage.pressedFoot, 1)
