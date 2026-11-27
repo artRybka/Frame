@@ -1838,7 +1838,7 @@ struct ViewerSection: View {
                         Text("Światła (próba)")
                         Picker("Światła (próba)", selection: $lights) {
                             ForEach(ArtGlow.Lights.allCases) { option in
-                                Text(option.label).tag(option)
+                                Text(bound: option.label).tag(option)
                             }
                         }
                         .pickerStyle(.segmented)
