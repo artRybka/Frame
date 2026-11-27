@@ -29,6 +29,26 @@ def print_photo(impression: tuple[int, int, int, int], caption: bool = False) ->
     return (a.astype(np.int16) + rng.integers(-1, 2, a.shape)).clip(0, 255).astype(np.uint8)
 
 
+def drawing_photo(figure: tuple[int, int, int, int], lines: bool = True) -> np.ndarray:
+    """A lithograph with no plate: a figure drawn dark (an ellipse in
+    ``figure``), the rest of the scene in faint fine lines across the sheet."""
+    photo = print_photo(figure)
+    fx0, fy0, fx1, fy1 = figure
+    y, x = np.mgrid[fy0:fy1, fx0:fx1]
+    a, b = (fx1 - fx0) / 2, (fy1 - fy0) / 2
+    beyond = ((x - fx0 - a) / a) ** 2 + ((y - fy0 - b) / b) ** 2 > 1
+    photo[fy0:fy1, fx0:fx1][beyond] = (236, 230, 216)
+    if not lines:
+        return photo
+    x0, y0, x1, y1 = SHEET
+    for x in range(x0 + 60, x1 - 60, 17):
+        if not figure[0] - 60 <= x <= figure[2] + 60:
+            photo[y0 + 80 : y1 - 80, x : x + 2] = (222, 216, 202)
+    for y in range(y0 + 90, y1 - 90, 41):
+        photo[y : y + 2, figure[2] + 80 : x1 - 70] = (222, 216, 202)
+    return photo
+
+
 def corners(box: tuple[float, float, float, float]) -> list[list[float]]:
     x0, y0, x1, y1 = box
     return [[x0 / W, y0 / H], [x1 / W, y0 / H], [x1 / W, y1 / H], [x0 / W, y1 / H]]
@@ -148,3 +168,34 @@ def test_the_margin_takes_in_the_lettering() -> None:
     cut, alone = made
     assert max(p[1] for p in alone) < 470 / H  # the impression, without it
     assert max(p[1] for p in cut) > 500 / H  # the cut, round it
+
+
+def test_one_dark_figure_of_a_drawing_is_no_impression() -> None:
+    # A lithograph with no plate: one figure drawn dark, the rest of the
+    # scene in faint fine lines across the sheet (Mateusz 2026-11-27, a
+    # Toulouse-Lautrec cut to one of its two figures: „Nie możemy tak
+    # robić”). The figure alone would be cut: the faint lines keep the sheet.
+    figure = (250, 200, 480, 520)
+    assert cm.plate(drawing_photo(figure, lines=False), corners(SHEET)) is not None
+    assert cm.plate(drawing_photo(figure), corners(SHEET)) is None
+
+
+def test_an_etchings_plate_keeps_its_cut_whatever_is_drawn_round_it() -> None:
+    # Pencilled notes, stains or a sketch on the paper round a plate's
+    # impression, which lies along all its edges: still cut round it (on
+    # his prints: Millet's „The Spinner”, Boutet, Makowski).
+    impression = (250, 200, 480, 520)
+    photo = drawing_photo(impression)
+    photo[200:520, 250:480] = print_photo(impression)[200:520, 250:480]
+    assert cm.plate(photo, corners(SHEET)) is not None
+
+
+def test_lines_round_an_impression_within_its_margin_leave_it_cut() -> None:
+    # A plate mark or a ruled border just round the impression is no drawing
+    # left out.
+    impression = (250, 200, 650, 500)
+    photo = print_photo(impression)
+    x0, y0, x1, y1 = impression
+    photo[y0 - 10 : y0 - 8, x0 - 10 : x1 + 10] = (222, 216, 202)
+    photo[y1 + 8 : y1 + 10, x0 - 10 : x1 + 10] = (222, 216, 202)
+    assert cm.plate(photo, corners(SHEET)) is not None
