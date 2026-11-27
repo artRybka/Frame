@@ -19,7 +19,7 @@ final class PhoneRestorerTests: XCTestCase {
         var rgb = [UInt8](repeating: 0, count: rows * columns * 3)
         for y in 0 ..< rows {
             for x in 0 ..< columns {
-                let base = 60 + (x * 120) / columns + (y * 40) / rows
+                let base = 40 + (x * 100) / columns + (y * 30) / rows
                 let ink = cos(2 * Double.pi * Double(x) / 4.5) + cos(2 * Double.pi * Double(y) / 4.5) > 0
                 let v = ink ? base : base + 70
                 rgb[(y * columns + x) * 3] = UInt8(v)

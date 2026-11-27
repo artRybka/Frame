@@ -441,7 +441,7 @@ def test_the_phones_restorer_goes_by_the_servers_numbers() -> None:
 
     rows, columns = 320, 400
     y, x = np.mgrid[0:rows, 0:columns]
-    base = 60 + (x * 120) // columns + (y * 40) // rows
+    base = 40 + (x * 100) // columns + (y * 30) // rows
     ink = (np.cos(2 * np.pi * x / 4.5) + np.cos(2 * np.pi * y / 4.5)) > 0
     v = np.where(ink, base, base + 70).astype(np.uint8)
     rgb = np.stack([v, v, (v * 0.8).astype(np.uint8)], -1)
