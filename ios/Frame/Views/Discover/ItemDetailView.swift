@@ -294,7 +294,6 @@ struct ItemDetailView: View {
             CardArrival.pending[itemID] = nil
         }
         .task(id: itemID) { await makeEdgeGlow() }
-        .background { phoneRestorer }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { cardToolbar }
         .task(id: itemID) { await load() }
@@ -591,6 +590,9 @@ struct ItemDetailView: View {
             .modifier(restOfCard)
         }
         .layoutProbe("column")
+        // The phone's restorer goes with a loaded card (kept out of the
+        // body, which the compiler can type-check only so long).
+        .background { phoneRestorer }
         .padding(.horizontal, Theme.gutter)
         .padding(.bottom, 40)
         .modifier(CardHeld(leave: leave))
