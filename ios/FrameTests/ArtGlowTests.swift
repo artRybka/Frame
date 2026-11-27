@@ -41,7 +41,8 @@ final class ArtGlowTests: XCTestCase {
     }
 
     private func picture(_ greys: [UInt8]) throws -> CGImage {
-        let bytes = greys.flatMap { [$0, $0, $0, 255] }
+        var bytes: [UInt8] = []
+        for grey in greys { bytes += [grey, grey, grey, 255] }
         let space = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
         return try XCTUnwrap(CGImage(width: greys.count, height: 1, bitsPerComponent: 8, bitsPerPixel: 32,
