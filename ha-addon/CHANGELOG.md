@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.145.408
+
+- Próba: w Konfiguracji → Wyświetlanie dzieł nowy wybór „Światła”
+  (Obecnie, A, B, C), żeby jasne płaszczyzny dzieł nie świeciły jak
+  podświetlana kaseta. Do porównania na telefonie.
+
 ## 1.145.407
 
 - Galeria wygląda jak stos kart: dzieło na pełnym ekranie kończy się
