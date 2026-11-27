@@ -1345,6 +1345,10 @@ struct LiveBackend: FrameBackend {
                 URLQueryItem(name: "restored", value: restored ? "true" : "false"),
                 URLQueryItem(name: "cleaned", value: cleaned ? "true" : "false"),
                 URLQueryItem(name: "v", value: version),
+                // How the server makes it: raised when that changes, so a
+                // picture kept from before is not shown (2: the work before
+                // its drawing cut as drawn, 2026-11-27).
+                URLQueryItem(name: "w", value: "2"),
             ]
             if let made { query.append(URLQueryItem(name: "made", value: made)) }
             req = request("/api/library/items/\(escape(id))/treated", query: query)
