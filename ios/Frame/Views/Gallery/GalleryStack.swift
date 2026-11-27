@@ -53,7 +53,8 @@ struct StackedPage: ViewModifier {
     /// (`-galleryStackOff N`, the probe's; 0 in the app): 1 the pages
     /// below kept under, 2 the pages laid over one another, 4 the shade
     /// and the line, 8 the thumbnail behind, 16 the cut, 32 only the next
-    /// page kept under (not the one after).
+    /// page kept under (not the one after), 64 the line, 128 the shade cut
+    /// round as the card (a plain rectangle otherwise).
     nonisolated static let off = UserDefaults.standard.integer(forKey: "galleryStackOff")
     nonisolated static func left(_ part: Int) -> Bool { off & part != 0 }
     /// How far in the card pressed goes, all round (`GalleryPage`'s).
@@ -85,12 +86,12 @@ struct StackedPage: ViewModifier {
         // off the screen in every frame and swipes ran at half the frames
         // (run 6: 36 ms a frame against 17 before the stack; Mateusz
         // 2026-11-27 18:47: "nie jest płynna. Odrobinę skacze?").
-        let shaded = !Self.left(4)
         // One layer, laid on the stack by itself (`lies`) and shaded there
         // by how far down it lies. A shade and a line each laid on the
         // stack beside it, each changing in every frame, halved a swipe's
         // frames (run 8: 34 ms a frame with them, 17 without).
-        return GeometryReader { geo in
+        return ZStack(alignment: .top) {
+        GeometryReader { geo in
             let tall = geo.size.height - foot
             ZStack(alignment: .top) {
                 content
@@ -109,7 +110,7 @@ struct StackedPage: ViewModifier {
                 // glow before the work let go is back there (run 6: a line
                 // at the card's size on the empty glow). Under the card
                 // shown, dark with the rest of its page.
-                if card {
+                if card, !Self.left(64) {
                     let inset = pressed ? Self.pressedInset : 0
                     let high = tall - 2 * inset
                     let corner = max(Self.corner(geo.size) - inset, 8)
@@ -127,14 +128,31 @@ struct StackedPage: ViewModifier {
         }
         .visualEffect { content, proxy in
             let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
-            // Darker by `dark` lying under the card shown: its colours
-            // times `keep`, as a contrast about the middle grey and a
-            // brightness that bring it there.
-            let keep = 1 - (stacks && shaded ? Self.dark * Self.under(proxy) : 0)
-            return content
-                .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
-                .contrast(keep)
-                .brightness(-0.5 * (1 - keep))
+            return content.scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+        }
+        // Dark as it lies under the card shown, itself once it is the
+        // screen: a plain black layer over it, laid on the stack by itself
+        // so that it knows how far down the page lies (measured inside the
+        // page moved, it read where the page was drawn). Not a filter on
+        // the page: a contrast and a brightness, even at none, made every
+        // page an offscreen pass (run 9: 48 ms a frame).
+        if stacks, !Self.left(4) {
+            GeometryReader { geo in
+                if Self.left(128) {
+                    CardCut(foot: foot, corner: Self.corner(geo.size)).fill(.black)
+                } else {
+                    Color.black.frame(height: geo.size.height - foot)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                }
+            }
+            .visualEffect { content, proxy in
+                let lies = Self.lies(proxy, foot: foot)
+                return content
+                    .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+                    .opacity(Self.dark * Self.under(proxy))
+            }
+            .allowsHitTesting(false)
+        }
         }
         .opacity(hidden ? 0 : 1)
         .animation(.easeInOut(duration: HoldPull.press), value: pressed)
