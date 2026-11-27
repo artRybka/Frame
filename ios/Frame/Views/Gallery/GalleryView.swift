@@ -257,7 +257,7 @@ struct GalleryView: View {
                     // The first on top: a page below lies under the one
                     // shown, a card on a stack (`StackedPage`).
                     page(work, at: index, insets: insets)
-                        .zIndex(Double(-index))
+                        .zIndex(StackedPage.left(2) ? 0 : Double(-index))
                 }
                 // At the end of what came, only the glow, flowing, till the
                 // next works are here (Mateusz 2026-11-24: "łuny … tańczą
@@ -281,10 +281,18 @@ struct GalleryView: View {
             GalleryLog.trace("pages' insets \(Int(now[0])) and \(Int(now[1])), \(Int(now[2])) tall")
         }
         .onScrollPhaseChange { _, phase in GalleryLog.trace("pages' scroll \(phase)") }
+        .task(id: grid) {
+            guard !grid else { withTransaction(Self.quiet) { stacking = false }; return }
+            guard !stacking else { return }
+            try? await Task.sleep(for: Self.stackAfter)
+            guard !Task.isCancelled, !grid else { return }
+            withTransaction(Self.quiet) { stacking = true }
+            GalleryLog.trace("pages stacked")
+        }
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .background {
-            if !grid, let at = shownIndex, at + 1 < works.count {
+            if carded, !StackedPage.left(8), let at = shownIndex, at + 1 < works.count {
                 StackUnder(work: works[at + 1])
                     .opacity(peek == nil && pressed == nil ? 1 : 0)
                     .animation(.easeInOut(duration: HoldPull.press), value: pressed)
@@ -297,9 +305,24 @@ struct GalleryView: View {
         .allowsHitTesting(!gridOpen && returning == nil)
     }
 
+    /// The pages are cards on a stack: not under the grid, but already on
+    /// the way back from it, the tile growing into a card (Mateusz
+    /// 2026-11-27 18:47: "Gdy wracam z siatki do pełnego ekranu nie podoba
+    /// mi się że dolną krawędź dopiero pojawia się po chwili").
+    private var carded: Bool { !grid || returning != nil }
+
+    /// The pages laid as a stack: not under the grid, and back from it
+    /// only once the pages lie still and have their pictures. Laid at once,
+    /// the work under came as a black box, then a page uncut, then square
+    /// corners, for some 0.4 s (the probe's run 11); till then the next
+    /// work's edge is its thumbnail (`StackUnder`), the same to the eye.
+    @State private var stacking = true
+    nonisolated static let stackAfter: Duration = .milliseconds(500)
+
     private func page(_ work: RemoteItem, at index: Int, insets: EdgeInsets) -> some View {
         GalleryPage(
             work: work, current: work.id == shown?.id, whole: peek == work.id, pressed: pressed == work.id, still: grid,
+            card: carded,
             insets: insets, pull: pull, stock: stock,
             above: index > 0 ? works[index - 1] : nil,
             below: index + 1 < works.count ? works[index + 1] : nil,
@@ -307,9 +330,13 @@ struct GalleryView: View {
         )
         // A card on a stack, the next work's edge under it (`StackedPage`).
         .modifier(StackedPage(
-            on: !grid && peek == nil,
-            stacked: !grid,
+            on: carded && peek == nil,
+            // Not on the way back from the grid: the camera's pages lie
+            // anywhere then, and laid under, a page above came over the
+            // tile as a dark box (run 7).
+            stacked: stacking,
             pressed: pressed == work.id,
+            held: pressed == work.id || peek == work.id,
             hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)
         ))
         .containerRelativeFrame([.horizontal, .vertical])
@@ -598,7 +625,10 @@ struct GalleryView: View {
     /// swipes down the works brings the grid.
     private func scrolled(_ y: CGFloat) {
         flow.note(y)
-        if grid || camera.on { GalleryLog.trace("pages at \(Int(y))") }
+        // Every frame, in tenths of a point: a swipe's evenness is read off
+        // these (Mateusz 2026-11-27 18:47: "nie jest płynna. Odrobinę
+        // skacze?").
+        GalleryLog.trace("pages at \(String(format: "%.1f", y))")
         if returning != nil { showWindow() }
         guard !grid, hand == .idle, peek == nil, path.isEmpty else { return }
         guard let index = run.scrolled(to: y, height: area.height), works.indices.contains(index) else { return }
@@ -773,14 +803,16 @@ struct GalleryView: View {
                 }
                 GalleryLog.trace("pages at \(Int(flow.y)), \(lies(at: id) ? "there" : "not there")")
             }
+            // Not quietly: the page's caption comes back in gently. Before
+            // `returning` goes, so the card stays one (`carded`): the other
+            // way round, a frame of the page uncut (the probe's run 12).
+            grid = false
             withTransaction(Self.quiet) {
                 windowShown = true
                 gridOpen = false
                 bars = false
                 returning = nil
             }
-            // Not quietly: the page's caption comes back in gently.
-            grid = false
             camera.on = false
             hand = .idle
             pulling = false
@@ -1330,6 +1362,8 @@ private struct GalleryPage: View {
     /// The grid is up: cut as its tile is, no closer and no further, and
     /// no caption, so the two are one picture on the way between them.
     var still = false
+    /// Cut as a card above the next work's edge (`StackedPage`).
+    var card = true
     /// The screen's own edges (`GalleryView.insets`).
     var insets = EdgeInsets()
     /// How far the finger that holds it has been drawn up.
@@ -1386,7 +1420,7 @@ private struct GalleryPage: View {
     /// góra-dół jest większy niż prawo-lewo": the page was pressed in by a
     /// share of each side, 9 points at the sides and 20 above and below,
     /// its corners 44 on a screen of 62).
-    static let pressedInset: CGFloat = 12
+    static let pressedInset: CGFloat = StackedPage.pressedInset
     /// The card's foot over the next work's edge (`StackedPage.peek`): what
     /// is pressed in is the card seen, not the page under it (Mateusz
     /// 2026-11-27 16:36: "Wciśnięcie powinno dotyczyć tego co widać").
@@ -1590,8 +1624,11 @@ private struct GalleryPage: View {
         // corners were square ones from one frame to the next (Mateusz
         // 2026-11-25 21:54: "Zaokrąglenie narożników przy zmianie z pełnego
         // ekranu na całe dzieło jest skokowe").
+        // A card above the next work's edge (`StackedPage`), from the
+        // first frame back from the grid or the whole work (Mateusz
+        // 2026-11-27 18:47: the foot "dopiero pojawia się po chwili").
         .clipShape(Window(
-            inset: sunk ? Self.pressedInset : 0, way: way,
+            inset: sunk ? Self.pressedInset : 0, way: way, foot: card ? Self.pressedFoot : 0,
             screen: ScreenCorner.radius(of: geo.size), pressed: Self.pressedCorner(geo.size), full: Self.pressedInset,
             layout: layout, place: place, pan: pan, last: Self.wholeCorner
         ))
@@ -1599,6 +1636,7 @@ private struct GalleryPage: View {
         // work and back from it, all of it goes as one.
         .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
         .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
+        .animation(.smooth(duration: 0.3), value: card)
         .modifier(PulledUp(pull: pull, on: whole))
     }
 
@@ -2173,6 +2211,8 @@ private struct Window: Shape {
     /// How far in from the page's edges, all round (points).
     var inset: CGFloat
     var way: CGFloat
+    /// The card's foot over the next work's edge (none under the grid).
+    var foot: CGFloat
     /// The screen's own corners, and the window's when it is pressed in
     /// all the way (`full` points).
     let screen: CGFloat
@@ -2184,20 +2224,21 @@ private struct Window: Shape {
     /// The whole work's corners.
     let last: CGFloat
 
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(inset, way) }
+    var animatableData: AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(inset, way), foot) }
         set {
-            inset = newValue.first
-            way = newValue.second
+            inset = newValue.first.first
+            way = newValue.first.second
+            foot = newValue.second
         }
     }
 
     func path(in rect: CGRect) -> Path {
         let gone = min(max(way, 0), 1)
         let into = min(max(inset / max(full, 0.01), 0), 1)
-        // The card pressed in, not the next work's edge under it; that is
-        // the card's foot no more on the way to the whole work.
-        let foot = GalleryPage.pressedFoot * into * (1 - gone)
+        // The card, pressed in or not, never the next work's edge under
+        // it; that is the card's foot no more on the way to the whole work.
+        let foot = self.foot * (1 - gone)
         let window = CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: max(rect.height - foot, 1))
             .insetBy(dx: inset, dy: inset)
         // The corners of the window `inset` in: the screen's less that
@@ -2206,7 +2247,7 @@ private struct Window: Shape {
         let cut = max(screen + (pressed - screen) * into, 0)
         guard gone > 0, rect.height > 0 else {
             // All of the page: the phone's own corners are its corners.
-            if inset < 0.05 { return Path(rect) }
+            if inset < 0.05, foot < 0.05 { return Path(rect) }
             return Self.rounded(window, top: cut, foot: max(cut - foot, min(cut, 8)))
         }
         let sink = 1 - 2 * inset / max(rect.height - GalleryPage.pressedFoot, 1)
