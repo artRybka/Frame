@@ -111,9 +111,11 @@ struct StackedPage: ViewModifier {
                     .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
                 // What lies under the card while it is flooded: the next
                 // work's edge, melting into the glow (`covered`).
-                if card, flood, !pressed || covered > 0 {
+                // Always there on the card, unseen but flooded: laid in when
+                // the press came, it was gone again a frame later (run 15).
+                if card, stacks {
                     under(geo.size)
-                        .opacity(covered)
+                        .opacity(flood ? covered : 0)
                         .allowsHitTesting(false)
                 }
                 // Its shadow on the card under it, round its corners too
@@ -428,6 +430,20 @@ struct StackUnder: View {
                 } else {
                     Color(white: 0.12)
                 }
+            }
+            .overlay(alignment: .bottom) {
+                // The page's caption gradient, as its page has it (every
+                // page has its caption now): the edge was lighter than the
+                // page's own (run 15: 35 against 13).
+                LinearGradient(
+                    stops: [
+                        .init(color: .black.opacity(0), location: 0),
+                        .init(color: .black.opacity(0.55), location: 0.45),
+                        .init(color: .black.opacity(0.8), location: 1),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .frame(height: 190)
             }
             .overlay(Color.black.opacity(StackedPage.dark))
             .frame(width: size.width, height: size.height)
