@@ -54,55 +54,83 @@ struct StackedPage: ViewModifier {
         let card = on && settled
         let foot = card ? Self.peek : 0
         let stacks = stacked
-        return GeometryReader { geo in
-            let screen = ScreenCorner.radius(of: geo.size)
-            let corner = max(screen - Self.peek, 20)
-            let tall = geo.size.height - foot
-            ZStack(alignment: .top) {
-                // Its shadow on the card under it.
-                if card {
-                    UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                        .fill(.black.opacity(0.8))
-                        .frame(height: tall)
-                        .offset(y: 5)
-                        .blur(radius: 5)
-                        .opacity(pressed ? 0 : 1)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
-                content
-                    // Dark as it lies under the card shown, itself once it
-                    // is the screen.
-                    .overlay {
-                        Color.black
-                            .visualEffect { content, proxy in content.opacity(Self.dark * Self.under(proxy)) }
+        // The page, and over it its shade and its line: each laid on the
+        // stack by itself (`lies`), so each knows how far down it lies.
+        // Measured inside the page moved, the shade read where the page was
+        // drawn, near the top, and the work under was hardly dark (the
+        // film of run 4: the edge at 80% of its brightness, not 35%).
+        return ZStack(alignment: .top) {
+            GeometryReader { geo in
+                let corner = Self.corner(geo.size)
+                let tall = geo.size.height - foot
+                ZStack(alignment: .top) {
+                    // Its shadow on the card under it.
+                    if card {
+                        UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
+                            .fill(.black.opacity(0.8))
+                            .frame(height: tall)
+                            .offset(y: 5)
+                            .blur(radius: 5)
+                            .opacity(pressed ? 0 : 1)
                             .allowsHitTesting(false)
+                            .transition(.opacity)
                     }
-                    .mask(alignment: .top) {
-                        UnevenRoundedRectangle(
-                            bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
-                            style: .continuous
-                        )
-                        .frame(height: tall)
-                    }
-                if card {
-                    UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                        .strokeBorder(line(height: tall), lineWidth: 1)
-                        .frame(height: tall)
-                        // Only on the card on top.
-                        .visualEffect { content, proxy in content.opacity(1 - Self.under(proxy)) }
-                        .opacity(pressed ? 0 : 1)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
+                    content
+                        .mask(alignment: .top) {
+                            UnevenRoundedRectangle(
+                                bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
+                                style: .continuous
+                            )
+                            .frame(height: tall)
+                        }
                 }
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
             }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-        }
-        .visualEffect { content, proxy in
-            let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
-            return content
-                .scaleEffect(lies.scale, anchor: .top)
-                .offset(y: lies.y)
+            .visualEffect { content, proxy in
+                let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
+                return content.scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+            }
+            // Dark as it lies under the card shown, itself once it is the
+            // screen.
+            GeometryReader { geo in
+                let corner = Self.corner(geo.size)
+                UnevenRoundedRectangle(
+                    bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
+                    style: .continuous
+                )
+                .fill(.black)
+                .frame(height: geo.size.height - foot)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+            }
+            .visualEffect { content, proxy in
+                let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
+                return content
+                    .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+                    .opacity(stacks ? Self.dark * Self.under(proxy) : 0)
+            }
+            .allowsHitTesting(false)
+            // The light line, only on the card on top.
+            if card {
+                GeometryReader { geo in
+                    let tall = geo.size.height - foot
+                    UnevenRoundedRectangle(
+                        bottomLeadingRadius: Self.corner(geo.size), bottomTrailingRadius: Self.corner(geo.size),
+                        style: .continuous
+                    )
+                    .strokeBorder(line(height: tall), lineWidth: 1)
+                    .frame(height: tall)
+                    .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                }
+                .visualEffect { content, proxy in
+                    let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
+                    return content
+                        .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+                        .opacity(1 - Self.under(proxy))
+                }
+                .opacity(pressed ? 0 : 1)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
         }
         .opacity(hidden ? 0 : 1)
         .animation(.easeInOut(duration: HoldPull.press), value: pressed)
@@ -116,6 +144,9 @@ struct StackedPage: ViewModifier {
             settled = true
         }
     }
+
+    /// The card's bottom corners, round with the screen's.
+    static func corner(_ size: CGSize) -> CGFloat { max(ScreenCorner.radius(of: size) - peek, 20) }
 
     /// Seconds the card waits after the whole work is let go (its way
     /// back takes half a second, `GalleryPage.back`).
