@@ -159,7 +159,9 @@ struct StackedPage: ViewModifier {
                         // Gone with the way to the whole work as it starts,
                         // back as the card is (22:41: it stayed on the
                         // way, then went from one frame to the next).
-                        .opacity(!card || (flood && !held) ? 0 : 1)
+                        // Back from it, in with the edge (run 18: there at
+                        // once as the card was cut again).
+                        .opacity(!card ? 0 : flood && !held ? covered : 1)
                         .animation(.easeOut(duration: card ? 0.3 : 0.12), value: card)
                         .allowsHitTesting(false)
                 }
