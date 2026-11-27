@@ -121,9 +121,12 @@ struct StackedPage: ViewModifier {
                 // paskiem"): plain strokes of its foot, each lower and
                 // fainter, never a blur (a pass off the screen each frame).
                 if card, stacks {
-                    FootShadow(corner: Self.corner(geo.size))
-                        .frame(width: geo.size.width, height: tall)
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                    // Pressed, in with the card, as its line goes.
+                    let inset = pressed ? Self.pressedInset : 0
+                    FootShadow(corner: max(Self.corner(geo.size) - inset, 8))
+                        .frame(width: geo.size.width - 2 * inset, height: tall - 2 * inset)
+                        .offset(x: inset, y: inset)
+                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                         .opacity(flood ? covered : 1)
                         .allowsHitTesting(false)
                         .transition(.opacity)
@@ -197,7 +200,14 @@ struct StackedPage: ViewModifier {
             if held {
                 // Uncut at once, the next work's edge drawn over the glow
                 // where it was, then melting into it.
-                if !flooded { withTransaction(quiet) { flooded = true; covered = 1 } }
+                if !flooded {
+                    withTransaction(quiet) { flooded = true; covered = 1 }
+                    // Laid first, then melted: changed in the same update
+                    // it came in, it came already melted (run 14: the edge
+                    // gone in a tenth of a second, not in 0.45).
+                    try? await Task.sleep(for: .milliseconds(20))
+                    guard !Task.isCancelled else { return }
+                }
                 withAnimation(.easeInOut(duration: Self.melt)) { covered = 0 }
                 return
             }
@@ -221,6 +231,10 @@ struct StackedPage: ViewModifier {
             if let below { StackUnder(work: below) }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
+        // Only the edge: the work under lies whole behind the card, and
+        // over the page it darkened all of it (run 14, back from the whole
+        // work: the screen at 62 against 141 for a third of a second).
+        .clipShape(Band(height: Self.peek + 2))
     }
 
     /// The card's bottom corners, round with the screen's.
@@ -310,18 +324,27 @@ struct FootLine: View {
 /// the corners as the card does.
 struct FootShadow: View {
     let corner: CGFloat
-    static let steps = 6
+    static let steps = 12
 
     var body: some View {
         ZStack {
             ForEach(1 ... Self.steps, id: \.self) { step in
                 let k = CGFloat(step)
-                FootArc(corner: corner + k * 0.8)
-                    .stroke(.black.opacity(0.26 * pow(1 - (k - 1) / CGFloat(Self.steps), 1.6)), lineWidth: 1.6)
-                    .padding(.horizontal, -k * 0.8)
-                    .offset(y: k * 1.4)
+                FootArc(corner: corner + k * 0.4)
+                    .stroke(.black.opacity(0.15 * pow(1 - (k - 1) / CGFloat(Self.steps), 1.6)), lineWidth: 1.2)
+                    .padding(.horizontal, -k * 0.4)
+                    .offset(y: k * 0.7)
             }
         }
+    }
+}
+
+/// The bottom `height` points of a frame.
+struct Band: Shape {
+    let height: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        Path(CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
     }
 }
 
