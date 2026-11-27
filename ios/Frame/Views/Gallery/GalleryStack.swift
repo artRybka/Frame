@@ -33,14 +33,14 @@ struct StackedPage: ViewModifier {
     @State private var settled = true
 
     func body(content: Content) -> some View {
-        let on = on && settled
+        let card = on && settled
         return GeometryReader { geo in
             let screen = ScreenCorner.radius(of: geo.size)
             let corner = max(screen - Self.peek, 20)
-            let cut = on ? Self.peek : 0
+            let cut = card ? Self.peek : 0
             ZStack(alignment: .top) {
                 Color.black
-                if let under, on {
+                if let under, card {
                     UnderCard(work: under, corner: max(screen - Self.underInset, 20), cardCorner: corner)
                         .padding(.horizontal, Self.underInset)
                         .transition(.opacity)
@@ -48,12 +48,12 @@ struct StackedPage: ViewModifier {
                 content
                     .mask(alignment: .top) {
                         UnevenRoundedRectangle(
-                            bottomLeadingRadius: on ? corner : 0, bottomTrailingRadius: on ? corner : 0,
+                            bottomLeadingRadius: card ? corner : 0, bottomTrailingRadius: card ? corner : 0,
                             style: .continuous
                         )
                         .frame(height: geo.size.height - cut)
                     }
-                if on {
+                if card {
                     UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
                         .strokeBorder(line(height: geo.size.height - cut), lineWidth: 1)
                         .frame(height: geo.size.height - cut)
@@ -82,7 +82,7 @@ struct StackedPage: ViewModifier {
                     .blur(radius: Self.blur * down * down)
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: on)
+        .animation(.easeInOut(duration: 0.25), value: card)
         .task(id: self.on) {
             guard self.on else { settled = false; return }
             guard !settled else { return }
