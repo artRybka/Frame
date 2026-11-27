@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.145.406
+
+- Na pełnym ekranie podgląd dzieła bez restauracji jest wykadrowany tak
+  jak dzieło, a nie pokazuje całego zdjęcia muzeum z marginesami.
+
 ## 1.145.405
 
 - Gdy telefon odrestauruje dzieło, a Ty oglądasz je na pełnym ekranie,
