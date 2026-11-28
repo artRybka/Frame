@@ -297,9 +297,8 @@ struct GalleryView: View {
         .scrollIndicators(.hidden)
         .background {
             if carded, !StackedPage.left(8), works.indices.contains(underAt) {
+                // Always there: pressed, the page's own black lies over it.
                 StackUnder(work: works[underAt])
-                    .opacity(peek == nil && pressed == nil ? 1 : 0)
-                    .animation(.easeInOut(duration: HoldPull.press), value: pressed)
             }
         }
         .modifier(WindowZoom(camera: camera))
@@ -335,16 +334,11 @@ struct GalleryView: View {
         )
         // A card on a stack, the next work's edge under it (`StackedPage`).
         .modifier(StackedPage(
-            on: carded && peek == nil,
+            on: carded,
             // Not on the way back from the grid: the camera's pages lie
             // anywhere then, and laid under, a page above came over the
             // tile as a dark box (run 7).
-            stacked: stacking,
-            pressed: pressed == work.id,
-            held: pressed == work.id || peek == work.id,
-            hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id),
-            below: index + 1 < works.count ? works[index + 1] : nil,
-            shown: work.id == shown?.id
+            stacked: stacking
         ))
         .containerRelativeFrame([.horizontal, .vertical])
         .contentShape(Rectangle())
@@ -1359,7 +1353,6 @@ private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
-    @Environment(\.galleryVeil) private var veil
     let work: RemoteItem
     /// On screen now: it draws back and drifts a little.
     var current = false
@@ -1476,20 +1469,20 @@ private struct GalleryPage: View {
                     // under it from the first tap and is only uncovered.
                     // Before, two pictures and one melting into the other
                     // (2026-11-23 20:14, "Rozpływ w łunę").
+                    //
+                    // All that is seen pressed and on the way is drawn
+                    // from `press` and `way` (`CardScene`), under the one
+                    // animation of each, set once for the whole page
+                    // below: the black behind the card, the glow over it,
+                    // the work in its window, the card's line, the
+                    // caption, the head.
                     glowLayer(place, geo)
-                    // Black over the glow till the work is pressed, then
-                    // melting into it, behind the card and round it as one
-                    // (`StackedPage`): the glow there at once inside the
-                    // card and coming slowly round it, the card's outline
-                    // stood on the way to the whole work (Mateusz
-                    // 2026-11-28 09:05: "nadal jakieś obwódki").
-                    if current, card || veil < 1 {
-                        Color.black.opacity(veil)
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .allowsHitTesting(false)
-                    }
                     shade(layout, place, geo)
                     cut(layout, place, geo)
+                    if card, !StackedPage.left(64) {
+                        CardEdge(press: press, way: way, size: geo.size)
+                            .transition(.opacity.animation(.easeOut(duration: 0.2)))
+                    }
                     headLayer(place, geo)
                 }
             }
@@ -1497,13 +1490,32 @@ private struct GalleryPage: View {
             .task(id: Drift(current: current, still: still, sized: geo.size.width > 0)) { await drawBack(geo.size) }
         }
         .background {
-            ZStack {
-                placeholder
-                ground.opacity(lit ? 1 : 0)
-                    .animation(lit ? nil : Self.unlit, value: lit)
+            GeometryReader { geo in
+                ZStack {
+                    // The page is its card and nothing round it: the next
+                    // work's edge under its foot is the next page itself.
+                    placeholder
+                        .clipShape(CardCut(foot: card ? Self.pressedFoot : 0, corner: StackedPage.corner(geo.size)))
+                    // Black over what lies behind the card, a screen above
+                    // and below the page too: a finger that pressed and
+                    // then pulls the card up takes no band of it up over
+                    // the work under (Mateusz 2026-11-28 09:13).
+                    Color.black
+                        .frame(height: geo.size.height * 3)
+                        .modifier(Scened(press: press, way: way) { press, way in CardScene.black(press, way) })
+                    ground
+                        .modifier(Scened(press: press, way: way) { _, way in CardScene.glow(way) })
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+                .allowsHitTesting(false)
             }
             .ignoresSafeArea()
         }
+        // The two animations of the scene, for all of it at once. Let go
+        // before the hold, the page springs back out; to the whole work
+        // and back from it, all of it goes as one (the inner one wins).
+        .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
+        .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
         .task(id: Had(id: work.id, anew: anew)) { await load() }
         .task(id: current) {
             // Swept onto the screen while its full picture was still fetched
@@ -1590,11 +1602,10 @@ private struct GalleryPage: View {
     /// Pressed in: under a finger on its way to the hold, and held.
     private var sunk: Bool { (pressed || whole) && !reduceMotion }
 
-    /// What lies under the work is there: from the first tap, behind the
-    /// work that still covers it, till the work covers it again.
-    private var lit: Bool { pressed || whole }
-    /// Gone at once, once the work is back over it.
-    private static let unlit = Animation.linear(duration: 0.01).delay(back + 0.1)
+    /// The scene's two numbers (`CardScene`): pressed in, and on the way
+    /// to the whole work.
+    private var press: CGFloat { sunk ? 1 : 0 }
+    private var way: CGFloat { whole ? 1 : 0 }
 
     /// The way out to the whole work and the way back: no spring in
     /// either, nothing fading.
@@ -1605,7 +1616,6 @@ private struct GalleryPage: View {
     /// the same picture drawn back to the whole of it.
     private func cut(_ layout: Fill, _ place: Whole, _ geo: GeometryProxy) -> some View {
         let sink = sunk ? Self.pressedIn(geo.size) : 1
-        let way: CGFloat = whole ? 1 : 0
         return ZStack {
             if let stale {
                 let own = Fill(picture: stale.picture.size, box: geo.size, focus: stale.focus)
@@ -1638,9 +1648,9 @@ private struct GalleryPage: View {
                 // shade lay on the glow for two frames of the probe's
                 // film), there again once the work is back.
                 caption(geo)
-                    .opacity(still || whole ? 0 : 1)
+                    .modifier(Scened(press: press, way: way) { _, way in CardScene.caption(way) })
+                    .opacity(still ? 0 : 1)
                     .animation(still ? .easeOut(duration: 0.12) : .easeOut(duration: 0.3), value: still)
-                    .animation(whole ? .easeOut(duration: 0.07) : .easeOut(duration: 0.2).delay(Self.back * 0.75), value: whole)
                     .scaleEffect(sink)
                     // Laid only on the shown page (on every page, a swipe
                     // lost frames, run 19), coming in gently.
@@ -1669,10 +1679,6 @@ private struct GalleryPage: View {
             screen: ScreenCorner.radius(of: geo.size), pressed: Self.pressedCorner(geo.size), full: Self.pressedInset,
             layout: layout, place: place, pan: pan, last: Self.wholeCorner
         ))
-        // Let go before the hold, the page springs back out; to the whole
-        // work and back from it, all of it goes as one.
-        .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
-        .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
         .animation(.smooth(duration: 0.3), value: card)
         .modifier(PulledUp(pull: pull, on: whole))
     }
@@ -1695,11 +1701,8 @@ private struct GalleryPage: View {
                     layout: layout, place: place, traced: false
                 ).ignoredByLayout()
             )
-            .transaction(value: whole) { $0.animation = whole ? Self.outWay : Self.backWay }
-            .animation(sunk ? .easeInOut(duration: HoldPull.press) : .spring(duration: 0.32, bounce: 0.3), value: sunk)
             .frame(width: geo.size.width, height: geo.size.height)
-            .opacity(whole ? 1 : 0)
-            .animation(whole ? Self.outWay : .easeOut(duration: 0.12), value: whole)
+            .modifier(Scened(press: press, way: way) { _, way in CardScene.shadow(way) })
             .modifier(PulledUp(pull: pull, on: whole))
             .allowsHitTesting(false)
     }
@@ -1718,8 +1721,7 @@ private struct GalleryPage: View {
         }
         .frame(width: geo.size.width, height: geo.size.height)
         .modifier(PulledUp(pull: pull, on: whole))
-        .opacity(lit ? 1 : 0)
-        .animation(lit ? nil : Self.unlit, value: lit)
+        .modifier(Scened(press: press, way: way) { _, way in CardScene.glow(way) })
     }
 
     /// Under the whole work, the sign that a pull up brings its card and
@@ -1735,9 +1737,7 @@ private struct GalleryPage: View {
         }
         .frame(width: geo.size.width, height: geo.size.height)
         .modifier(PulledUp(pull: pull, on: whole))
-        .offset(y: whole ? 0 : 10)
-        .opacity(whole ? 1 : 0)
-        .animation(whole ? .easeOut(duration: 0.26).delay(Self.out * 0.55) : .easeIn(duration: 0.12), value: whole)
+        .modifier(Scened(press: press, way: way, look: { _, way in CardScene.head(way) }, drop: 10))
         .allowsHitTesting(false)
         .onChange(of: current ? lies : CGRect.null, initial: true) { _, rect in
             guard !rect.isNull else { return }

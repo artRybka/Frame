@@ -18,31 +18,12 @@ import SwiftUI
 /// over it is taken off upwards. Back, the card above comes down over the
 /// one shown, which goes under the same way.
 struct StackedPage: ViewModifier {
-    /// Cut as a card: not under the grid, nor with the whole work held,
-    /// where the page is to be the screen as its tile and its whole are.
+    /// A card with the next work's edge under it: not under the grid,
+    /// where the pages lie as tiles.
     var on: Bool
     /// Lying on the stack: a page below the screen's top lies under the
     /// one shown (not under the grid, where pages lie as tiles).
     var stacked: Bool
-    /// Pressed: the card goes in by itself (`GalleryPage.pressedIn`), its
-    /// line with it.
-    var pressed: Bool
-    /// Pressed or held: what lies round the card, the next work's edge
-    /// under it too, is the page's glow (Mateusz 2026-11-27 18:47: "całe
-    /// dzieło na froncie powinno się zmniejszać (wraz z krawędzią
-    /// pseudo-ekranu) a pod spodem widoczny kawałek dzieła zalewać się
-    /// łuną"), and stays so till the work let go has come back as the card.
-    var held: Bool
-    /// The card over this one is pressed or held: this one's edge under it
-    /// is gone, not drawn in with it (16:36: "Wciśnięcie powinno dotyczyć
-    /// tego co widać, a dolną część zanikać a nie jak teraz się skalować").
-    var hidden: Bool
-    /// The next work, whose edge lies under the card: drawn over the
-    /// page's glow while the one melts into the other (`covered`).
-    var below: RemoteItem? = nil
-    /// The page shown: only its card has the edge laid ready over its
-    /// glow (on every page of the stack, a swipe lost frames, run 16).
-    var shown = false
 
     /// How much of the screen's height the next work's edge takes (points;
     /// 2% of a 874-point screen, Mateusz 12:55: "może wystarczy 3%").
@@ -57,239 +38,63 @@ struct StackedPage: ViewModifier {
     nonisolated static let dark: Double = 0.65
     /// Parts of the stack left out, to find what a swipe's frames cost
     /// (`-galleryStackOff N`, the probe's; 0 in the app): 1 the pages
-    /// below kept under, 2 the pages laid over one another, 4 the shade
-    /// and the line, 8 the thumbnail behind, 16 the cut, 32 only the next
-    /// page kept under (not the one after), 64 the line, 128 the shade cut
-    /// round as the card (a plain rectangle otherwise), 256 the old line
-    /// (a gradient stroked round the border).
+    /// below kept under, 2 the pages laid over one another, 4 the shade,
+    /// 8 the thumbnail behind, 32 only the next page kept under (not the
+    /// one after), 64 the line and the shadow, 128 the shade cut round as
+    /// the card (a plain rectangle otherwise).
     nonisolated static let off = UserDefaults.standard.integer(forKey: "galleryStackOff")
     nonisolated static func left(_ part: Int) -> Bool { off & part != 0 }
     /// How far in the card pressed goes, all round (`GalleryPage`'s).
     nonisolated static let pressedInset: CGFloat = 12
 
-    /// The foot of the screen is the page's (its glow), not the next
-    /// work's: from the press, and after the whole work is let go till it
-    /// is the card again. The card itself is cut as soon as it is one
-    /// (18:47: "Przy powrocie z całego dzieła do pełnego ekranu też pasek
-    /// u dołu powinien być od razu"; before, the cut waited 0.55 s).
-    @State private var flooded = false
-    /// Flooded, how much the next work's edge still lies over the glow:
-    /// the page is uncut at once and the edge fades into the glow, and
-    /// back (Mateusz 2026-11-27 22:41: "Tło łuny powinno delikatnie
-    /// przenikać i pojawiać się płynnie"; the cut drawn down, the glow
-    /// had come out from behind the card, sharp).
-    @State private var covered: Double = 1
-    /// How much of the next work's edge lies on the page uncut: none on
-    /// the way to the whole work (its own went out with the press; laid
-    /// there and melting with the veil, it stood under the work as a dark
-    /// tray, run 23), back as the work comes back to the card.
-    @State private var edged: Double = 1
-    /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.45
-    nonisolated static let unmelt: Double = 0.4
-
+    // Nothing here knows of a press or of the whole work: what a page
+    // looks like then is the page's own, drawn from two numbers
+    // (`GalleryPage`, `CardScene`). This only lays the pages on the stack.
+    // (Till 1.145.417 the page was cut as a card here, uncut for the whole
+    // work, and the next work's edge laid over it and taken off again by
+    // tasks with waits of their own: three clocks for one picture, and
+    // every seam between them was seen at some time; Mateusz 2026-11-28
+    // 10:32: "Nie może być jakiś przeskoków, zostających ramek, mignięć
+    // i przesunięć".)
     func body(content: Content) -> some View {
-        let card = on
-        let foot = card ? Self.peek : 0
+        let foot = on ? Self.peek : 0
         let stacks = stacked
-        let flood = flooded
-        // Cut above the next work's edge; flooded, down to the screen's
-        // foot, the page's glow coming over that edge as the card goes in.
-        let cut = card && !flood ? Self.peek : 0
-        // The page, and over it its shade and its line: each laid on the
-        // stack by itself (`lies`), so each knows how far down it lies.
-        // Measured inside the page moved, the shade read where the page was
-        // drawn, near the top, and the work under was hardly dark (the
-        // film of run 4: the edge at 80% of its brightness, not 35%).
-        // Clipped by a shape, never masked, and its shadow a gradient, not
-        // a blur: masked and blurred, each page on the screen was drawn
-        // off the screen in every frame and swipes ran at half the frames
-        // (run 6: 36 ms a frame against 17 before the stack; Mateusz
-        // 2026-11-27 18:47: "nie jest płynna. Odrobinę skacze?").
-        // One layer, laid on the stack by itself (`lies`) and shaded there
-        // by how far down it lies. A shade and a line each laid on the
-        // stack beside it, each changing in every frame, halved a swipe's
-        // frames (run 8: 34 ms a frame with them, 17 without).
+        // The page laid on the stack by itself (`lies`), and over it its
+        // shade, laid the same way: each knows how far down it lies.
+        // Nothing masked, blurred or filtered: each of those made every
+        // page on the screen an offscreen pass in every frame of a swipe
+        // (runs 6, 8, 9: 34 to 48 ms a frame against 17).
         return ZStack(alignment: .top) {
-        GeometryReader { geo in
-            let tall = geo.size.height - foot
-            ZStack(alignment: .top) {
-                content
-                    // The page's own ground behind its work goes from black
-                    // to its glow with what lies round the card (`veil`).
-                    .environment(\.galleryVeil, flood ? covered : 1)
-                    .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
-                // What lies under the card while it is flooded: the next
-                // work's edge, melting into the glow (`covered`).
-                // Only on the shown card, there before the press so that it
-                // goes in with the card (laid as the press came, it lay at
-                // the card's end at once, over its edges); the next work's
-                // edge in it only while flooded. Never taken away by its own
-                // fade (run 15: gone a frame after it came).
-                if stacks, shown, card || flood {
-                    under(geo.size, edge: flood)
-                        .opacity(flood ? edged : 0)
-                        .allowsHitTesting(false)
+            content
+                .visualEffect { content, proxy in
+                    let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
+                    return content.scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
                 }
-                // Its shadow on the card under it, round its corners too
-                // (22:41: "Cień pod aktywnym dziełem się urywa, jest płaskim
-                // paskiem"): plain strokes of its foot, each lower and
-                // fainter, never a blur (a pass off the screen each frame).
-                if card, stacks {
-                    // Pressed, in with the card, as its line goes.
-                    let inset = pressed ? Self.pressedInset : 0
-                    FootShadow(corner: max(Self.corner(geo.size) - inset, 8))
-                        .frame(width: geo.size.width - 2 * inset, height: tall - 2 * inset)
-                        .offset(x: inset, y: inset)
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                        .opacity(flood ? covered : 1)
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                }
-                // The light line; pressed, in with the card; not on the
-                // glow before the work let go is back there (run 6: a line
-                // at the card's size on the empty glow). Under the card
-                // shown, dark with the rest of its page.
-                if !Self.left(64) {
-                    let inset = pressed || !card ? Self.pressedInset : 0
-                    let high = tall - 2 * inset
-                    let corner = max(Self.corner(geo.size) - inset, 8)
-                    Group {
-                        if Self.left(256) {
-                            UnevenRoundedRectangle(bottomLeadingRadius: corner, bottomTrailingRadius: corner, style: .continuous)
-                                .strokeBorder(line(height: high), lineWidth: 1)
-                        } else {
-                            FootLine(corner: corner, rise: Self.edgeRise, edge: Self.edge)
-                        }
+            // Dark as it lies under the card shown, itself once it is the
+            // screen: a plain black layer over it.
+            if stacks, !Self.left(4) {
+                GeometryReader { geo in
+                    if Self.left(128) {
+                        CardCut(foot: foot, corner: Self.corner(geo.size)).fill(.black)
+                    } else {
+                        Color.black.frame(height: geo.size.height - foot)
+                            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
                     }
-                        .frame(width: geo.size.width - 2 * inset, height: high)
-                        .offset(x: inset, y: inset)
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                        // Gone with the way to the whole work as it starts,
-                        // back as the card is (22:41: it stayed on the
-                        // way, then went from one frame to the next).
-                        // Back from it, in with the edge (run 18: there at
-                        // once as the card was cut again).
-                        .opacity(!card ? 0 : flood && !held ? covered : 1)
-                        .animation(.easeOut(duration: card ? 0.3 : 0.12), value: card)
-                        .allowsHitTesting(false)
                 }
-            }
-            .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
-        }
-        .visualEffect { content, proxy in
-            let lies = stacks ? Self.lies(proxy, foot: foot) : (scale: CGFloat(1), y: CGFloat(0))
-            return content.scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
-        }
-        // Dark as it lies under the card shown, itself once it is the
-        // screen: a plain black layer over it, laid on the stack by itself
-        // so that it knows how far down the page lies (measured inside the
-        // page moved, it read where the page was drawn). Not a filter on
-        // the page: a contrast and a brightness, even at none, made every
-        // page an offscreen pass (run 9: 48 ms a frame).
-        if stacks, !Self.left(4) {
-            GeometryReader { geo in
-                if Self.left(128) {
-                    CardCut(foot: foot, corner: Self.corner(geo.size)).fill(.black)
-                } else {
-                    Color.black.frame(height: geo.size.height - foot)
-                        .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                .visualEffect { content, proxy in
+                    let lies = Self.lies(proxy, foot: foot)
+                    return content
+                        .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
+                        .opacity(Self.dark * Self.under(proxy))
                 }
+                .allowsHitTesting(false)
             }
-            .visualEffect { content, proxy in
-                let lies = Self.lies(proxy, foot: foot)
-                return content
-                    .scaleEffect(lies.scale, anchor: .top).offset(y: lies.y)
-                    .opacity(Self.dark * Self.under(proxy))
-            }
-            .allowsHitTesting(false)
         }
-        }
-        .opacity(hidden ? 0 : 1)
-        .animation(.easeInOut(duration: HoldPull.press), value: pressed)
-        .animation(.easeInOut(duration: HoldPull.press), value: hidden)
-        .animation(.easeInOut(duration: 0.25), value: card)
-        .animation(.easeInOut(duration: HoldPull.press), value: held)
-        // Only for the whole work, not for the press before it: what is
-        // round the card pressed is the page's black veil and the next
-        // work's own edge going out. Flooded from the press, a finger
-        // that went on to pull the card up took the page uncut with it,
-        // the edge laid on it and a black band, over the work under
-        // (Mateusz 2026-11-28 09:13: "gdy puszczę to dzieło i podciągnę
-        // raz jeszcze to pojawia się coś dziwnego u dołu").
-        .task(id: held && !on) {
-            var quiet = Transaction()
-            quiet.disablesAnimations = true
-            if held, !on {
-                // Uncut at once, black where the next work's edge has gone
-                // out with the press; then all of it to the glow as one.
-                if !flooded {
-                    // Never with animations disabled: that took the way to
-                    // the whole work, begun in the same update, with it (run
-                    // 24: the work at 2% of the way, then at 50%).
-                    flooded = true
-                    covered = 1
-                    edged = 0
-                    // Laid first, then melted: changed in the same update
-                    // it came in, it came already melted (run 14).
-                    try? await Task.sleep(for: .milliseconds(20))
-                    guard !Task.isCancelled else { return }
-                }
-                withAnimation(.easeInOut(duration: Self.melt)) { covered = 0 }
-                return
-            }
-            guard flooded else { return }
-            // Let go of the whole work: the glow till it is the card again,
-            // the next work's edge back late in that.
-            try? await Task.sleep(for: .seconds(Self.after))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: Self.unmelt)) { covered = 1 }
-            withAnimation(.easeIn(duration: Self.unmelt)) { edged = 1 }
-            try? await Task.sleep(for: .seconds(Self.unmelt))
-            guard !Task.isCancelled else { return }
-            withTransaction(quiet) { flooded = false }
-        }
-    }
-
-    /// The next work's edge as it lies under the card, on the screen's
-    /// ground (what is seen beside it), to lie over the page uncut.
-    private func under(_ size: CGSize, edge: Bool) -> some View {
-        ZStack(alignment: .bottom) {
-            // What the cut leaves black, beside the corners too, is the
-            // page's own veil (`GalleryPage`), one with what is behind the
-            // work inside the card: a black of its own here melted on
-            // another curve than the glow inside, and the card stood on
-            // the way to the whole work as a pale plate with a dark rim
-            // (Mateusz 2026-11-28 09:05: "nadal jakieś obwódki").
-            if edge, let below { StackUnder(work: below) }
-        }
-        .frame(width: size.width, height: size.height, alignment: .bottom)
-        // Only the edge: the work under lies whole behind the card, and
-        // over the page it darkened all of it (run 14, back from the whole
-        // work: the screen at 62 against 141 for a third of a second).
-        // All round the card, pressed in with it: the whole of what lies
-        // behind it goes to the glow as one (Mateusz 2026-11-28 00:37:
-        // "odcina się czarny łuk u dołu. To całe tło za wciskaną kartą
-        // powinno przechodzić w łunę. Czyli jednolicie").
-        .clipShape(
-            OffCard(
-                foot: Self.peek, corner: Self.corner(size), top: ScreenCorner.radius(of: size),
-                inset: pressed || !on ? Self.pressedInset : 0
-            ),
-            style: FillStyle(eoFill: true)
-        )
+        .animation(.easeInOut(duration: 0.25), value: on)
     }
 
     /// The card's bottom corners, round with the screen's.
-    static func corner(_ size: CGSize) -> CGFloat { max(ScreenCorner.radius(of: size) - peek, 20) }
-
-    /// Seconds the glow stays at the screen's foot after the whole work
-    /// is let go, the last of its way back (`GalleryPage.back`, 0.55 s)
-    /// then the next work's edge coming out of it.
-    /// The edge is back just as the work is (0.15 + `unmelt` = the way
-    /// back): going on after it, the page's glow went out under it in one
-    /// frame, half way through (run 21).
-    static let after: Double = 0.15
+    nonisolated static func corner(_ size: CGSize) -> CGFloat { max(ScreenCorner.radius(of: size) - peek, 20) }
 
     /// How far below the screen's top the page lies, of its height: 0 shown,
     /// 1 a whole page down (and under the one shown).
@@ -313,18 +118,95 @@ struct StackedPage: ViewModifier {
         let at = size.height - foot * (1 - down) - scale * (size.height - foot)
         return (scale, at - top)
     }
+}
 
-    /// Brightest on the card's foot, gone `edgeRise` up its sides.
-    private func line(height: CGFloat) -> LinearGradient {
-        let from = 1 - min(Self.edgeRise / max(height, 1), 1)
-        return LinearGradient(
-            stops: [
-                .init(color: .white.opacity(0), location: from),
-                .init(color: .white.opacity(Self.edge * 0.33), location: from + (1 - from) * 0.5),
-                .init(color: .white.opacity(Self.edge), location: 1),
-            ],
-            startPoint: .top, endPoint: .bottom
-        )
+/// What a Galeria page looks like pressed and on the way to the whole
+/// work, from two numbers and nothing else: `press` (0 at rest, 1 pressed
+/// in) and `way` (0 the card, 1 the whole work). Whatever is seen then is
+/// drawn by these in every frame: nothing has a clock of its own, so
+/// nothing can come early, stay behind or go in one frame.
+enum CardScene {
+    static func unit(_ x: CGFloat) -> CGFloat { min(max(x, 0), 1) }
+    /// 0 up to `from`, 1 from `to`, smooth between.
+    static func step(_ from: CGFloat, _ to: CGFloat, _ x: CGFloat) -> CGFloat {
+        let t = unit((x - from) / max(to - from, 0.0001))
+        return t * t * (3 - 2 * t)
+    }
+
+    /// Black over all that lies behind the card (the next work's edge,
+    /// the page under it): in with the press, and there all the way to the
+    /// whole work; back, the next work's edge comes out of it over the
+    /// last third.
+    static func black(_ press: CGFloat, _ way: CGFloat) -> CGFloat { max(unit(press), unit(way * 3)) }
+    /// The page's glow over that black, the whole screen as one: from the
+    /// first frame the work draws back, there before it is the whole.
+    static func glow(_ way: CGFloat) -> CGFloat { step(0, 0.75, way) }
+    /// The card's line and its shadow: gone early on the way.
+    static func edge(_ way: CGFloat) -> CGFloat { 1 - step(0, 0.2, way) }
+    /// The title low on the card: gone as the way starts, back at its end.
+    static func caption(_ way: CGFloat) -> CGFloat { 1 - step(0, 0.15, way) }
+    /// The whole work's own shadow.
+    static func shadow(_ way: CGFloat) -> CGFloat { step(0.3, 1, way) }
+    /// The card's head under the whole work: once the glow is there.
+    static func head(_ way: CGFloat) -> CGFloat { step(0.6, 1, way) }
+}
+
+/// A layer of the scene: as much of it as `look` says at this `press` and
+/// this `way`, in every frame of whatever animates the two.
+struct Scened: ViewModifier, Animatable {
+    var press: CGFloat
+    var way: CGFloat
+    let look: (CGFloat, CGFloat) -> CGFloat
+    /// Points down while not there (the head comes up a little).
+    var drop: CGFloat = 0
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(press, way) }
+        set {
+            press = newValue.first
+            way = newValue.second
+        }
+    }
+
+    func body(content: Content) -> some View {
+        let there = CardScene.unit(look(press, way))
+        content
+            .opacity(there)
+            .offset(y: drop * (1 - there))
+    }
+}
+
+/// The card's light line on its foot and its shadow on what lies under
+/// it; pressed, in with the card, and gone on the way to the whole work.
+struct CardEdge: View, Animatable {
+    var press: CGFloat
+    var way: CGFloat
+    let size: CGSize
+
+    var animatableData: AnimatablePair<CGFloat, CGFloat> {
+        get { AnimatablePair(press, way) }
+        set {
+            press = newValue.first
+            way = newValue.second
+        }
+    }
+
+    var body: some View {
+        let inset = StackedPage.pressedInset * CardScene.unit(press)
+        let wide = max(size.width - 2 * inset, 1)
+        let tall = max(size.height - StackedPage.peek - 2 * inset, 1)
+        let corner = max(StackedPage.corner(size) - inset, 8)
+        ZStack {
+            // Round its corners too (22:41: "Cień pod aktywnym dziełem się
+            // urywa, jest płaskim paskiem"): plain strokes, never a blur.
+            FootShadow(corner: corner)
+            FootLine(corner: corner, rise: StackedPage.edgeRise, edge: StackedPage.edge)
+        }
+        .frame(width: wide, height: tall)
+        .offset(x: inset, y: inset)
+        .frame(width: size.width, height: size.height, alignment: .topLeading)
+        .opacity(CardScene.edge(way))
+        .allowsHitTesting(false)
     }
 }
 
@@ -382,41 +264,6 @@ struct FootShadow: View {
                     .offset(y: k * 0.7)
             }
         }
-    }
-}
-
-/// All of a page but its card (filled even-odd): what the card's cut
-/// leaves of the screen, the round corners' sides with the foot (run 16:
-/// a band with a straight top, the glow light beside the corners above it).
-struct OffCard: Shape {
-    let foot: CGFloat
-    let corner: CGFloat
-    /// The screen's own corners, the card's top ones.
-    var top: CGFloat = 0
-    /// How far the card is pressed in, all round.
-    var inset: CGFloat = 0
-
-    var animatableData: CGFloat {
-        get { inset }
-        set { inset = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
-        let card = CGRect(
-            x: rect.minX + inset, y: rect.minY + inset,
-            width: rect.width - 2 * inset, height: max(rect.height - foot - 2 * inset, 1)
-        )
-        // The screen's corners at the top, also unpressed: square there,
-        // the glow stayed light in them after the whole work, then went
-        // dark at once (run 19).
-        let up = max(top - inset, 0)
-        let down = max(corner - inset, 8)
-        path.addPath(UnevenRoundedRectangle(
-            topLeadingRadius: up, bottomLeadingRadius: down,
-            bottomTrailingRadius: down, topTrailingRadius: up, style: .continuous
-        ).path(in: card))
-        return path
     }
 }
 
@@ -521,12 +368,4 @@ struct StackUnder: View {
             picture = loaded
         }
     }
-}
-
-extension EnvironmentValues {
-    /// How much of black lies over a Galeria page's glow, behind its work:
-    /// all of it till the work is pressed, then melting away with the next
-    /// work's edge round the card (`StackedPage.covered`), so that the
-    /// whole of what is behind the work goes to the glow as one.
-    @Entry var galleryVeil: Double = 1
 }
