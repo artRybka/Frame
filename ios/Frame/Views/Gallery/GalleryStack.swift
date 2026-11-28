@@ -73,18 +73,20 @@ struct StackedPage: ViewModifier {
     /// (18:47: "Przy powrocie z całego dzieła do pełnego ekranu też pasek
     /// u dołu powinien być od razu"; before, the cut waited 0.55 s).
     @State private var flooded = false
-    @State private var wasWhole = false
     /// Flooded, how much the next work's edge still lies over the glow:
     /// the page is uncut at once and the edge fades into the glow, and
     /// back (Mateusz 2026-11-27 22:41: "Tło łuny powinno delikatnie
     /// przenikać i pojawiać się płynnie"; the cut drawn down, the glow
     /// had come out from behind the card, sharp).
     @State private var covered: Double = 1
+    /// How much of the next work's edge lies on the page uncut: none on
+    /// the way to the whole work (its own went out with the press; laid
+    /// there and melting with the veil, it stood under the work as a dark
+    /// tray, run 23), back as the work comes back to the card.
+    @State private var edged: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.7
+    nonisolated static let melt: Double = 0.55
     nonisolated static let unmelt: Double = 0.4
-    /// And back from a press that never came to the whole work.
-    nonisolated static let unpress: Double = 0.1
 
     func body(content: Content) -> some View {
         let card = on
@@ -126,7 +128,7 @@ struct StackedPage: ViewModifier {
                 // fade (run 15: gone a frame after it came).
                 if stacks, shown, card || flood {
                     under(geo.size, edge: flood)
-                        .opacity(flood ? covered : 0)
+                        .opacity(flood ? edged : 0)
                         .allowsHitTesting(false)
                 }
                 // Its shadow on the card under it, round its corners too
@@ -208,43 +210,37 @@ struct StackedPage: ViewModifier {
         .animation(.easeInOut(duration: HoldPull.press), value: hidden)
         .animation(.easeInOut(duration: 0.25), value: card)
         .animation(.easeInOut(duration: HoldPull.press), value: held)
-        .onChange(of: on) { _, now in if !now, held { wasWhole = true } }
-        .task(id: held) {
+        // Only for the whole work, not for the press before it: what is
+        // round the card pressed is the page's black veil and the next
+        // work's own edge going out. Flooded from the press, a finger
+        // that went on to pull the card up took the page uncut with it,
+        // the edge laid on it and a black band, over the work under
+        // (Mateusz 2026-11-28 09:13: "gdy puszczę to dzieło i podciągnę
+        // raz jeszcze to pojawia się coś dziwnego u dołu").
+        .task(id: held && !on) {
             var quiet = Transaction()
             quiet.disablesAnimations = true
-            if held {
-                // Uncut at once, the next work's edge drawn over the glow
-                // where it was, then melting into it.
+            if held, !on {
+                // Uncut at once, black where the next work's edge has gone
+                // out with the press; then all of it to the glow as one.
                 if !flooded {
-                    withTransaction(quiet) { flooded = true; covered = 1 }
+                    withTransaction(quiet) { flooded = true; covered = 1; edged = 0 }
                     // Laid first, then melted: changed in the same update
-                    // it came in, it came already melted (run 14: the edge
-                    // gone in a tenth of a second, not in 0.45).
+                    // it came in, it came already melted (run 14).
                     try? await Task.sleep(for: .milliseconds(20))
                     guard !Task.isCancelled else { return }
                 }
-                // Slowly, and hardly at all while the card is only pressed: the
-                // glow round the card before it drew back was a halo (Mateusz
-                // 2026-11-28 08:06: "łuna powinna przenikać wolniej, teraz
-                // widać też jakieś halo wkoło dzieła na samym początku").
-                withAnimation(.easeIn(duration: Self.melt)) { covered = 0 }
+                withAnimation(.easeInOut(duration: Self.melt)) { covered = 0 }
                 return
             }
             guard flooded else { return }
-            // Let go of the whole work: the glow till it is the card again.
-            // Only pressed, let go at once: a finger that goes on to pull
-            // the card up had the page uncut and the edge laid over it for
-            // 0.4 s more, and they went up with the card, a second edge
-            // and a black band over the work under (Mateusz 2026-11-28
-            // 09:13: "gdy puszczę to dzieło i podciągnę raz jeszcze to
-            // pojawia się coś dziwnego u dołu").
-            let whole = wasWhole
-            let back = whole ? Self.unmelt : Self.unpress
-            if wasWhole { try? await Task.sleep(for: .seconds(Self.after)) }
+            // Let go of the whole work: the glow till it is the card again,
+            // the next work's edge back late in that.
+            try? await Task.sleep(for: .seconds(Self.after))
             guard !Task.isCancelled else { return }
-            wasWhole = false
-            withAnimation(whole ? .easeInOut(duration: back) : .easeOut(duration: back)) { covered = 1 }
-            try? await Task.sleep(for: .seconds(back))
+            withAnimation(.easeInOut(duration: Self.unmelt)) { covered = 1 }
+            withAnimation(.easeIn(duration: Self.unmelt)) { edged = 1 }
+            try? await Task.sleep(for: .seconds(Self.unmelt))
             guard !Task.isCancelled else { return }
             withTransaction(quiet) { flooded = false }
         }
