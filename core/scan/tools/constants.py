@@ -11,7 +11,8 @@ from frame_server.imaging import reflections as R
 
 #: What of `restorer.py` the phone's restorer goes by (`scan_restore.cpp`).
 RESTORER = ("COLOUR_SIGMA", "GRAIN_SIGMA", "DRAWN", "LAID_SIDE", "LAID_MATCH", "LAID_SHIFT", "LONGEST",
-            "SKEW_FIXED", "SKEW_MAX")
+            "SKEW_FIXED", "SKEW_MAX", "BACK", "BLOCKS_FROM", "BLOCKS_SPAN", "CORED", "RINGS", "EDGE", "FINISH",
+            "FINISH_SIGMA")
 
 
 def text() -> str:

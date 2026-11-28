@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.418
+
+- Restauracja (nasz model): dzieło nie traci ostrości ani faktury płótna,
+  ziarna węgla i farby; to, co model wygładził lub zmyślił, wraca ze
+  zdjęcia muzeum. Kratka i obwódki słabego JPEG-a nie wracają, na końcu
+  lekkie wyostrzenie. Wcześniejsze rysunki poprawiane raz po aktualizacji.
+
 ## 1.145.417
 
 - Galeria: przy wejściu w całe dzieło i przy powrocie nie widać już
