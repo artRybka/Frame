@@ -1598,17 +1598,19 @@ private struct GalleryPage: View {
                     .ignoredByLayout()
             )
             .modifier(Lens(sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
-            // On every page, the one under the card too: drawn only on the
-            // one shown, a swipe's new card had its gradient and title come
-            // in a frame after it was there (Mateusz 2026-11-27 22:50: "karta
-            // pod spodem powinna już mieć gradient od dołu i na nim
-            // litery … teraz jest mignięcie").
+            // On every page, but seen only on the one shown, coming in
+            // gently a moment after it is (Mateusz 2026-11-27 22:50: the
+            // title "teraz jest mignięcie"; 2026-11-28 00:37: with its
+            // gradient on the card under, that card was "praktycznie
+            // czarna … gradient z tekstem … musi się pojawiać (przenikając)
+            // dopiero po chwili").
             Group {
                 // Gone before the work has drawn back from under it (its
                 // shade lay on the glow for two frames of the probe's
                 // film), there again once the work is back.
                 caption(geo)
-                    .opacity(still || whole ? 0 : 1)
+                    .opacity(still || whole || !current ? 0 : 1)
+                    .animation(current ? .easeOut(duration: 0.4).delay(0.1) : .easeOut(duration: 0.15), value: current)
                     .animation(still ? .easeOut(duration: 0.12) : .easeOut(duration: 0.3), value: still)
                     .animation(whole ? .easeOut(duration: 0.07) : .easeOut(duration: 0.2).delay(Self.back * 0.75), value: whole)
                     .scaleEffect(sink)

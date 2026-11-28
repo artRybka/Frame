@@ -114,12 +114,14 @@ struct StackedPage: ViewModifier {
                     .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
                 // What lies under the card while it is flooded: the next
                 // work's edge, melting into the glow (`covered`).
-                // Only on the shown card and only flooded: laid at full and
-                // melted a moment later, never taken away by its own fade
-                // (run 15: gone a frame after it came).
-                if stacks, shown, flood {
-                    under(geo.size)
-                        .opacity(covered)
+                // Only on the shown card, there before the press so that it
+                // goes in with the card (laid as the press came, it lay at
+                // the card's end at once, over its edges); the next work's
+                // edge in it only while flooded. Never taken away by its own
+                // fade (run 15: gone a frame after it came).
+                if stacks, shown, card || flood {
+                    under(geo.size, edge: flood)
+                        .opacity(flood ? covered : 0)
                         .allowsHitTesting(false)
                 }
                 // Its shadow on the card under it, round its corners too
@@ -233,19 +235,29 @@ struct StackedPage: ViewModifier {
 
     /// The next work's edge as it lies under the card, on the screen's
     /// ground (what is seen beside it), to lie over the page uncut.
-    private func under(_ size: CGSize) -> some View {
+    private func under(_ size: CGSize, edge: Bool) -> some View {
         ZStack(alignment: .bottom) {
             // All of what the cut leaves black, beside the corners too
             // (run 17: the glow came there at once, a square step beside
             // the round foot).
             Color.black
-            if let below { StackUnder(work: below) }
+            if edge, let below { StackUnder(work: below) }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
         // Only the edge: the work under lies whole behind the card, and
         // over the page it darkened all of it (run 14, back from the whole
         // work: the screen at 62 against 141 for a third of a second).
-        .clipShape(OffCard(foot: Self.peek, corner: Self.corner(size)), style: FillStyle(eoFill: true))
+        // All round the card, pressed in with it: the whole of what lies
+        // behind it goes to the glow as one (Mateusz 2026-11-28 00:37:
+        // "odcina się czarny łuk u dołu. To całe tło za wciskaną kartą
+        // powinno przechodzić w łunę. Czyli jednolicie").
+        .clipShape(
+            OffCard(
+                foot: Self.peek, corner: Self.corner(size), top: ScreenCorner.radius(of: size),
+                inset: pressed || !on ? Self.pressedInset : 0
+            ),
+            style: FillStyle(eoFill: true)
+        )
     }
 
     /// The card's bottom corners, round with the screen's.
@@ -356,10 +368,28 @@ struct FootShadow: View {
 struct OffCard: Shape {
     let foot: CGFloat
     let corner: CGFloat
+    /// The screen's own corners, the card's top ones.
+    var top: CGFloat = 0
+    /// How far the card is pressed in, all round.
+    var inset: CGFloat = 0
+
+    var animatableData: CGFloat {
+        get { inset }
+        set { inset = newValue }
+    }
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
-        path.addPath(CardCut(foot: foot, corner: corner).path(in: rect))
+        let card = CGRect(
+            x: rect.minX + inset, y: rect.minY + inset,
+            width: rect.width - 2 * inset, height: max(rect.height - foot - 2 * inset, 1)
+        )
+        let up = inset > 0.05 ? max(top - inset, 0) : 0
+        let down = max(corner - inset, 8)
+        path.addPath(UnevenRoundedRectangle(
+            topLeadingRadius: up, bottomLeadingRadius: down,
+            bottomTrailingRadius: down, topTrailingRadius: up, style: .continuous
+        ).path(in: card))
         return path
     }
 }
@@ -444,20 +474,6 @@ struct StackUnder: View {
                 } else {
                     Color(white: 0.12)
                 }
-            }
-            .overlay(alignment: .bottom) {
-                // The page's caption gradient, as its page has it (every
-                // page has its caption now): the edge was lighter than the
-                // page's own (run 15: 35 against 13).
-                LinearGradient(
-                    stops: [
-                        .init(color: .black.opacity(0), location: 0),
-                        .init(color: .black.opacity(0.55), location: 0.45),
-                        .init(color: .black.opacity(0.8), location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom
-                )
-                .frame(height: 190)
             }
             .overlay(Color.black.opacity(StackedPage.dark))
             .frame(width: size.width, height: size.height)
