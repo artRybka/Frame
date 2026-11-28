@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import threading
 from collections.abc import Callable, Iterable, Iterator
 from datetime import UTC, datetime
@@ -48,7 +49,7 @@ from .ai.gemini import MODEL, PRO, Ask, NotDrawn
 from .imaging import artsr
 from .imaging.color import linear_to_oklab, linear_to_u8, oklab_to_linear, u8_to_linear
 from .imaging.cut import cut_aspect, warp
-from .imaging.descreen import descreened
+from .imaging.descreen import NOTCH, descreened, filtered, image, lattice, notches, screen
 from .library import Item, ItemKind
 from .library.low_res import LOW_SIDE, restore_side
 from .library.models import Note, Playlist, PlaylistKind
@@ -86,8 +87,41 @@ COLOUR_SIGMA = 2.0
 #: (``imaging.descreen``) and brought back as a net over the drawing
 #: (Mateusz 2026-11-26, van Gogh's "Der Bauer" on a Leipzig postcard:
 #: „Trzeba w ramach restauracji usuwać raster wynikający ze skanu
-#: reprodukcji”). What the model drew stays as sharp.
+#: reprodukcji”). The rest of that grain comes back after
+#: (:data:`BACK`).
 GRAIN_SIGMA = 1.0
+#: Times what the model drew is given back what it left out of the
+#: picture (:func:`recoloured`): made the picture's size again, the drawing
+#: is to be the picture. The model smooths a canvas's weave, a charcoal's
+#: grain and paint's ridges as if they were noise, and the work lost its
+#: sharpness on the frame (Mateusz 2026-11-28, Grasset's "Gablota w Galerii
+#: Apollina" and Steinlen's "Praczka": „tracą na ostrości i
+#: szczegółach”): whatever is finer than the picture is still the model's.
+#: A printed screen too fine to have been found before it was drawn
+#: stands out in what is given back, and is not (:data:`GRAIN_SIGMA`).
+BACK = 2
+#: How much a picture shows a JPEG's 8-pixel blocks: its steps across the
+#: blocks' edges to its steps elsewhere (:func:`_compressed`). A museum's
+#: own photograph is 0.98–1.04, one saved at quality 40 1.46; from
+#: :data:`BLOCKS_FROM` the blocks and the rings round edges are taken out
+#: of what is given back, all of them from :data:`BLOCKS_FROM` +
+#: :data:`BLOCKS_SPAN` (Mateusz 2026-11-28: „A coś osobnego do usuwania
+#: artefaktów?”, then „C”).
+BLOCKS_FROM = 1.04
+BLOCKS_SPAN = 0.08
+#: Of a picture that shows them all, what is given back loses this many
+#: levels (of 255) of every difference (smaller ones are none), and as
+#: much again twice over within :data:`RINGS` pixels of an edge
+#: (:data:`EDGE`: Sobel's gradient), where a JPEG rings.
+CORED = 3.0
+RINGS = 9
+EDGE = 60.0
+#: The drawing sharpened at the end by this share of what is finer than
+#: :data:`FINISH_SIGMA` of its pixels, less as the picture shows its JPEG
+#: (none at all of one that shows it all; Mateusz 2026-11-28: „C, a możemy
+#: dać słabsze wyostrzenie?”).
+FINISH = 0.15
+FINISH_SIGMA = 1.2
 #: How much of what the model drew finer than the picture is kept
 #: (:func:`recoloured`): the rest is the picture enlarged plainly. All of
 #: it was too much made up (Mateusz 2026-11-22, Janinet's print: "Czy
@@ -106,13 +140,14 @@ DRAWN_PRO = 1.0
 LAID_SIDE = 800
 LAID_MATCH = 0.85
 LAID_SHIFT = 0.06
-#: A drawing's note says it is in the picture's colours and tempered by
-#: :data:`DRAWN` (``colours``): the ones kept before are made so once
+#: A drawing's note says it is in the picture's colours, tempered by
+#: :data:`DRAWN` and given back what the model left out (:data:`BACK`;
+#: ``colours``): the ones kept before are made so once
 #: (:meth:`Restorer.recolour_kept`).
-COLOURS = 3
+COLOURS = 4
 #: What each ``colours`` of a kept drawing kept of what was drawn: a
 #: drawing kept softer is given back its detail by the difference.
-KEPT = {1: 1.0, 2: 0.5}
+KEPT = {1: 1.0, 2: 0.5, 3: DRAWN}
 #: Seconds between looks at Pro's batches still waiting.
 POLL = 600.0
 #: About what one drawing of Pro costs, USD (2K through the Batch API).
@@ -420,8 +455,8 @@ class Restorer:
         pro: bool = False,
     ) -> Item:
         try:
-            share = DRAWN_PRO if pro else DRAWN
-            fitted = recoloured(picture, fit(picture.size, drawn), share)
+            share, back = (DRAWN_PRO, 0) if pro else (DRAWN, BACK)
+            fitted = recoloured(picture, fit(picture.size, drawn), share, back)
         except NotRestored as err:
             self._note(item.id, "skewed", why=str(err), usd=usd, model=model)
             raise
@@ -532,11 +567,17 @@ class Restorer:
             if note is not None and note.data.get("colours") == COLOURS:
                 continue
             url = item.sharper.url
+            pro = self.restored_pro(item)
             try:
                 drawing = self.images.sample(url)
                 was = KEPT.get(int(note.data.get("colours") or 1), 1.0) if note else 1.0
+                # From the picture it was drawn from: the museum's cut to the
+                # work (:meth:`source`). Pro's drawing is all of it, as drawn.
                 fitted = recoloured(
-                    descreened(self.images.before_drawn(item)), drawing, DRAWN / was
+                    descreened(self.images.work_before_drawn(item)),
+                    drawing,
+                    DRAWN_PRO if pro else min(1.0, DRAWN / was),
+                    0 if pro else BACK,
                 )
             except Exception as err:
                 log.info("restorer: %s not recoloured: %s", item.id, err)
@@ -940,19 +981,24 @@ def fit(size: tuple[int, int], drawn: Image.Image) -> Image.Image:
     return drawn.convert("RGB").resize((dw, dh), Image.Resampling.LANCZOS)
 
 
-def recoloured(picture: Image.Image, drawn: Image.Image, share: float = DRAWN) -> Image.Image:
+def recoloured(
+    picture: Image.Image, drawn: Image.Image, share: float = DRAWN, back: int = BACK
+) -> Image.Image:
     """``drawn`` in the colours of the picture it was drawn from (Mateusz
     2026-11-16: "Bywa że „restauracja dzieła” zmienia nieznacznie
     kolorystykę. Czy możemy po ‚stworzeniu’ jakości przenieść kolorystykę
     z oryginału?"). In OKLab, the drawing's tones and colours at the
     picture's own scale (blurred by :data:`COLOUR_SIGMA` of its pixels) are
     replaced by the picture's; of what is finer, the detail the model
-    drew, ``share`` is kept over the picture enlarged plainly."""
+    drew, ``share`` is kept over the picture enlarged plainly. Then ``back``
+    times (:data:`BACK`) given back what it left out of the picture
+    (:func:`_given_back`)."""
     size = drawn.size
     sigma = COLOUR_SIGMA * max(size) / max(picture.size)
     # OpenCV's blur and enlargement, not Pillow's: the phone's core
     # (``frame_restore_colours``) does it with the same OpenCV.
-    plain = cv2.GaussianBlur(np.asarray(picture.convert("RGB")), (0, 0), GRAIN_SIGMA)
+    rgb_picture = np.asarray(picture.convert("RGB"))
+    plain = cv2.GaussianBlur(rgb_picture, (0, 0), GRAIN_SIGMA)
     own = cv2.resize(plain, size, interpolation=cv2.INTER_LANCZOS4)
     museum = linear_to_oklab(u8_to_linear(own)).astype(np.float32)
     lab = linear_to_oklab(u8_to_linear(np.asarray(drawn.convert("RGB")))).astype(np.float32)
@@ -976,7 +1022,101 @@ def recoloured(picture: Image.Image, drawn: Image.Image, share: float = DRAWN) -
     lab += cv2.GaussianBlur(museum, (0, 0), sigma) - cv2.GaussianBlur(lab, (0, 0), sigma)
     lab = museum + share * (lab - museum)
     rgb = linear_to_u8(np.clip(oklab_to_linear(lab), 0.0, 1.0))
+    if back > 0:
+        rgb = _given_back(rgb_picture, rgb, laid, back)
     return Image.fromarray(rgb, "RGB")
+
+
+def _given_back(picture: np.ndarray, drawn: np.ndarray, laid: np.ndarray, times: int) -> np.ndarray:
+    """``drawn`` (RGB bytes) given back, ``times`` times, what it lacks of
+    ``picture`` (RGB bytes, smaller) where the two lie on each other
+    (``laid``, :func:`_laid`): the difference of the picture and the drawing
+    made its size (``INTER_AREA``) is enlarged (``INTER_LANCZOS4``) and
+    added. A printed screen found in that difference is taken out of it
+    first (:data:`BACK`); a JPEG's blocks and rings as much as the picture
+    shows them (:func:`_compressed`). Sharpened at the end
+    (:data:`FINISH`)."""
+    h, w = drawn.shape[:2]
+    ph, pw = picture.shape[:2]
+    flags, border = cv2.INTER_LINEAR, cv2.BORDER_REFLECT
+    jpeg = _compressed(picture)
+    want = _deblocked(picture, jpeg)
+    x = drawn.astype(np.float32)
+    keep = None
+    for time in range(times):
+        on = cv2.warpAffine(x, laid, (w, h), flags=flags, borderMode=border)
+        made = cv2.resize(on, (pw, ph), interpolation=cv2.INTER_AREA)
+        lacks = want - made
+        if time == 0:
+            found = screen(image(lacks + 128.0))
+            if found:
+                keep = notches(lattice(found), NOTCH * min(math.hypot(*p) for p in found))
+                log.info("restorer: a printed screen (%d points) left out", len(found))
+        if keep is not None:
+            lacks = filtered(lacks, keep)
+        if jpeg > 0:
+            lacks = _cored(lacks, made, CORED * jpeg)
+        big = cv2.resize(lacks, (w, h), interpolation=cv2.INTER_LANCZOS4)
+        x += cv2.warpAffine(
+            big, laid, (w, h), flags=flags | cv2.WARP_INVERSE_MAP, borderMode=border
+        )
+    k = FINISH * (1.0 - jpeg)
+    if k > 0:
+        x += k * (x - cv2.GaussianBlur(x, (0, 0), FINISH_SIGMA))
+    return np.clip(x + 0.5, 0, 255).astype(np.uint8)
+
+
+def _compressed(picture: np.ndarray) -> float:
+    """How much ``picture`` (RGB bytes) shows a JPEG's blocks, from none
+    (0) to all (1): :data:`BLOCKS_FROM`, :data:`BLOCKS_SPAN`."""
+    gray = cv2.cvtColor(picture, cv2.COLOR_RGB2GRAY).astype(np.float32)
+    if min(gray.shape) < 16:
+        return 0.0
+
+    def ratio(steps: np.ndarray) -> float:
+        edges = steps[7::8]
+        rest = np.delete(steps, np.s_[7::8])
+        return float(edges.mean()) / max(float(rest.mean()), 1e-6)
+
+    across = np.abs(np.diff(gray, axis=1)).mean(axis=0)
+    down = np.abs(np.diff(gray, axis=0)).mean(axis=1)
+    blocks = (ratio(across) + ratio(down)) / 2
+    return float(np.clip((blocks - BLOCKS_FROM) / BLOCKS_SPAN, 0.0, 1.0))
+
+
+def _deblocked(picture: np.ndarray, jpeg: float) -> np.ndarray:
+    """``picture`` (RGB bytes, as floats) with the steps across its 8-pixel
+    blocks' edges eased into ramps, by ``jpeg`` of them; a step much larger
+    than the picture's usual one is an edge of the work, and stays."""
+    x = picture.astype(np.float32)
+    if jpeg <= 0:
+        return x
+    for axis in (0, 1):
+        x = np.moveaxis(x, axis, 0)
+        usual = float(np.abs(np.diff(x, axis=0)).mean())
+        for at in range(8, x.shape[0] - 1, 8):
+            step = x[at] - x[at - 1]
+            eased = jpeg * np.clip(1.0 - np.abs(step) / (4.0 * usual + 1e-6), 0.0, 1.0) * step
+            x[at - 2] += eased / 8
+            x[at - 1] += 3 * eased / 8
+            x[at] -= 3 * eased / 8
+            x[at + 1] -= eased / 8
+        x = np.moveaxis(x, 0, axis)
+    return x
+
+
+def _cored(lacks: np.ndarray, made: np.ndarray, levels: float) -> np.ndarray:
+    """``lacks`` without its smallest differences: ``levels`` taken off each,
+    three times as many within :data:`RINGS` pixels of an edge of ``made``
+    (the drawing made the picture's size), where a JPEG rings."""
+    gray = cv2.cvtColor(np.clip(made + 0.5, 0, 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+    gray = gray.astype(np.float32)
+    strength = cv2.magnitude(cv2.Sobel(gray, cv2.CV_32F, 1, 0), cv2.Sobel(gray, cv2.CV_32F, 0, 1))
+    edges = (strength > EDGE).astype(np.uint8)
+    grown = cv2.dilate(edges, np.ones((RINGS, RINGS), np.uint8)).astype(np.float32)
+    near = cv2.GaussianBlur(grown, (0, 0), 1.5)
+    off = (levels * (1.0 + 2.0 * near))[..., None]
+    return np.sign(lacks) * np.maximum(np.abs(lacks) - off, 0.0)
 
 
 def _laid(museum: np.ndarray, drawn: np.ndarray) -> np.ndarray | None:

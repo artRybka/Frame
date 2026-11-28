@@ -109,7 +109,7 @@ uv run mypy src
 - Our restorer (ArtSR, `restorer.py`) runs on the phone by itself when a
   card of a small picture opens (Mateusz 2026-11-27: „Wszystko.”;
   `PhoneRestorer`, `ios/Models/ArtSR.mlpackage`): `descreen.descreened`
-  before the model and `restorer.fit`, `recoloured` and `_laid` after are
+  before the model and `restorer.fit`, `recoloured`, `_given_back` and `_laid` after are
   written a second time in the core (`core/scan/src/scan_restore.cpp`,
   checked with `tools/restore.py`; numbers through `tools/constants.py`,
   the app's held by `tests/test_scan_core.py`): a change of one is a change
