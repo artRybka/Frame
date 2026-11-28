@@ -697,15 +697,18 @@ def test_pros_drawing_keeps_all_its_detail_and_takes_only_the_colours(
     _client, service, _web, painter = app
     own = _small(service)
     picture = _print(1, SMALL)
-    seen: list[float] = []
+    seen: list[tuple[float, int]] = []
 
-    def spy(p: Image.Image, d: Image.Image, share: float = module.DRAWN) -> Image.Image:
-        seen.append(share)
-        return recoloured(p, d, share)
+    def spy(
+        p: Image.Image, d: Image.Image, share: float = module.DRAWN, back: int = module.BACK
+    ) -> Image.Image:
+        seen.append((share, back))
+        return recoloured(p, d, share, back)
 
     monkeypatch.setattr(module, "recoloured", spy)
     service.restorer._keep(own, picture, painter._draw(picture), 0.03, PRO, pro=True)
-    assert seen == [1.0]
+    # All of Pro's drawing, nothing of the picture given back over it.
+    assert seen == [(1.0, 0)]
 
 
 def test_a_drawing_a_few_pixels_off_its_picture_is_laid_on_it_first() -> None:
@@ -874,3 +877,47 @@ def test_a_phones_drawing_no_larger_than_its_picture_is_not_kept(app: Any) -> No
     )
     assert junk.status_code == 422
     assert service.library.get(own.id).sharper is None  # type: ignore[union-attr]
+
+
+def test_what_the_model_smoothed_comes_back_from_the_picture() -> None:
+    """A charcoal's grain and a canvas's weave the model smoothed as noise
+    (Mateusz 2026-11-28, Grasset's and Steinlen's: „tracą na ostrości i
+    szczegółach”): the drawing made the picture's size again is the
+    picture, the grain too."""
+    rng = np.random.default_rng(3)
+    y, x = np.mgrid[0:300, 0:240]
+    tones = 128 + 40 * np.sin(x / 13.0) * np.cos(y / 19.0)
+    grain = rng.normal(0, 9, (300, 240))
+    picture = Image.fromarray(
+        np.clip(tones + grain, 0, 255)[..., None].repeat(3, -1).astype(np.uint8)
+    )
+    smooth = Image.fromarray(np.clip(tones, 0, 255)[..., None].repeat(3, -1).astype(np.uint8))
+    drawn = smooth.resize((960, 1200), Image.Resampling.LANCZOS)  # the model drew it smooth
+
+    def off(img: Image.Image) -> float:
+        small = cv2.resize(np.asarray(img.convert("L"), np.float32), (240, 300), cv2.INTER_AREA)
+        return float(np.abs(small - np.asarray(picture.convert("L"), np.float32)).mean())
+
+    assert off(recoloured(picture, drawn, back=0)) > 4
+    assert off(recoloured(picture, drawn)) < 2.5  # a little sharpened after (FINISH)
+
+
+def test_a_jpegs_blocks_are_not_given_back() -> None:
+    """A photograph saved as a poor JPEG: its 8-pixel blocks are told
+    (``_compressed``) and not brought back over the drawing (Mateusz
+    2026-11-28: „A coś osobnego do usuwania artefaktów?”)."""
+    y, x = np.mgrid[0:320, 0:256]
+    tones = 128 + 50 * np.sin(x / 23.0) * np.cos(y / 29.0)
+    blocks = np.where(((x // 8) + (y // 8)) % 2 == 0, 4.0, -4.0)
+    picture = Image.fromarray(
+        np.clip(tones + blocks, 0, 255)[..., None].repeat(3, -1).astype(np.uint8)
+    )
+    clean = Image.fromarray(np.clip(tones, 0, 255)[..., None].repeat(3, -1).astype(np.uint8))
+    assert restorer._compressed(np.asarray(picture)) == 1.0
+    assert restorer._compressed(np.asarray(clean)) == 0.0
+    drawn = clean.resize((1024, 1280), Image.Resampling.LANCZOS)
+    out = np.asarray(recoloured(picture, drawn).convert("L"), np.float32)
+    plain = np.asarray(drawn.convert("L"), np.float32)
+    steps = np.abs(np.diff(out - plain, axis=1))[:, 31::32].mean()
+    elsewhere = np.abs(np.diff(out - plain, axis=1)).mean()
+    assert steps < 2 * elsewhere + 0.5

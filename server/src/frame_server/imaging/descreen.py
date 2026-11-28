@@ -170,7 +170,7 @@ def lattice(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
     return out
 
 
-def _filtered(rgb: np.ndarray, keep: Callable[[int, int], np.ndarray]) -> np.ndarray:
+def filtered(rgb: np.ndarray, keep: Callable[[int, int], np.ndarray]) -> np.ndarray:
     """``rgb`` through a filter of its spectrum, ``keep(h, w)`` (in the
     order of ``np.fft.fftfreq``), mirrored at its edges first so that the
     spectrum's wrapping round leaves no band along them."""
@@ -192,7 +192,7 @@ def _filtered(rgb: np.ndarray, keep: Callable[[int, int], np.ndarray]) -> np.nda
     return out
 
 
-def _notches(points: list[tuple[float, float]], notch: float) -> Callable[[int, int], np.ndarray]:
+def notches(points: list[tuple[float, float]], notch: float) -> Callable[[int, int], np.ndarray]:
     def keep(h: int, w: int) -> np.ndarray:
         mask = np.ones((h, w), dtype=np.float32)
         ry, rx = max(1, int(4 * notch * h)), max(1, int(4 * notch * w))
@@ -230,14 +230,14 @@ def _taken_out(rgb: np.ndarray, found: list[tuple[float, float]]) -> np.ndarray:
     """``rgb`` with the screen of ``found`` taken out, then what was left
     of it (:data:`LEFT_STANDS`)."""
     notch = NOTCH * min(math.hypot(py, px) for py, px in found)
-    rgb = _filtered(rgb, _notches(lattice(found), notch))
-    left = screen(_image(rgb), LEFT_STANDS, LEFT_FEWEST)
+    rgb = filtered(rgb, notches(lattice(found), notch))
+    left = screen(image(rgb), LEFT_STANDS, LEFT_FEWEST)
     if left:
-        rgb = _filtered(rgb, _notches(left, notch))
+        rgb = filtered(rgb, notches(left, notch))
     return rgb
 
 
-def _image(rgb: np.ndarray) -> Image.Image:
+def image(rgb: np.ndarray) -> Image.Image:
     return Image.fromarray(np.clip(rgb + 0.5, 0, 255).astype(np.uint8))
 
 
@@ -254,7 +254,7 @@ def cleared(picture: Image.Image) -> Image.Image | None:
     rgb += SHARPEN * (rgb - blurred)
     h, w = rgb.shape[:2]
     log.info("descreen: %dx%d shown without its printed screen", w, h)
-    return _image(rgb)
+    return image(rgb)
 
 
 def descreened(picture: Image.Image) -> Image.Image:
@@ -273,5 +273,5 @@ def descreened(picture: Image.Image) -> Image.Image:
         rgb = _taken_out(rgb, found)
         log.info("descreen: a printed screen (%d points) taken out of %dx%d", len(found), w, h)
     if small:
-        rgb = _filtered(rgb, _finest_off)
-    return _image(rgb)
+        rgb = filtered(rgb, _finest_off)
+    return image(rgb)

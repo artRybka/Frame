@@ -189,12 +189,19 @@ inline constexpr double WHOLE = 0.1;
 
 namespace frame::restore {
 
+inline constexpr int BACK = 2;
 inline constexpr double BLOCKS = 0.006;
+inline constexpr double BLOCKS_FROM = 1.04;
+inline constexpr double BLOCKS_SPAN = 0.08;
 inline constexpr double COARSEST = 12.0;
 inline constexpr double COLOUR_SIGMA = 2.0;
+inline constexpr double CORED = 3.0;
 inline constexpr double DRAWN = 0.7;
+inline constexpr double EDGE = 60.0;
 inline constexpr int FEWEST = 4;
 inline constexpr double FINEST = 2.2;
+inline constexpr double FINISH = 0.15;
+inline constexpr double FINISH_SIGMA = 1.2;
 inline constexpr double GRAIN_SIGMA = 1.0;
 inline constexpr int HARMONICS = 6;
 inline constexpr double LAID_MATCH = 0.85;
@@ -208,6 +215,7 @@ inline constexpr int MOST = 16;
 inline constexpr double NEAREST = 5.0;
 inline constexpr double NOTCH = 0.15;
 inline constexpr double PAD = 0.04;
+inline constexpr int RINGS = 9;
 inline constexpr double SHARPEN = 0.3;
 inline constexpr double SHARPEN_SPAN = 0.9;
 inline constexpr double SKEW_FIXED = 0.005;

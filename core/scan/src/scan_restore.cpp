@@ -1,7 +1,7 @@
 // Our restorer's steps around its model, on the phone (Mateusz 2026-11-27: „Wszystko.”, the restorer
 // on the iPhone when a work's card opens): a printed screen taken out of the picture before it is drawn
 // (`imaging/descreen.py`'s `descreened`), and the drawing brought to 2K and put in the picture's colours
-// after (`restorer.py`'s `draw`, `fit`, `recoloured` and `_laid`), written a second time. The Python is
+// after (`restorer.py`'s `draw`, `fit`, `recoloured`, `_given_back` and `_laid`), written a second time. The Python is
 // the truth: a change there is made here by hand, and checked with `tools/restore.py`.
 #include "../include/frame_scan.h"
 #include "constants.hpp"
@@ -249,6 +249,169 @@ double nearest(const std::vector<Point>& points) {
     return near;
 }
 
+/// `_compressed`: how much the picture (RGB bytes) shows a JPEG's 8-pixel blocks, 0 to 1.
+double compressed(const cv::Mat& picture) {
+    cv::Mat g8, g;
+    cv::cvtColor(picture, g8, cv::COLOR_RGB2GRAY);
+    g8.convertTo(g, CV_32F);
+    if (std::min(g.rows, g.cols) < 16) return 0.0;
+    auto ratio = [](const std::vector<double>& steps) {
+        double edges = 0, rest = 0;
+        int ne = 0, nr = 0;
+        for (size_t i = 0; i < steps.size(); i++) {
+            if (i % 8 == 7) {
+                edges += steps[i];
+                ne++;
+            } else {
+                rest += steps[i];
+                nr++;
+            }
+        }
+        return (edges / ne) / std::max(rest / nr, 1e-6);
+    };
+    std::vector<double> across(static_cast<size_t>(g.cols - 1), 0.0), down(static_cast<size_t>(g.rows - 1), 0.0);
+    for (int y = 0; y < g.rows; y++) {
+        const float* p = g.ptr<float>(y);
+        const float* q = y + 1 < g.rows ? g.ptr<float>(y + 1) : nullptr;
+        double row = 0;
+        for (int x = 0; x < g.cols; x++) {
+            if (x + 1 < g.cols) across[static_cast<size_t>(x)] += std::abs(p[x + 1] - p[x]);
+            if (q) row += std::abs(q[x] - p[x]);
+        }
+        if (q) down[static_cast<size_t>(y)] = row / g.cols;
+    }
+    for (auto& a : across) a /= g.rows;
+    double blocks = (ratio(across) + ratio(down)) / 2;
+    return std::clamp((blocks - BLOCKS_FROM) / BLOCKS_SPAN, 0.0, 1.0);
+}
+
+/// `_deblocked`: the picture (RGB bytes, as floats) with the steps across its blocks' edges eased into
+/// ramps, by `jpeg` of them; down first, then across.
+cv::Mat deblocked(const cv::Mat& picture, double jpeg) {
+    cv::Mat x;
+    picture.convertTo(x, CV_32FC3);
+    if (jpeg <= 0) return x;
+    auto j = static_cast<float>(jpeg);
+    // Down: the rows at the blocks' edges.
+    {
+        double usual = 0;
+        for (int y = 0; y + 1 < x.rows; y++) {
+            const float* a = x.ptr<float>(y);
+            const float* b = x.ptr<float>(y + 1);
+            for (int i = 0; i < x.cols * 3; i++) usual += std::abs(b[i] - a[i]);
+        }
+        usual /= static_cast<double>(x.rows - 1) * x.cols * 3;
+        auto bound = static_cast<float>(4.0 * usual + 1e-6);
+        for (int at = 8; at < x.rows - 1; at += 8) {
+            float* r2 = x.ptr<float>(at - 2);
+            float* r1 = x.ptr<float>(at - 1);
+            float* r0 = x.ptr<float>(at);
+            float* r3 = x.ptr<float>(at + 1);
+            for (int i = 0; i < x.cols * 3; i++) {
+                float step = r0[i] - r1[i];
+                float eased = j * std::clamp(1.0f - std::abs(step) / bound, 0.0f, 1.0f) * step;
+                r2[i] += eased / 8;
+                r1[i] += 3 * eased / 8;
+                r0[i] -= 3 * eased / 8;
+                r3[i] -= eased / 8;
+            }
+        }
+    }
+    // Across: the columns at the blocks' edges.
+    {
+        double usual = 0;
+        for (int y = 0; y < x.rows; y++) {
+            const auto* p = x.ptr<cv::Vec3f>(y);
+            for (int c = 0; c + 1 < x.cols; c++)
+                for (int k = 0; k < 3; k++) usual += std::abs(p[c + 1][k] - p[c][k]);
+        }
+        usual /= static_cast<double>(x.rows) * (x.cols - 1) * 3;
+        auto bound = static_cast<float>(4.0 * usual + 1e-6);
+        for (int y = 0; y < x.rows; y++) {
+            auto* p = x.ptr<cv::Vec3f>(y);
+            for (int at = 8; at < x.cols - 1; at += 8)
+                for (int k = 0; k < 3; k++) {
+                    float step = p[at][k] - p[at - 1][k];
+                    float eased = j * std::clamp(1.0f - std::abs(step) / bound, 0.0f, 1.0f) * step;
+                    p[at - 2][k] += eased / 8;
+                    p[at - 1][k] += 3 * eased / 8;
+                    p[at][k] -= 3 * eased / 8;
+                    p[at + 1][k] -= eased / 8;
+                }
+        }
+    }
+    return x;
+}
+
+/// `_cored`: what is given back without its smallest differences, three times as many levels taken off
+/// near an edge of `made` (the drawing made the picture's size).
+cv::Mat cored(const cv::Mat& lacks, const cv::Mat& made, double levels) {
+    cv::Mat bytes = image(made), g8, g;
+    cv::cvtColor(bytes, g8, cv::COLOR_RGB2GRAY);
+    g8.convertTo(g, CV_32F);
+    cv::Mat gx, gy, strength;
+    cv::Sobel(g, gx, CV_32F, 1, 0);
+    cv::Sobel(g, gy, CV_32F, 0, 1);
+    cv::magnitude(gx, gy, strength);
+    cv::Mat edges = strength > static_cast<float>(EDGE);  // 255 where an edge
+    edges = edges / 255;
+    cv::Mat grown, near;
+    cv::dilate(edges, grown, cv::Mat::ones(RINGS, RINGS, CV_8U));
+    grown.convertTo(grown, CV_32F);
+    cv::GaussianBlur(grown, near, cv::Size(0, 0), 1.5);
+    cv::Mat out(lacks.size(), CV_32FC3);
+    auto lv = static_cast<float>(levels);
+    for (int y = 0; y < lacks.rows; y++) {
+        const auto* l = lacks.ptr<cv::Vec3f>(y);
+        const float* n = near.ptr<float>(y);
+        auto* o = out.ptr<cv::Vec3f>(y);
+        for (int x = 0; x < lacks.cols; x++) {
+            float off = lv * (1.0f + 2.0f * n[x]);
+            for (int k = 0; k < 3; k++) {
+                float v = l[x][k];
+                float m = std::max(std::abs(v) - off, 0.0f);
+                o[x][k] = v > 0 ? m : (v < 0 ? -m : 0.0f);
+            }
+        }
+    }
+    return out;
+}
+
+/// `_given_back`: the drawing (RGB bytes) given back, `times` times, what it lacks of the picture (RGB
+/// bytes) where the two lie on each other (`warp`); a printed screen found in that left out, a JPEG's
+/// blocks and rings as much as the picture shows them; sharpened at the end.
+cv::Mat given_back(const cv::Mat& picture, const cv::Mat& drawn, const cv::Mat& warp, int times) {
+    cv::Size size = drawn.size(), own = picture.size();
+    double jpeg = compressed(picture);
+    cv::Mat want = deblocked(picture, jpeg);
+    cv::Mat x;
+    drawn.convertTo(x, CV_32FC3);
+    Keep keep;
+    for (int time = 0; time < times; time++) {
+        cv::Mat on, made;
+        cv::warpAffine(x, on, warp, size, cv::INTER_LINEAR, cv::BORDER_REFLECT);
+        cv::resize(on, made, own, 0, 0, cv::INTER_AREA);
+        cv::Mat lacks = want - made;
+        if (time == 0) {
+            std::vector<Point> found = screen(image(lacks + cv::Scalar::all(128.0)), STANDS, FEWEST);
+            if (!found.empty()) keep = notches(lattice(found), NOTCH * nearest(found));
+        }
+        if (keep) lacks = filtered(lacks, keep);
+        if (jpeg > 0) lacks = cored(lacks, made, CORED * jpeg);
+        cv::Mat big, back;
+        cv::resize(lacks, big, size, 0, 0, cv::INTER_LANCZOS4);
+        cv::warpAffine(big, back, warp, size, cv::INTER_LINEAR | cv::WARP_INVERSE_MAP, cv::BORDER_REFLECT);
+        x += back;
+    }
+    auto k = static_cast<float>(FINISH * (1.0 - jpeg));
+    if (k > 0) {
+        cv::Mat soft;
+        cv::GaussianBlur(x, soft, cv::Size(0, 0), FINISH_SIGMA);
+        x += (x - soft) * k;
+    }
+    return image(x);
+}
+
 // -- the colours (`restorer.recoloured`), OKLab as `imaging/color.py` has it --------------------------
 
 struct Lab {
@@ -416,7 +579,9 @@ cv::Mat recoloured(const cv::Mat& picture, const cv::Mat& drawn, double share, b
     mine += mb - lb;
     auto s = static_cast<float>(share);
     cv::Mat out = moved + (mine - moved) * s;
-    return lab().back(out);
+    cv::Mat rgb = lab().back(out);
+    if (BACK > 0) rgb = given_back(picture, rgb, warp, BACK);
+    return rgb;
 }
 
 /// `restorer.draw` and `fit`: the model's drawing brought to `LONGEST` and to the picture's proportions.
