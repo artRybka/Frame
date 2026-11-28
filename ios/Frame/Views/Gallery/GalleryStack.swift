@@ -81,8 +81,8 @@ struct StackedPage: ViewModifier {
     /// had come out from behind the card, sharp).
     @State private var covered: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.3
-    nonisolated static let unmelt: Double = 0.35
+    nonisolated static let melt: Double = 0.85
+    nonisolated static let unmelt: Double = 0.4
 
     func body(content: Content) -> some View {
         let card = on
@@ -218,7 +218,11 @@ struct StackedPage: ViewModifier {
                     try? await Task.sleep(for: .milliseconds(20))
                     guard !Task.isCancelled else { return }
                 }
-                withAnimation(.easeOut(duration: Self.melt)) { covered = 0 }
+                // Slowly, and hardly at all while the card is only pressed: the
+                // glow round the card before it drew back was a halo (Mateusz
+                // 2026-11-28 08:06: "łuna powinna przenikać wolniej, teraz
+                // widać też jakieś halo wkoło dzieła na samym początku").
+                withAnimation(.easeIn(duration: Self.melt)) { covered = 0 }
                 return
             }
             guard flooded else { return }
@@ -266,7 +270,10 @@ struct StackedPage: ViewModifier {
     /// Seconds the glow stays at the screen's foot after the whole work
     /// is let go, the last of its way back (`GalleryPage.back`, 0.55 s)
     /// then the next work's edge coming out of it.
-    static let after: Double = 0.35
+    /// The edge is back just as the work is (0.15 + `unmelt` = the way
+    /// back): going on after it, the page's glow went out under it in one
+    /// frame, half way through (run 21).
+    static let after: Double = 0.15
 
     /// How far below the screen's top the page lies, of its height: 0 shown,
     /// 1 a whole page down (and under the one shown).
