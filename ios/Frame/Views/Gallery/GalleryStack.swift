@@ -81,8 +81,8 @@ struct StackedPage: ViewModifier {
     /// had come out from behind the card, sharp).
     @State private var covered: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.3
-    nonisolated static let unmelt: Double = 0.35
+    nonisolated static let melt: Double = 0.85
+    nonisolated static let unmelt: Double = 0.5
 
     func body(content: Content) -> some View {
         let card = on
@@ -218,7 +218,11 @@ struct StackedPage: ViewModifier {
                     try? await Task.sleep(for: .milliseconds(20))
                     guard !Task.isCancelled else { return }
                 }
-                withAnimation(.easeOut(duration: Self.melt)) { covered = 0 }
+                // Slowly, and hardly at all while the card is only pressed: the
+                // glow round the card before it drew back was a halo (Mateusz
+                // 2026-11-28 08:06: "łuna powinna przenikać wolniej, teraz
+                // widać też jakieś halo wkoło dzieła na samym początku").
+                withAnimation(.easeIn(duration: Self.melt)) { covered = 0 }
                 return
             }
             guard flooded else { return }

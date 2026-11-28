@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.416
+
+- Galeria: brzeg następnego dzieła pod kartą jest już w trakcie
+  przerzucania, nie wskakuje po chwili.
+- Galeria: przy przytrzymaniu łuna przenika wolniej, bez obwódki wokół
+  dzieła na początku.
+
 ## 1.145.415
 
 - Galeria: karta pod spodem znów czytelna; gradient i tytuł przenikają
