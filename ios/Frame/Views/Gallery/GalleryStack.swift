@@ -85,7 +85,7 @@ struct StackedPage: ViewModifier {
     /// tray, run 23), back as the work comes back to the card.
     @State private var edged: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.55
+    nonisolated static let melt: Double = 0.45
     nonisolated static let unmelt: Double = 0.4
 
     func body(content: Content) -> some View {
@@ -224,7 +224,12 @@ struct StackedPage: ViewModifier {
                 // Uncut at once, black where the next work's edge has gone
                 // out with the press; then all of it to the glow as one.
                 if !flooded {
-                    withTransaction(quiet) { flooded = true; covered = 1; edged = 0 }
+                    // Never with animations disabled: that took the way to
+                    // the whole work, begun in the same update, with it (run
+                    // 24: the work at 2% of the way, then at 50%).
+                    flooded = true
+                    covered = 1
+                    edged = 0
                     // Laid first, then melted: changed in the same update
                     // it came in, it came already melted (run 14).
                     try? await Task.sleep(for: .milliseconds(20))
