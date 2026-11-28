@@ -83,6 +83,8 @@ struct StackedPage: ViewModifier {
     /// Seconds the next work's edge takes to melt into the glow, and back.
     nonisolated static let melt: Double = 0.7
     nonisolated static let unmelt: Double = 0.4
+    /// And back from a press that never came to the whole work.
+    nonisolated static let unpress: Double = 0.1
 
     func body(content: Content) -> some View {
         let card = on
@@ -230,11 +232,19 @@ struct StackedPage: ViewModifier {
             }
             guard flooded else { return }
             // Let go of the whole work: the glow till it is the card again.
+            // Only pressed, let go at once: a finger that goes on to pull
+            // the card up had the page uncut and the edge laid over it for
+            // 0.4 s more, and they went up with the card, a second edge
+            // and a black band over the work under (Mateusz 2026-11-28
+            // 09:13: "gdy puszczę to dzieło i podciągnę raz jeszcze to
+            // pojawia się coś dziwnego u dołu").
+            let whole = wasWhole
+            let back = whole ? Self.unmelt : Self.unpress
             if wasWhole { try? await Task.sleep(for: .seconds(Self.after)) }
             guard !Task.isCancelled else { return }
             wasWhole = false
-            withAnimation(.easeInOut(duration: Self.unmelt)) { covered = 1 }
-            try? await Task.sleep(for: .seconds(Self.unmelt))
+            withAnimation(whole ? .easeInOut(duration: back) : .easeOut(duration: back)) { covered = 1 }
+            try? await Task.sleep(for: .seconds(back))
             guard !Task.isCancelled else { return }
             withTransaction(quiet) { flooded = false }
         }

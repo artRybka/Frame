@@ -4,6 +4,8 @@
 
 - Galeria: przy wejściu w całe dzieło i przy powrocie nie widać już
   obrysu karty; całe tło za dziełem przechodzi w łunę jednocześnie.
+- Galeria: przy ponownym podciągnięciu karty nie ma już drugiego brzegu
+  i czarnego pasa u dołu.
 
 ## 1.145.416
 
