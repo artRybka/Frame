@@ -73,15 +73,19 @@ struct StackedPage: ViewModifier {
     /// (18:47: "Przy powrocie z całego dzieła do pełnego ekranu też pasek
     /// u dołu powinien być od razu"; before, the cut waited 0.55 s).
     @State private var flooded = false
-    @State private var wasWhole = false
     /// Flooded, how much the next work's edge still lies over the glow:
     /// the page is uncut at once and the edge fades into the glow, and
     /// back (Mateusz 2026-11-27 22:41: "Tło łuny powinno delikatnie
     /// przenikać i pojawiać się płynnie"; the cut drawn down, the glow
     /// had come out from behind the card, sharp).
     @State private var covered: Double = 1
+    /// How much of the next work's edge lies on the page uncut: none on
+    /// the way to the whole work (its own went out with the press; laid
+    /// there and melting with the veil, it stood under the work as a dark
+    /// tray, run 23), back as the work comes back to the card.
+    @State private var edged: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.85
+    nonisolated static let melt: Double = 0.45
     nonisolated static let unmelt: Double = 0.4
 
     func body(content: Content) -> some View {
@@ -111,6 +115,9 @@ struct StackedPage: ViewModifier {
             let tall = geo.size.height - foot
             ZStack(alignment: .top) {
                 content
+                    // The page's own ground behind its work goes from black
+                    // to its glow with what lies round the card (`veil`).
+                    .environment(\.galleryVeil, flood ? covered : 1)
                     .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
                 // What lies under the card while it is flooded: the next
                 // work's edge, melting into the glow (`covered`).
@@ -121,7 +128,7 @@ struct StackedPage: ViewModifier {
                 // fade (run 15: gone a frame after it came).
                 if stacks, shown, card || flood {
                     under(geo.size, edge: flood)
-                        .opacity(flood ? covered : 0)
+                        .opacity(flood ? edged : 0)
                         .allowsHitTesting(false)
                 }
                 // Its shadow on the card under it, round its corners too
@@ -203,34 +210,41 @@ struct StackedPage: ViewModifier {
         .animation(.easeInOut(duration: HoldPull.press), value: hidden)
         .animation(.easeInOut(duration: 0.25), value: card)
         .animation(.easeInOut(duration: HoldPull.press), value: held)
-        .onChange(of: on) { _, now in if !now, held { wasWhole = true } }
-        .task(id: held) {
+        // Only for the whole work, not for the press before it: what is
+        // round the card pressed is the page's black veil and the next
+        // work's own edge going out. Flooded from the press, a finger
+        // that went on to pull the card up took the page uncut with it,
+        // the edge laid on it and a black band, over the work under
+        // (Mateusz 2026-11-28 09:13: "gdy puszczę to dzieło i podciągnę
+        // raz jeszcze to pojawia się coś dziwnego u dołu").
+        .task(id: held && !on) {
             var quiet = Transaction()
             quiet.disablesAnimations = true
-            if held {
-                // Uncut at once, the next work's edge drawn over the glow
-                // where it was, then melting into it.
+            if held, !on {
+                // Uncut at once, black where the next work's edge has gone
+                // out with the press; then all of it to the glow as one.
                 if !flooded {
-                    withTransaction(quiet) { flooded = true; covered = 1 }
+                    // Never with animations disabled: that took the way to
+                    // the whole work, begun in the same update, with it (run
+                    // 24: the work at 2% of the way, then at 50%).
+                    flooded = true
+                    covered = 1
+                    edged = 0
                     // Laid first, then melted: changed in the same update
-                    // it came in, it came already melted (run 14: the edge
-                    // gone in a tenth of a second, not in 0.45).
+                    // it came in, it came already melted (run 14).
                     try? await Task.sleep(for: .milliseconds(20))
                     guard !Task.isCancelled else { return }
                 }
-                // Slowly, and hardly at all while the card is only pressed: the
-                // glow round the card before it drew back was a halo (Mateusz
-                // 2026-11-28 08:06: "łuna powinna przenikać wolniej, teraz
-                // widać też jakieś halo wkoło dzieła na samym początku").
-                withAnimation(.easeIn(duration: Self.melt)) { covered = 0 }
+                withAnimation(.easeInOut(duration: Self.melt)) { covered = 0 }
                 return
             }
             guard flooded else { return }
-            // Let go of the whole work: the glow till it is the card again.
-            if wasWhole { try? await Task.sleep(for: .seconds(Self.after)) }
+            // Let go of the whole work: the glow till it is the card again,
+            // the next work's edge back late in that.
+            try? await Task.sleep(for: .seconds(Self.after))
             guard !Task.isCancelled else { return }
-            wasWhole = false
             withAnimation(.easeInOut(duration: Self.unmelt)) { covered = 1 }
+            withAnimation(.easeIn(duration: Self.unmelt)) { edged = 1 }
             try? await Task.sleep(for: .seconds(Self.unmelt))
             guard !Task.isCancelled else { return }
             withTransaction(quiet) { flooded = false }
@@ -241,10 +255,12 @@ struct StackedPage: ViewModifier {
     /// ground (what is seen beside it), to lie over the page uncut.
     private func under(_ size: CGSize, edge: Bool) -> some View {
         ZStack(alignment: .bottom) {
-            // All of what the cut leaves black, beside the corners too
-            // (run 17: the glow came there at once, a square step beside
-            // the round foot).
-            Color.black
+            // What the cut leaves black, beside the corners too, is the
+            // page's own veil (`GalleryPage`), one with what is behind the
+            // work inside the card: a black of its own here melted on
+            // another curve than the glow inside, and the card stood on
+            // the way to the whole work as a pale plate with a dark rim
+            // (Mateusz 2026-11-28 09:05: "nadal jakieś obwódki").
             if edge, let below { StackUnder(work: below) }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
@@ -505,4 +521,12 @@ struct StackUnder: View {
             picture = loaded
         }
     }
+}
+
+extension EnvironmentValues {
+    /// How much of black lies over a Galeria page's glow, behind its work:
+    /// all of it till the work is pressed, then melting away with the next
+    /// work's edge round the card (`StackedPage.covered`), so that the
+    /// whole of what is behind the work goes to the glow as one.
+    @Entry var galleryVeil: Double = 1
 }
