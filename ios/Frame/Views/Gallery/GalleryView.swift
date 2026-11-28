@@ -1359,6 +1359,7 @@ private struct GalleryPage: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.galleryVeil) private var veil
     let work: RemoteItem
     /// On screen now: it draws back and drifts a little.
     var current = false
@@ -1476,6 +1477,17 @@ private struct GalleryPage: View {
                     // Before, two pictures and one melting into the other
                     // (2026-11-23 20:14, "Rozpływ w łunę").
                     glowLayer(place, geo)
+                    // Black over the glow till the work is pressed, then
+                    // melting into it, behind the card and round it as one
+                    // (`StackedPage`): the glow there at once inside the
+                    // card and coming slowly round it, the card's outline
+                    // stood on the way to the whole work (Mateusz
+                    // 2026-11-28 09:05: "nadal jakieś obwódki").
+                    if current, card || veil < 1 {
+                        Color.black.opacity(veil)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .allowsHitTesting(false)
+                    }
                     shade(layout, place, geo)
                     cut(layout, place, geo)
                     headLayer(place, geo)
