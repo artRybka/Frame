@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.145.415
+
+- Galeria: karta pod spodem znów czytelna; gradient i tytuł przenikają
+  po chwili, gdy dzieło jest już pokazane.
+- Galeria: przy przytrzymaniu całe tło za wciskaną kartą przechodzi
+  w łunę jednolicie, bez czarnego łuku u dołu.
+
 ## 1.145.414
 
 - Galeria: przy przytrzymaniu i powrocie z całego dzieła brzeg następnego
