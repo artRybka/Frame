@@ -277,7 +277,14 @@ struct GalleryView: View {
         } action: { _, now in
             GalleryLog.trace("pages' insets \(Int(now[0])) and \(Int(now[1])), \(Int(now[2])) tall")
         }
-        .onScrollPhaseChange { _, phase in GalleryLog.trace("pages' scroll \(phase)") }
+        .onScrollPhaseChange { _, phase in
+            GalleryLog.trace("pages' scroll \(phase)")
+            // At rest, the work after the one shown, whatever the swipe said.
+            if phase == .idle, let at = shownIndex, underAt != at + 1 { underAt = at + 1 }
+        }
+        .onChange(of: shownIndex, initial: true) { _, at in
+            if let at, hand == .idle, underAt != at + 1, abs(underAt - at - 1) > 1 { underAt = at + 1 }
+        }
         .task(id: grid) {
             guard !grid else { withTransaction(Self.quiet) { stacking = false }; return }
             guard !stacking else { return }
@@ -289,8 +296,8 @@ struct GalleryView: View {
         .onChange(of: bars) { _, now in GalleryLog.trace("bars \(now ? "come" : "go")") }
         .scrollIndicators(.hidden)
         .background {
-            if carded, !StackedPage.left(8), let at = shownIndex, at + 1 < works.count {
-                StackUnder(work: works[at + 1])
+            if carded, !StackedPage.left(8), works.indices.contains(underAt) {
+                StackUnder(work: works[underAt])
                     .opacity(peek == nil && pressed == nil ? 1 : 0)
                     .animation(.easeInOut(duration: HoldPull.press), value: pressed)
             }
@@ -313,6 +320,7 @@ struct GalleryView: View {
     /// the work under came as a black box, then a page uncut, then square
     /// corners, for some 0.4 s (the probe's run 11); till then the next
     /// work's edge is its thumbnail (`StackUnder`), the same to the eye.
+    @State private var underAt = 1
     @State private var stacking = true
     nonisolated static let stackAfter: Duration = .milliseconds(500)
 
@@ -619,6 +627,15 @@ struct GalleryView: View {
     /// swipes down the works brings the grid.
     private func scrolled(_ y: CGFloat) {
         flow.note(y)
+        // The work whose edge lies under the card: the one after the page
+        // that is coming, as soon as a swipe begins. Changed when the swipe
+        // had settled, the card that came lay on its own thumbnail and the
+        // next work's edge came at once, a moment late (Mateusz 2026-11-28
+        // 08:06: "U dołu nadal coś miga i skacze").
+        if area.height > 0, !grid {
+            let under = Int((y / area.height - 0.002).rounded(.up)) + 1
+            if under != underAt { underAt = under }
+        }
         // Every frame, in tenths of a point: a swipe's evenness is read off
         // these (Mateusz 2026-11-27 18:47: "nie jest płynna. Odrobinę
         // skacze?").
