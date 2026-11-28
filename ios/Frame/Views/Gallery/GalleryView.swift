@@ -1500,9 +1500,14 @@ private struct GalleryPage: View {
                     // and below the page too: a finger that pressed and
                     // then pulls the card up takes no band of it up over
                     // the work under (Mateusz 2026-11-28 09:13).
+                    // (Drawn that tall, laid out as tall as the page: three
+                    // pages tall in the layout, it made the placeholder as
+                    // tall, and the page above lay with it over this one,
+                    // run 26.)
                     Color.black
                         .frame(height: geo.size.height * 3)
                         .modifier(Scened(press: press, way: way) { press, way in CardScene.black(press, way) })
+                        .frame(height: geo.size.height)
                     ground
                         .modifier(Scened(press: press, way: way) { _, way in CardScene.glow(way) })
                 }
