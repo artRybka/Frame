@@ -168,9 +168,6 @@ struct GalleryView: View {
                 // before, the red is there already, not pouring in.
                 if let shown, heartShown { heartButton(shown).id(shown.id).transition(.opacity) }
             }
-            .overlay(alignment: .topLeading) {
-                if shown != nil, heartShown, peek == nil { gridButton.transition(.opacity) }
-            }
             .overlay {
                 if works.isEmpty { emptyState }
             }
@@ -337,7 +334,9 @@ struct GalleryView: View {
             stacked: stacking,
             pressed: pressed == work.id,
             held: pressed == work.id || peek == work.id,
-            hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id)
+            hidden: index > 0 && (pressed == works[index - 1].id || peek == works[index - 1].id),
+            below: index + 1 < works.count ? works[index + 1] : nil,
+            shown: work.id == shown?.id
         ))
         .containerRelativeFrame([.horizontal, .vertical])
         .contentShape(Rectangle())
@@ -367,7 +366,17 @@ struct GalleryView: View {
         // 2026-11-26 00:16: "Czy na pełnym ekranie w galerii możemy dodać
         // gest przeciągnięcia od prawej do lewej który zamykałby galerie
         // i przechodził do „Odkrywaj”?"). Not with a work held.
-        .gesture(SideSwipe(leftward: true, on: !gridOpen && peek == nil && pressed == nil) { leaveForDiscover() })
+        // Only from the screen's right edge (Mateusz 2026-11-27 23:02: "tak
+        // żeby działał tylko od krawędzi a nie jak teraz np. od środka").
+        .gesture(SideSwipe(fromEdge: true, leftward: true, on: !gridOpen && peek == nil && pressed == nil) {
+            leaveForDiscover()
+        })
+        // From the left edge rightward, the grid: there is no button for it
+        // in the corner any more (23:02: "usuwamy guzik siatki z rogu …
+        // dodajemy gest od lewej krawędzi ekranu w prawo który pokaże
+        // siatkę").
+        .gesture(SideSwipe(fromEdge: true, on: !gridOpen && peek == nil && pressed == nil) { showGrid() })
+        .accessibilityAction(named: "Pokaż siatkę") { showGrid() }
         .id(work.id)
     }
 
@@ -407,28 +416,13 @@ struct GalleryView: View {
         .padding(.top, 2)
     }
 
-    /// The grid's button, glass as the heart across from it.
-    private var gridButton: some View {
-        Button {
-            showGrid()
-        } label: {
-            GridMark()
-                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
-                // The circle's middle as high as the heart's.
-                .padding(.horizontal, 10)
-                .padding(.vertical, 3)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Pokaż siatkę")
-        .padding(.leading, Theme.gutter - 10)
-        .padding(.top, 2)
-    }
-
     private func heart(_ work: RemoteItem) {
         guard !grid else { return }
+        // Two taps on a work with a heart take it away (23:02: "podwójne
+        // stuknięcie gdy dzieło ma serduszko … usuwa z ulubionych").
         let summary = work.summary
-        if !model.liked(summary) { Task { await model.like(summary, true) } }
+        let liked = model.liked(summary)
+        Task { await model.like(summary, !liked) }
         flashes += 1
     }
 
@@ -1501,7 +1495,9 @@ private struct GalleryPage: View {
             had = now.version
             anew += 1
         }
-        .task(id: current) { if current { await loadPolish() } }
+        .task(id: current) {
+            if current { await loadPolish() } else if polish == nil { polish = ItemPeeks.polish[work.id] }
+        }
         .task(id: whole && current) { await nudge() }
         .task(id: current ? thumb.map { ObjectIdentifier($0) } : nil) {
             // Its card opens with this thumbnail, asked for at the plain
@@ -1602,7 +1598,12 @@ private struct GalleryPage: View {
                     .ignoredByLayout()
             )
             .modifier(Lens(sink: sink, way: way, layout: layout, place: place).ignoredByLayout())
-            if current {
+            // On every page, the one under the card too: drawn only on the
+            // one shown, a swipe's new card had its gradient and title come
+            // in a frame after it was there (Mateusz 2026-11-27 22:50: "karta
+            // pod spodem powinna już mieć gradient od dołu i na nim
+            // litery … teraz jest mignięcie").
+            Group {
                 // Gone before the work has drawn back from under it (its
                 // shade lay on the glow for two frames of the probe's
                 // film), there again once the work is back.
@@ -2536,49 +2537,6 @@ struct Glow: View {
 /// 2026-11-23 17:42: "bez tego wielkiego rozbłysku na zewnątrz"; 19:01:
 /// "wypełnianie od środka a nie od dołu. Szybsze. Z lekkim, chwilowym
 /// rozbłyskiem żywszą czerwienią wewnątrz serca, przy jego krawędzi").
-/// Nine small white squares in a circle of the heart's clear glass: the
-/// grid's button on the page's other corner (Mateusz 2026-11-25 12:21:
-/// "Ikonka 9 kwadracików - zamień na w kółku").
-private struct GridMark: View {
-    /// The circle across, and the nine squares in it (points).
-    static let size: CGFloat = 40
-    private static let squares: CGFloat = 17
-
-    var body: some View {
-        GridShape()
-            .fill(.white.opacity(0.94))
-            .frame(width: Self.squares, height: Self.squares)
-            // Seen on a white sky too.
-            .shadow(color: .black.opacity(0.22), radius: 1.5, y: 0.5)
-            .frame(width: Self.size, height: Self.size)
-            .glassEffect(Glass.clear.interactive(), in: Circle())
-            // The same glass in dark mode as in light, as the heart's.
-            .environment(\.colorScheme, .light)
-    }
-}
-
-/// Three rows of three squares, their corners rounded a little.
-private struct GridShape: Shape {
-    /// The gap between two squares, of a square's side.
-    private static let gap: CGFloat = 0.3
-
-    func path(in rect: CGRect) -> Path {
-        let columns = CGFloat(GridMetrics.columns)
-        let side = min(rect.width, rect.height) / (columns + (columns - 1) * Self.gap)
-        let pitch = side * (1 + Self.gap)
-        var path = Path()
-        for row in 0 ..< GridMetrics.columns {
-            for column in 0 ..< GridMetrics.columns {
-                let square = CGRect(
-                    x: rect.minX + CGFloat(column) * pitch, y: rect.minY + CGFloat(row) * pitch, width: side, height: side
-                )
-                path.addRoundedRect(in: square, cornerSize: CGSize(width: side * 0.28, height: side * 0.28))
-            }
-        }
-        return path
-    }
-}
-
 private struct GalleryHeart: View {
     let on: Bool
     let flashes: Int
