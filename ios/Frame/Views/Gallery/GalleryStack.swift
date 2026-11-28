@@ -384,7 +384,10 @@ struct OffCard: Shape {
             x: rect.minX + inset, y: rect.minY + inset,
             width: rect.width - 2 * inset, height: max(rect.height - foot - 2 * inset, 1)
         )
-        let up = inset > 0.05 ? max(top - inset, 0) : 0
+        // The screen's corners at the top, also unpressed: square there,
+        // the glow stayed light in them after the whole work, then went
+        // dark at once (run 19).
+        let up = max(top - inset, 0)
         let down = max(corner - inset, 8)
         path.addPath(UnevenRoundedRectangle(
             topLeadingRadius: up, bottomLeadingRadius: down,
