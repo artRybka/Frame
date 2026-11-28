@@ -81,7 +81,7 @@ struct StackedPage: ViewModifier {
     /// had come out from behind the card, sharp).
     @State private var covered: Double = 1
     /// Seconds the next work's edge takes to melt into the glow, and back.
-    nonisolated static let melt: Double = 0.85
+    nonisolated static let melt: Double = 0.7
     nonisolated static let unmelt: Double = 0.4
 
     func body(content: Content) -> some View {
@@ -111,6 +111,9 @@ struct StackedPage: ViewModifier {
             let tall = geo.size.height - foot
             ZStack(alignment: .top) {
                 content
+                    // The page's own ground behind its work goes from black
+                    // to its glow with what lies round the card (`veil`).
+                    .environment(\.galleryVeil, flood ? covered : 1)
                     .clipShape(CardCut(foot: Self.left(16) ? 0 : cut, corner: Self.corner(geo.size)))
                 // What lies under the card while it is flooded: the next
                 // work's edge, melting into the glow (`covered`).
@@ -241,10 +244,12 @@ struct StackedPage: ViewModifier {
     /// ground (what is seen beside it), to lie over the page uncut.
     private func under(_ size: CGSize, edge: Bool) -> some View {
         ZStack(alignment: .bottom) {
-            // All of what the cut leaves black, beside the corners too
-            // (run 17: the glow came there at once, a square step beside
-            // the round foot).
-            Color.black
+            // What the cut leaves black, beside the corners too, is the
+            // page's own veil (`GalleryPage`), one with what is behind the
+            // work inside the card: a black of its own here melted on
+            // another curve than the glow inside, and the card stood on
+            // the way to the whole work as a pale plate with a dark rim
+            // (Mateusz 2026-11-28 09:05: "nadal jakieś obwódki").
             if edge, let below { StackUnder(work: below) }
         }
         .frame(width: size.width, height: size.height, alignment: .bottom)
@@ -505,4 +510,12 @@ struct StackUnder: View {
             picture = loaded
         }
     }
+}
+
+extension EnvironmentValues {
+    /// How much of black lies over a Galeria page's glow, behind its work:
+    /// all of it till the work is pressed, then melting away with the next
+    /// work's edge round the card (`StackedPage.covered`), so that the
+    /// whole of what is behind the work goes to the glow as one.
+    @Entry var galleryVeil: Double = 1
 }
